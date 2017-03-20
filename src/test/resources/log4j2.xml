@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration status="WARN" packages="org.apache.logging.log4j.core">
+    <appenders>
+        <console name="stdout">
+            <patternlayout pattern="%d %p [%t:%X] %c %m%ex%n"/>
+        </console>
+    </appenders>
+    <loggers>
+        <logger name="com.upserve.uppend" level="trace" additivity="false">
+            <appender-ref ref="stdout"/>
+        </logger>
+        <root level="info">
+            <appender-ref ref="stdout"/>
+        </root>
+    </loggers>
+</configuration>

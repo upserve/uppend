@@ -1,0 +1,45 @@
+buildscript { repositories { jcenter() } }
+plugins {
+    id 'nebula.lint' version '6.7.0'
+}
+
+group 'com.upserve'
+version '1.0-SNAPSHOT'
+
+description = """Uppend: fast, append-only key-value store"""
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.3'
+}
+
+gradleLint.rules += 'unused-dependency'
+
+apply plugin: 'java'
+apply plugin: 'maven'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'com.github.ben-manes.caffeine:caffeine:2.3.5'
+    compile 'com.google.guava:guava:21.0'
+    compile 'it.unimi.dsi:fastutil:7.0.13'
+    compile 'org.slf4j:slf4j-api:1.7.22'
+
+    compileOnly 'org.projectlombok:lombok:1.16.12'
+
+    testCompile 'junit:junit:4.12'
+    testCompile 'org.apache.logging.log4j:log4j-core:2.8'
+    testCompile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+}
+
+sourceSets {
+    main {
+        output.resourcesDir = "${buildDir}/classes/main"
+    }
+    test {
+        output.resourcesDir = "${buildDir}/classes/test"
+    }
+}
+
