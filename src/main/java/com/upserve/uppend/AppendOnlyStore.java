@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * Defines the minimum interface required to add byte arrays under a key, and to
@@ -23,6 +24,14 @@ public interface AppendOnlyStore extends AutoCloseable {
      * @param reader function to be called once per stored byte array
      */
     void read(String key, Consumer<byte[]> reader);
+
+    /**
+     * Read byte arrays that have been stored under a given key
+     *
+     * @param key the key under which to retrieve
+     * @return a stream of byte arrays
+     */
+    Stream<byte[]> read(String key);
 
     /**
      * Remove all keys and values from the store.

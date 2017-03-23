@@ -5,6 +5,8 @@ import lombok.extern.slf4j.Slf4j;
 import java.io.*;
 import java.nio.file.*;
 import java.util.function.Consumer;
+import java.util.stream.LongStream;
+import java.util.stream.Stream;
 
 @Slf4j
 public class FileAppendOnlyStore implements AppendOnlyStore {
@@ -38,16 +40,24 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
 
     @Override
     public void read(String key, Consumer<byte[]> reader) {
-        log.trace("reading key: {}", key);
-        LongLookup lookup = lookups.get(key);
-        Long blockPos = lookup.get(key);
-        if (blockPos == null) {
+        LongStream blockValues = blockValues(key);
+        if (blockValues == null) {
             return;
         }
-        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
-        blocks.values(blockPos)
+        blockValues
                 .parallel()
                 .forEach(pos -> reader.accept(blobs.read(pos)));
+    }
+
+    @Override
+    public Stream<byte[]> read(String key) {
+        LongStream blockValues = blockValues(key);
+        if (blockValues == null) {
+            return null;
+        }
+        return blockValues
+                .parallel()
+                .mapToObj(blobs::read);
     }
 
     @Override
@@ -76,5 +86,16 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         } catch (Exception e) {
             log.error("unable to close lookups", e);
         }
+    }
+
+    private LongStream blockValues(String key) {
+        log.trace("reading key: {}", key);
+        LongLookup lookup = lookups.get(key);
+        Long blockPos = lookup.get(key);
+        if (blockPos == null) {
+            return null;
+        }
+        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
+        return blocks.values(blockPos);
     }
 }

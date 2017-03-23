@@ -60,6 +60,12 @@ public abstract class AppendOnlyStoreTest {
         store.read(key, x -> {throw new AssertionError("Should be clear!");} );
     }
 
+    @Test
+    public void testReadStream() {
+        store.append("stream", "bar".getBytes());
+        store.append("stream", "baz".getBytes());
+        assertArrayEquals(new String[] { "bar", "baz" }, store.read("stream").map(String::new).sorted().toArray(String[]::new));
+    }
 
     @Test
     public void testReadWriteSingle() {
