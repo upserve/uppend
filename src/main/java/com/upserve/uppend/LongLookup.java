@@ -61,6 +61,10 @@ public class LongLookup implements AutoCloseable {
         return v;
     }
 
+    public ObjectSet<String> keys() {
+        return mem.keySet();
+    }
+
     public synchronized void put(String key, long value) {
         log.trace("putting {}={} in {}", key, value, path);
         long existingValue = mem.put(key, value);

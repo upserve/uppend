@@ -61,6 +61,11 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     }
 
     @Override
+    public Stream<String> keys() {
+        return lookups.keys();
+    }
+
+    @Override
     public void clear() {
         log.trace("clearing");
         blocks.clear();
