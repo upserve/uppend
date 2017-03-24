@@ -47,6 +47,15 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable {
     }
 
     /**
+     * Enumerate keys in the data store
+     *
+     * @return a stream of string keys
+     */
+    public Stream<String> keys() {
+        return store.keys();
+    }
+
+    /**
      * Remove all keys and values from the store.
      */
     public void clear() {

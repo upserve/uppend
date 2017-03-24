@@ -68,6 +68,15 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
+    public void testKeys() throws Exception {
+        store.append("one", "bar".getBytes());
+        store.append("two", "baz".getBytes());
+        store.close();
+        store = newStore();
+        assertArrayEquals(new String[] { "one", "two" }, store.keys().sorted().toArray(String[]::new));
+    }
+
+    @Test
     public void testReadWriteSingle() {
         tester(1, 17);
     }
@@ -160,10 +169,5 @@ public abstract class AppendOnlyStoreTest {
         byte[] bytes = new byte[12];
         new Random().nextBytes(bytes);
         return bytes;
-    }
-
-    private void reopenStore() throws Exception {
-        store.close();
-        store = newStore();
     }
 }

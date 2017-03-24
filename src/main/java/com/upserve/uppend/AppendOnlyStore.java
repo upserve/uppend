@@ -34,6 +34,13 @@ public interface AppendOnlyStore extends AutoCloseable {
     Stream<byte[]> read(String key);
 
     /**
+     * Enumerate keys in the data store
+     *
+     * @return a stream of string keys
+     */
+    Stream<String> keys();
+
+    /**
      * Remove all keys and values from the store.
      */
     void clear();
