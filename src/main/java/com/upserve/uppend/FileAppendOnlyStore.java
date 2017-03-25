@@ -39,23 +39,8 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     }
 
     @Override
-    public void read(String key, Consumer<byte[]> reader) {
-        LongStream blockValues = blockValues(key);
-        if (blockValues == null) {
-            return;
-        }
-        blockValues
-                .parallel()
-                .forEach(pos -> reader.accept(blobs.read(pos)));
-    }
-
-    @Override
     public Stream<byte[]> read(String key) {
-        LongStream blockValues = blockValues(key);
-        if (blockValues == null) {
-            return null;
-        }
-        return blockValues
+        return blockValues(key)
                 .parallel()
                 .mapToObj(blobs::read);
     }
@@ -98,7 +83,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         LongLookup lookup = lookups.get(key);
         Long blockPos = lookup.get(key);
         if (blockPos == null) {
-            return null;
+            return LongStream.empty();
         }
         log.trace("streaming values at block pos {} for key: {}", blockPos, key);
         return blocks.values(blockPos);
