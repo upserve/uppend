@@ -21,15 +21,7 @@ public interface AppendOnlyStore extends AutoCloseable {
      * Read byte arrays that have been stored under a given key
      *
      * @param key the key under which to retrieve
-     * @param reader function to be called once per stored byte array
-     */
-    void read(String key, Consumer<byte[]> reader);
-
-    /**
-     * Read byte arrays that have been stored under a given key
-     *
-     * @param key the key under which to retrieve
-     * @return a stream of byte arrays
+     * @return a stream of the stored byte arrays
      */
     Stream<byte[]> read(String key);
 
