@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -43,10 +42,10 @@ public abstract class AppendOnlyStoreTest {
         store.close();
         store = newStore();
         List<String> results = Collections.synchronizedList(new ArrayList<>());
-        store.read("foo", bytes -> results.add(new String(bytes)));
+        store.read("foo").map(String::new).forEach(results::add);
         assertArrayEquals(new String[] {"bar", "baz"}, results.stream().sorted().toArray(String[]::new));
         results.clear();
-        store.read("qux", bytes -> results.add(new String(bytes)));
+        store.read("qux").map(String::new).forEach(results::add);
         assertArrayEquals(new String[] {"xyzzy"}, results.stream().sorted().toArray(String[]::new));
     }
 
@@ -57,9 +56,24 @@ public abstract class AppendOnlyStoreTest {
         byte[] bytes = genBytes(12);
         store.append(key, bytes);
         store.clear();
-        store.read(key, x -> {throw new AssertionError("Should be clear!");} );
+        assertEquals(0, store.read(key).count());
     }
 
+    @Test
+    public void testReadStream() {
+        store.append("stream", "bar".getBytes());
+        store.append("stream", "baz".getBytes());
+        assertArrayEquals(new String[] { "bar", "baz" }, store.read("stream").map(String::new).sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testKeys() throws Exception {
+        store.append("one", "bar".getBytes());
+        store.append("two", "baz".getBytes());
+        store.close();
+        store = newStore();
+        assertArrayEquals(new String[] { "one", "two" }, store.keys().sorted().toArray(String[]::new));
+    }
 
     @Test
     public void testReadWriteSingle() {
@@ -112,7 +126,7 @@ public abstract class AppendOnlyStoreTest {
 
         List<byte[]> outputBytes = Collections.synchronizedList(new ArrayList<>());
 
-        store.read(key, outputBytes::add);
+        store.read(key).forEach(outputBytes::add);
 
         assertEquals(inputBytes.size(), outputBytes.size());
 
@@ -154,10 +168,5 @@ public abstract class AppendOnlyStoreTest {
         byte[] bytes = new byte[12];
         new Random().nextBytes(bytes);
         return bytes;
-    }
-
-    private void reopenStore() throws Exception {
-        store.close();
-        store = newStore();
     }
 }
