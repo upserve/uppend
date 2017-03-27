@@ -7,7 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.Arrays;
 import java.util.Comparator;
+import java.util.stream.Stream;
 
 @Slf4j
 public class HashedLongLookups implements AutoCloseable {
@@ -46,6 +48,25 @@ public class HashedLongLookups implements AutoCloseable {
         String hashPath = String.format("%02x/%01x", 0xff & (int) hash[0], 0xf & (int) hash[1]);
         Path p = dir.resolve(hashPath);
         return cache.get(p);
+    }
+
+    public Stream<String> keys() {
+        Stream<Path> files;
+        try {
+            files = Files.walk(dir);
+        } catch (IOException e) {
+            return Stream.empty();
+        }
+        return files
+                .filter(Files::isRegularFile)
+                .flatMap(p -> {
+                    // Use cached version if available, but don't turn over cache while enumerating keys
+                    LongLookup lookup = cache.getIfPresent(p);
+                    if (lookup == null) {
+                        lookup = new LongLookup(p);
+                    }
+                    return Arrays.stream(lookup.keys());
+                });
     }
 
     @Override

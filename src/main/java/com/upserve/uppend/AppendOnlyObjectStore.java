@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import java.util.function.*;
+import java.util.stream.Stream;
 
 /**
  * Wraps an {@code AppendOnlyStore} and {@code Serializer} and provides
@@ -37,13 +38,22 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable {
     }
 
     /**
-     * Read byte arrays that have been stored under a given key
+     * Read objects that have been stored under a given key
      *
      * @param key the key under which to retrieve
-     * @param reader function to be called once per stored byte array
+     * @return a stream of the stored objects
      */
-    public void read(String key, Consumer<T> reader) {
-        store.read(key, bytes -> reader.accept(deserializer.apply(bytes)));
+    public Stream<T> read(String key) {
+        return store.read(key).map(deserializer);
+    }
+
+    /**
+     * Enumerate keys in the data store
+     *
+     * @return a stream of string keys
+     */
+    public Stream<String> keys() {
+        return store.keys();
     }
 
     /**
