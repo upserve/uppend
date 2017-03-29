@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.file.*;
-import java.util.function.Consumer;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 
@@ -30,24 +29,34 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     }
 
     @Override
-    public void append(String key, byte[] value) {
+    public void append(String partition, String key, byte[] value) {
+        validatePartition(partition);
+
         long blobPos = blobs.append(value);
-        LongLookup lookup = lookups.get(key);
+        LongLookup lookup = lookups.get(partition, key);
         long blockPos = lookup.putIfNotExists(key, blocks::allocate);
         log.trace("appending {} bytes (blob pos {}) for key '{}' at block pos {}", value.length, blobPos, key, blockPos);
         blocks.append(blockPos, blobPos);
     }
 
     @Override
-    public Stream<byte[]> read(String key) {
-        return blockValues(key)
+    public Stream<byte[]> read(String partition, String key) {
+        validatePartition(partition);
+
+        return blockValues(partition, key)
                 .parallel()
                 .mapToObj(blobs::read);
     }
 
     @Override
-    public Stream<String> keys() {
-        return lookups.keys();
+    public Stream<String> keys(String partition) {
+        validatePartition(partition);
+        return lookups.keys(partition);
+    }
+
+    @Override
+    public Stream<String> partitions() {
+        return lookups.partitions();
     }
 
     @Override
@@ -78,14 +87,65 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         }
     }
 
-    private LongStream blockValues(String key) {
+    private LongStream blockValues(String partition, String key) {
         log.trace("reading key: {}", key);
-        LongLookup lookup = lookups.get(key);
+        LongLookup lookup = lookups.get(partition, key);
         Long blockPos = lookup.get(key);
         if (blockPos == null) {
             return LongStream.empty();
         }
         log.trace("streaming values at block pos {} for key: {}", blockPos, key);
         return blocks.values(blockPos);
+    }
+
+    private void validatePartition(String partition) {
+        if (!verifier(partition)) {
+            throw new IllegalArgumentException("Partition must be non-empty, consist of valid Java identifier characters and /, and have zero-width parts surrounded by /: " + partition);
+        }
+    }
+
+    private boolean verifier(String text) {
+        return verifier(text, 0);
+    }
+
+    private boolean verifier(String text, int startIndex) {
+        int slash = text.indexOf('/', startIndex);
+        int endIndexExclusive;
+
+        // If there is a slash, check the content after it
+        if (slash != -1) {
+            if (!verifier(text, slash + 1)) {
+                return false;
+            }
+            endIndexExclusive = slash;
+
+        // If there is no slash, continue with the whole string
+        } else {
+            endIndexExclusive = text.length();
+        }
+
+        // Fail empty strings
+        if (startIndex == endIndexExclusive) {
+            return false;
+        }
+
+        // Fail strings that don't start with a proper starting char
+        if (!Character.isJavaIdentifierStart(text.charAt(startIndex))) {
+            return false;
+        }
+
+        // Allow single char strings that pass the check above
+        if (endIndexExclusive == startIndex + 1) {
+            return true;
+        }
+
+        // Check each character in the string
+        for (int i = startIndex; i < endIndexExclusive; i++) {
+            if (!Character.isJavaIdentifierPart(text.charAt(i))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }

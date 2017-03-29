@@ -1,6 +1,5 @@
 package com.upserve.uppend;
 
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
@@ -12,25 +11,38 @@ public interface AppendOnlyStore extends AutoCloseable {
     /**
      * Append a byte array under a given key
      *
+     * @param partition the partition to store under
      * @param key the key to store under
+     * @throws IllegalArgumentException if partition is invalid
      * @param value the value to append
      */
-    void append(String key, byte[] value);
+    void append(String partition, String key, byte[] value);
 
     /**
      * Read byte arrays that have been stored under a given key
      *
+     * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
+     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of the stored byte arrays
      */
-    Stream<byte[]> read(String key);
+    Stream<byte[]> read(String partition, String key);
 
     /**
-     * Enumerate keys in the data store
+     * Enumerate the keys in the data store
      *
+     * @param partition the partition under which to retrieve
+     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of string keys
      */
-    Stream<String> keys();
+    Stream<String> keys(String partition);
+
+    /**
+     * Enumerate the partition in the data store
+     *
+     * @return a stream of string partition
+     */
+    Stream<String> partitions();
 
     /**
      * Remove all keys and values from the store.

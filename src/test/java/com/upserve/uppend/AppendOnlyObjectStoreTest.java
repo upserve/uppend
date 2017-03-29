@@ -48,30 +48,30 @@ public class AppendOnlyObjectStoreTest {
 
     @Test
     public void testAppend() {
-        instance.append("prefix", "key", DESERIALIZED);
-        verify(store).append("prefix", "key", SERIALIZED);
+        instance.append("partition", "key", DESERIALIZED);
+        verify(store).append("partition", "key", SERIALIZED);
     }
 
     @Test
     public void testRead() {
-        when(store.read("prefix", "key1"))
+        when(store.read("partition", "key1"))
                 .thenReturn(Arrays.asList(SERIALIZED).stream());
         assertArrayEquals(
-                instance.read("prefix", "key1").toArray(),
+                instance.read("partition", "key1").toArray(),
                 Arrays.asList(DESERIALIZED).toArray()
         );
     }
 
     @Test
     public void testKeys() {
-        instance.keys("prefix");
-        verify(store).keys("prefix");
+        instance.keys("partition");
+        verify(store).keys("partition");
     }
 
     @Test
-    public void testPrefixes() {
-        instance.prefixes();
-        verify(store).prefixes();
+    public void testPartitions() {
+        instance.partitions();
+        verify(store).partitions();
     }
 
     @Test

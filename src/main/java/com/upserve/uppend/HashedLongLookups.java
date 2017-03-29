@@ -42,18 +42,18 @@ public class HashedLongLookups implements AutoCloseable {
                 .build(LongLookup::new);
     }
 
-    public LongLookup get(String key) {
+    public LongLookup get(String partition, String key) {
         log.trace("getting from {}: {}", dir, key);
         byte[] hash = hashFunction.hashString(key, Charsets.UTF_8).asBytes();
         String hashPath = String.format("%02x/%01x", 0xff & (int) hash[0], 0xf & (int) hash[1]);
-        Path p = dir.resolve(hashPath);
+        Path p = dir.resolve(partition).resolve(hashPath);
         return cache.get(p);
     }
 
-    public Stream<String> keys() {
+    public Stream<String> keys(String partition) {
         Stream<Path> files;
         try {
-            files = Files.walk(dir);
+            files = Files.walk(dir.resolve(partition));
         } catch (IOException e) {
             return Stream.empty();
         }
@@ -67,6 +67,22 @@ public class HashedLongLookups implements AutoCloseable {
                     }
                     return Arrays.stream(lookup.keys());
                 });
+    }
+
+    public Stream<String> partitions() {
+        Stream<Path> files;
+        try {
+            files = Files.walk(dir);
+        } catch (IOException e) {
+            return Stream.empty();
+        }
+
+        // Paths are "dir/partition/hash/file" - extract just "partition"
+        int dirLength = dir.getNameCount();
+        return files
+                .filter(Files::isRegularFile)
+                .map(p -> p.subpath(dirLength, p.getNameCount() - 2).toString())
+                .distinct();
     }
 
     @Override
