@@ -43,11 +43,11 @@ public class HashedLongLookups implements AutoCloseable {
     }
 
     public LongLookup get(String partition, String key) {
-        log.trace("getting from {}: {}", dir, key);
-        byte[] hash = hashFunction.hashString(key, Charsets.UTF_8).asBytes();
-        String hashPath = String.format("%02x/%01x", 0xff & (int) hash[0], 0xf & (int) hash[1]);
-        Path p = dir.resolve(partition).resolve(hashPath);
-        return cache.get(p);
+        return cache.get(hashPath(partition, key));
+    }
+
+    public LongLookup peek(String partition, String key) {
+        return peekLookup(hashPath(partition, key));
     }
 
     public Stream<String> keys(String partition) {
@@ -59,14 +59,7 @@ public class HashedLongLookups implements AutoCloseable {
         }
         return files
                 .filter(Files::isRegularFile)
-                .flatMap(p -> {
-                    // Use cached version if available, but don't turn over cache while enumerating keys
-                    LongLookup lookup = cache.getIfPresent(p);
-                    if (lookup == null) {
-                        lookup = new LongLookup(p);
-                    }
-                    return Arrays.stream(lookup.keys());
-                });
+                .flatMap(p -> Arrays.stream(peekLookup(p).keys()));
     }
 
     public Stream<String> partitions() {
@@ -103,6 +96,22 @@ public class HashedLongLookups implements AutoCloseable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to delete lookups: " + dir, e);
         }
+    }
+
+    private LongLookup peekLookup(Path p) {
+        // Use cached version if available, but don't turn over cache if not
+        LongLookup lookup = cache.getIfPresent(p);
+        if (lookup == null) {
+            lookup = new LongLookup(p);
+        }
+        return lookup;
+    }
+
+    private Path hashPath(String partition, String key) {
+        log.trace("getting from {}: {}", dir, key);
+        byte[] hash = hashFunction.hashString(key, Charsets.UTF_8).asBytes();
+        String hashPath = String.format("%02x/%01x", 0xff & (int) hash[0], 0xf & (int) hash[1]);
+        return dir.resolve(partition).resolve(hashPath);
     }
 
     private static void deleteDirectory(Path path) throws IOException {
