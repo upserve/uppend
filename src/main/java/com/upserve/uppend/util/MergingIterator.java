@@ -5,6 +5,7 @@ import java.util.*;
 public class MergingIterator<T> implements Iterator<T> {
     private final PriorityQueue<PeekingIterator<T>> iterators;
 
+    @SafeVarargs
     public MergingIterator(Comparator<T> comparator, Iterator<T> ... iterators) {
         this.iterators = new PriorityQueue<>((o1, o2) -> comparator.compare(o1.peek(), o2.peek()));
         for (Iterator<T> iterator : iterators) {
