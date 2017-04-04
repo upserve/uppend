@@ -30,11 +30,17 @@ dependencies {
     compile 'it.unimi.dsi:fastutil:7.0.13'
     compile 'org.slf4j:slf4j-api:1.7.22'
 
-    compileOnly 'org.projectlombok:lombok:1.16.12'
-
     testCompile 'junit:junit:4.12'
-    testCompile 'org.apache.logging.log4j:log4j-core:2.8'
-    testCompile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+    testCompile 'org.mockito:mockito-core:2.7.13'
+
+    gradleLint.ignore {
+      // gradle-lint doesn't like lombok, presumably because it's annotation-only
+      compileOnly 'org.projectlombok:lombok:1.16.12'
+
+      // gradle-lint doesn't like log4j, presumably because it's not used directly
+      testCompile 'org.apache.logging.log4j:log4j-core:2.8'
+      testCompile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+    }
 }
 
 sourceSets {
