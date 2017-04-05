@@ -121,6 +121,12 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
+    public void testJustDashPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.append("-", "foo", "bar".getBytes());
+    }
+
+    @Test
     public void testJustSlashesPartition() {
         thrown.expect(IllegalArgumentException.class);
         store.append("//", "foo", "bar".getBytes());
@@ -142,7 +148,8 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition_one", "one", "bar".getBytes());
         store.append("partition_two", "two", "baz".getBytes());
         store.append("partition/three", "three", "bop".getBytes());
-        assertArrayEquals(new String[] { "partition/three", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+        store.append("partition-four", "four", "bap".getBytes());
+        assertArrayEquals(new String[] { "partition-four", "partition/three", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
     }
 
     @Test

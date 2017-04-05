@@ -130,7 +130,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         }
 
         // Fail strings that don't start with a proper starting char
-        if (!Character.isJavaIdentifierStart(text.charAt(startIndex))) {
+        if (!isValidPartitionStart(text.charAt(startIndex))) {
             return false;
         }
 
@@ -141,11 +141,19 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
 
         // Check each character in the string
         for (int i = startIndex; i < endIndexExclusive; i++) {
-            if (!Character.isJavaIdentifierPart(text.charAt(i))) {
+            if (!isValidPartitionPart(text.charAt(i))) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    private static boolean isValidPartitionStart(char c) {
+        return Character.isJavaIdentifierStart(c);
+    }
+
+    private static boolean isValidPartitionPart(char c) {
+        return Character.isJavaIdentifierPart(c) || c == '-';
     }
 }
