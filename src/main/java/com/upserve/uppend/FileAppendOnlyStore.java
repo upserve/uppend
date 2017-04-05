@@ -150,7 +150,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     }
 
     private static boolean isValidPartitionStart(char c) {
-        return Character.isJavaIdentifierStart(c);
+        return Character.isJavaIdentifierStart(c) || Character.isDigit(c);
     }
 
     private static boolean isValidPartitionPart(char c) {

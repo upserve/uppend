@@ -149,7 +149,8 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition_two", "two", "baz".getBytes());
         store.append("partition/three", "three", "bop".getBytes());
         store.append("partition-four", "four", "bap".getBytes());
-        assertArrayEquals(new String[] { "partition-four", "partition/three", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+        store.append("2016-01-02", "five", "bap".getBytes());
+        assertArrayEquals(new String[] { "2016-01-02", "partition-four", "partition/three", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
     }
 
     @Test
