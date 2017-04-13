@@ -7,6 +7,8 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -52,13 +54,43 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testClear(){
+    public void testClear() {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
         store.append("partition", key, bytes);
         store.clear();
         assertEquals(0, store.read("partition", key).count());
+    }
+
+    @Test
+    public void fillTheCache() {
+        // MAX_LOOKUPS_CACHE_SIZE * 2 keys ensures cache will be filled
+        int keys = 4096 * 2;
+
+        List<String> uuids = IntStream
+                .range(0, keys)
+                .mapToObj(i -> UUID.randomUUID().toString())
+                .collect(Collectors.toList());
+
+        Random random = new Random(9876);
+        random
+                .ints(keys * 10, 0, keys)
+                .parallel()
+                .forEach( i -> {
+                    String uuid = uuids.get(i);
+                    store.append(uuid.substring(0, 2), uuid, uuid.getBytes());
+                });
+
+        uuids
+                .stream()
+                .parallel()
+                .forEach(uuid ->
+                        store
+                                .read(uuid.substring(0, 2), uuid)
+                                .findFirst()
+                                .ifPresent(bytes -> assertArrayEquals(bytes, uuid.getBytes()))
+                );
     }
 
     @Test
