@@ -98,17 +98,17 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         return blocks.values(blockPos);
     }
 
-    private void validatePartition(String partition) {
+    protected static void validatePartition(String partition) {
         if (!verifier(partition)) {
             throw new IllegalArgumentException("Partition must be non-empty, consist of valid Java identifier characters and /, and have zero-width parts surrounded by /: " + partition);
         }
     }
 
-    private boolean verifier(String text) {
+    private static boolean verifier(String text) {
         return verifier(text, 0);
     }
 
-    private boolean verifier(String text, int startIndex) {
+    private static boolean verifier(String text, int startIndex) {
         int slash = text.indexOf('/', startIndex);
         int endIndexExclusive;
 
