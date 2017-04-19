@@ -13,8 +13,7 @@ public class PartitionTest {
 
     @Test
     public void validate_success(){
-        String partition = "2016-12-01";
-        Partition.validate(partition);
+        Partition.validate("2016-12-01");
     }
 
     @Test
@@ -26,11 +25,58 @@ public class PartitionTest {
     }
 
     @Test
-    public void verifier(){
-        assertTrue(Partition.verifier("2016-12-01"));
-        assertTrue(Partition.verifier("2016/12/01"));
-        assertFalse(Partition.verifier("2016//01"));
-        assertFalse(Partition.verifier("2016/*01"));
+    public void testSpecialCharacters(){
+        assertTrue(Partition.verifier("pre-fix"));
+        assertTrue(Partition.verifier("pre/fix"));
+        assertTrue(Partition.verifier("pre$fix"));
+        assertTrue(Partition.verifier("pre_fix"));
+
+        assertFalse(Partition.verifier("pre!fix"));
+        assertFalse(Partition.verifier("pre@fix"));
+        assertFalse(Partition.verifier("pre#fix"));
+        assertFalse(Partition.verifier("pre%fix"));
+        assertFalse(Partition.verifier("pre^fix"));
+        assertFalse(Partition.verifier("pre&fix"));
+        assertFalse(Partition.verifier("pre*fix"));
+        assertFalse(Partition.verifier("pre(fix"));
+        assertFalse(Partition.verifier("pre)fix"));
+        assertFalse(Partition.verifier("pre+fix"));
+        assertFalse(Partition.verifier("pre=fix"));
+        assertFalse(Partition.verifier("pre:fix"));
+        assertFalse(Partition.verifier("pre'fix"));
+        assertFalse(Partition.verifier("pre;fix"));
+        assertFalse(Partition.verifier("pre\"fix"));
+        assertFalse(Partition.verifier("pre{fix"));
+        assertFalse(Partition.verifier("pre}fix"));
+        assertFalse(Partition.verifier("pre\\fix"));
+        assertFalse(Partition.verifier("pre|fix"));
+        assertFalse(Partition.verifier("pre.fix"));
+        assertFalse(Partition.verifier("pre,fix"));
+        assertFalse(Partition.verifier("pre?fix"));
+    }
+
+    @Test
+    public void testEmptyOrEmptyPart() {
         assertFalse(Partition.verifier(""));
+        assertFalse(Partition.verifier("foo//bar"));
+    }
+
+    @Test
+    public void testSpecialSlashes() {
+        assertTrue(Partition.verifier("part/it/ion"));
+
+        assertFalse(Partition.verifier("/partition"));
+        assertFalse(Partition.verifier("partition/"));
+        assertFalse(Partition.verifier("/"));
+        assertFalse(Partition.verifier("//"));
+    }
+
+    @Test
+    public void testJustSpecial() {
+        assertTrue(Partition.verifier("$"));
+        assertTrue(Partition.verifier("_"));
+
+        assertFalse(Partition.verifier("/"));
+        assertFalse(Partition.verifier("-"));
     }
 }

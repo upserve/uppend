@@ -62,10 +62,22 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testReadStream() {
+    public void testRead() {
         store.append("partition", "stream", "bar".getBytes());
         store.append("partition", "stream", "baz".getBytes());
         assertArrayEquals(new String[] { "bar", "baz" }, store.read("partition", "stream").map(String::new).sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testRead_BadPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.read("bad*partition", "stream");
+    }
+
+    @Test
+    public void testAppend_BadPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.append("bad*partition", "stream", new byte[]{1});
     }
 
     @Test
@@ -79,60 +91,6 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testSpecialCharacterPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("partition!", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testLeadingSlashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("/partition", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testTrailingSlashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("partition/", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testDotPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("pre.fix", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testEmptyPartPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("foo//bar", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testEmptyPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testJustSlashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("/", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testJustDashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("-", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testJustSlashesPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("//", "foo", "bar".getBytes());
-    }
-
-    @Test
     public void testKeys() throws Exception {
         store.append("partition", "one", "bar".getBytes());
         store.append("partition", "two", "baz".getBytes());
@@ -141,6 +99,12 @@ public abstract class AppendOnlyStoreTest {
         store.close();
         store = newStore();
         assertArrayEquals(new String[] { "one", "two" }, store.keys("partition").sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testKeys_BadPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.keys("bad*partition");
     }
 
     @Test

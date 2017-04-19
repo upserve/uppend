@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
-public class InMemoryOnlyAppendOnlyStore implements AppendOnlyStore {
+public class InMemoryAppendOnlyStore implements AppendOnlyStore {
 
     // Data for all In Memory Only Append Stores live in inMemoryStores.
     private static final Map<String, Map<String, Map<String, List<byte[]>>>> inMemoryStores = new ConcurrentHashMap<>();
@@ -23,11 +23,11 @@ public class InMemoryOnlyAppendOnlyStore implements AppendOnlyStore {
     private final Map<String, List<byte[]>> defaultKeyMap = new HashMap<>();
     private final List<byte[]> defaultList = new ArrayList<>();
 
-    public InMemoryOnlyAppendOnlyStore(Path path) {
+    public InMemoryAppendOnlyStore(Path path) {
         this(path.toString());
     }
 
-    public InMemoryOnlyAppendOnlyStore(String pathString) {
+    public InMemoryAppendOnlyStore(String pathString) {
         partitionMap = inMemoryStores.compute(pathString, (key, value) ->
                 (value == null) ? new ConcurrentHashMap<>() : value);
     }
