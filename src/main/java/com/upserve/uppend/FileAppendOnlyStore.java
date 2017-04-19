@@ -89,8 +89,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
 
     private LongStream blockValues(String partition, String key) {
         log.trace("reading key: {}", key);
-        LongLookup lookup = lookups.peek(partition, key);
-        Long blockPos = lookup.get(key);
+        Long blockPos = lookups.getValue(partition, key);
         if (blockPos == null) {
             return LongStream.empty();
         }
