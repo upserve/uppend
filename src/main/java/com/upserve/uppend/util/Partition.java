@@ -7,7 +7,7 @@ public class Partition {
         }
     }
 
-    public static boolean verifier(String text) {
+    protected static boolean verifier(String text) {
         return verifier(text, 0);
     }
 
