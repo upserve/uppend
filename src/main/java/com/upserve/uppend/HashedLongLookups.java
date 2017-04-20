@@ -10,6 +10,7 @@ import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -31,6 +32,7 @@ public class HashedLongLookups implements AutoCloseable {
         cache = Caffeine.newBuilder()
                 .maximumSize(maxCacheSize)
                 .initialCapacity(maxCacheSize)
+                .expireAfterAccess(1, TimeUnit.MINUTES)
                 .executor(new ForkJoinPool(1))
                 .removalListener((RemovalListener<Path, LongLookup>) (key, value, cause) -> {
                     try {
