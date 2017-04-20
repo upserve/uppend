@@ -101,6 +101,7 @@ public class HashedLongLookups implements AutoCloseable {
             Path tmpDir = Files.createTempFile(dir.getParent(), dir.getFileName().toString(), ".defunct");
             Files.delete(tmpDir);
             Files.move(dir, tmpDir);
+            Files.createDirectories(dir);
             deleteDirectory(tmpDir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to delete lookups: " + dir, e);
