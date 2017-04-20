@@ -14,7 +14,7 @@ import static org.junit.Assert.assertEquals;
 public abstract class AppendOnlyStoreTest {
     protected abstract AppendOnlyStore newStore();
 
-    protected AppendOnlyStore store = newStore();
+    protected AppendOnlyStore store;
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -32,6 +32,11 @@ public abstract class AppendOnlyStoreTest {
         } catch (Exception e){
             throw new AssertionError("Should not raise: {}", e);
         }
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testReservations() throws Exception {
+        newStore();
     }
 
     @Test

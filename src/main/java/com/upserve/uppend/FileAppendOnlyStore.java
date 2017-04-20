@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.util.Partition;
+import com.upserve.uppend.util.Reservation;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
@@ -13,9 +14,13 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     private static final int NUM_BLOBS_PER_BLOCK = 127;
     private static final int MAX_LOOKUPS_CACHE_SIZE = 4096;
 
+    // Used to reserve a single slot for each AppendOnlyStore in the JVM - there can be only one
+    private static final Reservation reservation = new Reservation();
+
     private final HashedLongLookups lookups;
     private final BlockedLongs blocks;
     private final Blobs blobs;
+    private final String pathString;
 
     public FileAppendOnlyStore(Path dir) {
         try {
@@ -23,6 +28,12 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
+
+        pathString = dir.toString();
+
+        if (!reservation.checkout(uniqueStoreId(), this)) throw new IllegalStateException(
+                String.format("An instance of append only store with this path already exists in the JVM: '%s'", pathString)
+        );
 
         lookups = new HashedLongLookups(dir.resolve("lookups"), MAX_LOOKUPS_CACHE_SIZE);
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
@@ -86,6 +97,13 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         } catch (Exception e) {
             log.error("unable to close lookups", e);
         }
+
+        reservation.checkin(uniqueStoreId(), this);
+    }
+
+    @Override
+    public String uniqueStoreId(){
+        return String.format("%s:%s",this.getClass(), pathString);
     }
 
     private LongStream blockValues(String partition, String key) {
@@ -98,5 +116,4 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         log.trace("streaming values at block pos {} for key: {}", blockPos, key);
         return blocks.values(blockPos);
     }
-
 }
