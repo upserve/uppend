@@ -31,9 +31,11 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
 
         pathString = dir.toString();
 
-        if (!reservation.checkout(uniqueStoreId(), this)) throw new IllegalStateException(
-                String.format("An instance of append only store with this path already exists in the JVM: '%s'", pathString)
-        );
+        if (!reservation.checkout(uniqueStoreId(), this)) {
+            throw new IllegalStateException(
+                    String.format("An instance of append only store with this path already exists in the JVM: '%s'", pathString)
+            );
+        }
 
         lookups = new HashedLongLookups(dir.resolve("lookups"), MAX_LOOKUPS_CACHE_SIZE);
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
@@ -102,8 +104,8 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     }
 
     @Override
-    public String uniqueStoreId(){
-        return String.format("%s:%s",this.getClass(), pathString);
+    public String uniqueStoreId() {
+        return String.format("%s:%s", this.getClass(), pathString);
     }
 
     private LongStream blockValues(String partition, String key) {

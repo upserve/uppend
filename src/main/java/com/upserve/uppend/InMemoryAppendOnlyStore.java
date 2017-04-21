@@ -2,6 +2,7 @@ package com.upserve.uppend;
 
 import com.upserve.uppend.util.Partition;
 import com.upserve.uppend.util.Reservation;
+
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -35,9 +36,11 @@ public class InMemoryAppendOnlyStore implements AppendOnlyStore {
     public InMemoryAppendOnlyStore(String pathString) {
         this.pathString = pathString;
 
-        if (!reservation.checkout(uniqueStoreId(), this)) throw new IllegalStateException(
-                String.format("An instance of append only store with this path already exists in the JVM: '%s'", pathString)
-        );
+        if (!reservation.checkout(uniqueStoreId(), this)) {
+            throw new IllegalStateException(
+                    String.format("An instance of append only store with this path already exists in the JVM: '%s'", pathString)
+            );
+        }
 
         partitionMap = inMemoryStores.compute(pathString, (key, value) ->
                 (value == null) ? new ConcurrentHashMap<>() : value);
@@ -80,7 +83,7 @@ public class InMemoryAppendOnlyStore implements AppendOnlyStore {
     }
 
     @Override
-    public String uniqueStoreId(){
-        return String.format("%s:%s",this.getClass(), pathString);
+    public String uniqueStoreId() {
+        return String.format("%s:%s", this.getClass(), pathString);
     }
 }

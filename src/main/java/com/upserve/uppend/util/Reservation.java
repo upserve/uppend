@@ -8,7 +8,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Reservation system for instances
  * Used with AppendOnlyStores to enforce that only one instance of a particular store exists.
  */
-public class Reservation<T>{
+public class Reservation<T> {
 
     private final Map<String, T> reservations = new ConcurrentHashMap<>();
 
@@ -18,7 +18,7 @@ public class Reservation<T>{
      * @param instance is the object requesting a reservation
      * @return true if you got the reservation. False if it is already reserved.
      */
-    public boolean checkout(String key, T instance){
+    public boolean checkout(String key, T instance) {
         AtomicBoolean result = new AtomicBoolean(false);
         reservations.computeIfAbsent(key, k -> {
             result.set(true);
@@ -32,7 +32,7 @@ public class Reservation<T>{
      *
      * @param instance is the object relinquishing a reservation
      */
-    public void checkin(String key, T instance){
+    public void checkin(String key, T instance) {
         reservations.remove(key, instance);
     }
 }
