@@ -48,4 +48,12 @@ public interface AppendOnlyStore extends AutoCloseable {
      * Remove all keys and values from the store.
      */
     void clear();
+
+    /**
+     * Provide a unique string for each instance of append store
+     * Used to prevent creating multiple instance of the same logical store
+     *
+     * @return a string identifier used to reserve a slot for the store
+     */
+    String uniqueStoreId();
 }

@@ -6,15 +6,20 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 public abstract class AppendOnlyStoreTest {
     protected abstract AppendOnlyStore newStore();
 
-    protected AppendOnlyStore store = newStore();
+    protected AppendOnlyStore store;
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -26,11 +31,26 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @After
-    public void cleanUp(){
+    public void cleanUp() {
         try {
             store.close();
-        } catch (Exception e){
+        } catch (Exception e) {
             throw new AssertionError("Should not raise: {}", e);
+        }
+    }
+
+    public void testReservations(Path path, Function<Path, AppendOnlyStore> supplier) throws Exception {
+        AppendOnlyStore store1 = supplier.apply(path);
+        AppendOnlyStore store2 = null;
+
+        try {
+            store2 = supplier.apply(path);
+            fail("Opening a second store instance for the same DB should fail");
+        } catch (IllegalStateException e) {
+
+        } finally {
+            if (store1 != null) store1.close();
+            if (store2 != null) store2.close();
         }
     }
 
@@ -45,14 +65,14 @@ public abstract class AppendOnlyStoreTest {
         store = newStore();
         List<String> results = Collections.synchronizedList(new ArrayList<>());
         store.read("partition", "foo").map(String::new).forEach(results::add);
-        assertArrayEquals(new String[] {"bar", "baz"}, results.stream().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"bar", "baz"}, results.stream().sorted().toArray(String[]::new));
         results.clear();
         store.read("partition", "qux").map(String::new).forEach(results::add);
-        assertArrayEquals(new String[] {"xyzzy"}, results.stream().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"xyzzy"}, results.stream().sorted().toArray(String[]::new));
     }
 
     @Test
-    public void testClear(){
+    public void testClear() {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
@@ -62,10 +82,22 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testReadStream() {
+    public void testRead() {
         store.append("partition", "stream", "bar".getBytes());
         store.append("partition", "stream", "baz".getBytes());
-        assertArrayEquals(new String[] { "bar", "baz" }, store.read("partition", "stream").map(String::new).sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"bar", "baz"}, store.read("partition", "stream").map(String::new).sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testRead_BadPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.read("bad*partition", "stream");
+    }
+
+    @Test
+    public void testAppend_BadPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.append("bad*partition", "stream", new byte[]{1});
     }
 
     @Test
@@ -73,63 +105,9 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition", "key", "bar".getBytes());
         store.append("partition/bar", "key", "baz".getBytes());
         store.append("partition2", "key", "bap".getBytes());
-        assertArrayEquals(new String[] { "bar" }, store.read("partition", "key").map(String::new).toArray(String[]::new));
-        assertArrayEquals(new String[] { "baz" }, store.read("partition/bar", "key").map(String::new).toArray(String[]::new));
-        assertArrayEquals(new String[] { "bap" }, store.read("partition2", "key").map(String::new).toArray(String[]::new));
-    }
-
-    @Test
-    public void testSpecialCharacterPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("partition!", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testLeadingSlashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("/partition", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testTrailingSlashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("partition/", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testDotPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("pre.fix", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testEmptyPartPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("foo//bar", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testEmptyPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testJustSlashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("/", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testJustDashPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("-", "foo", "bar".getBytes());
-    }
-
-    @Test
-    public void testJustSlashesPartition() {
-        thrown.expect(IllegalArgumentException.class);
-        store.append("//", "foo", "bar".getBytes());
+        assertArrayEquals(new String[]{"bar"}, store.read("partition", "key").map(String::new).toArray(String[]::new));
+        assertArrayEquals(new String[]{"baz"}, store.read("partition/bar", "key").map(String::new).toArray(String[]::new));
+        assertArrayEquals(new String[]{"bap"}, store.read("partition2", "key").map(String::new).toArray(String[]::new));
     }
 
     @Test
@@ -140,7 +118,13 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition2", "three", "baz".getBytes());
         store.close();
         store = newStore();
-        assertArrayEquals(new String[] { "one", "two" }, store.keys("partition").sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"one", "two"}, store.keys("partition").sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testKeys_BadPartition() {
+        thrown.expect(IllegalArgumentException.class);
+        store.keys("bad*partition");
     }
 
     @Test
@@ -150,7 +134,7 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition/three", "three", "bop".getBytes());
         store.append("partition-four", "four", "bap".getBytes());
         store.append("2016-01-02", "five", "bap".getBytes());
-        assertArrayEquals(new String[] { "2016-01-02", "partition-four", "partition/three", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"2016-01-02", "partition-four", "partition/three", "partition_one", "partition_two"}, store.partitions().sorted().toArray(String[]::new));
     }
 
     @Test
@@ -183,13 +167,13 @@ public abstract class AppendOnlyStoreTest {
         tester(1, 0);
     }
 
-    public void tester(int number, int size){
+    public void tester(int number, int size) {
         String key = "foobar";
         String partition = "partition";
 
         byte[] bytes;
         ArrayList<byte[]> inputBytes = new ArrayList();
-        for(int i=0; i<number; i++){
+        for (int i = 0; i < number; i++) {
             bytes = genBytes(size);
             inputBytes.add(bytes);
             store.append(partition, key, bytes);
@@ -197,7 +181,7 @@ public abstract class AppendOnlyStoreTest {
 
         try {
             store.close();
-        } catch (Exception e){
+        } catch (Exception e) {
             throw new AssertionError("Should not raise: {}", e);
         }
 
@@ -212,7 +196,7 @@ public abstract class AppendOnlyStoreTest {
         inputBytes.sort(AppendOnlyStoreTest::compareByteArrays);
         outputBytes.sort(AppendOnlyStoreTest::compareByteArrays);
 
-        for(int i=0; i<number; i++){
+        for (int i = 0; i < number; i++) {
             assertArrayEquals("input and output byte arrays differ at index " + i, inputBytes.get(i), outputBytes.get(i));
         }
     }
@@ -243,7 +227,7 @@ public abstract class AppendOnlyStoreTest {
         return 1;
     }
 
-    private byte[] genBytes(int len){
+    private byte[] genBytes(int len) {
         byte[] bytes = new byte[12];
         new Random().nextBytes(bytes);
         return bytes;
