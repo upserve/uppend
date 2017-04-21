@@ -12,12 +12,12 @@ public class PartitionTest {
     public ExpectedException thrown = ExpectedException.none();
 
     @Test
-    public void validate_success(){
+    public void validate_success() {
         Partition.validate("2016-12-01");
     }
 
     @Test
-    public void validate_exception(){
+    public void validate_exception() {
         String partition = "2016-12**01";
         thrown.expect(IllegalArgumentException.class);
         thrown.expectMessage("Partition must be non-empty, consist of valid Java identifier characters and /, and have zero-width parts surrounded by /: " + partition);
@@ -25,7 +25,7 @@ public class PartitionTest {
     }
 
     @Test
-    public void testSpecialCharacters(){
+    public void testSpecialCharacters() {
         assertTrue(Partition.verifier("pre-fix"));
         assertTrue(Partition.verifier("pre/fix"));
         assertTrue(Partition.verifier("pre$fix"));
