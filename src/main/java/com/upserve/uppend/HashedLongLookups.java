@@ -52,13 +52,12 @@ public class HashedLongLookups implements AutoCloseable {
     }
 
     public Long getValue(String partition, String key) {
-        Long value = null;
         try (LongLookup lookup = new LongLookup(hashPath(partition, key))) {
-            value = lookup.get(key);
+            return lookup.get(key);
         } catch (IOException e) {
             log.error("Unable to autoclose for " + partition + "/" + key, e);
+            throw new UncheckedIOException(e);
         }
-        return value;
     }
 
     public Stream<String> keys(String partition) {
@@ -115,7 +114,7 @@ public class HashedLongLookups implements AutoCloseable {
             return Arrays.stream(lookup.keys());
         } catch (IOException e) {
             log.error("Unable to autoclose for " + path, e);
-            return Stream.empty();
+            throw new UncheckedIOException(e);
         }
     }
 
