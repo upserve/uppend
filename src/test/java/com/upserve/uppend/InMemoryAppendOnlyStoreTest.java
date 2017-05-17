@@ -2,16 +2,12 @@ package com.upserve.uppend;
 
 import org.junit.Test;
 
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.function.Function;
 
-import static org.junit.Assert.fail;
-
-public class FileAppendOnlyStoreTest extends AppendOnlyStoreTest {
+public class InMemoryAppendOnlyStoreTest extends AppendOnlyStoreTest {
     @Override
     protected AppendOnlyStore newStore() {
-        return new FileAppendOnlyStore(Paths.get("build/test/file-append-only-store"));
+        return new InMemoryAppendOnlyStore("test");
     }
 
     @Test

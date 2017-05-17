@@ -30,10 +30,10 @@ public class LongLookupPerformanceTest {
         lookup.close();
     }
 
-    @Test(timeout = 250)
-    public void speedTest() throws Exception {
-        LongLookup lookup = new LongLookup(tempFile);
-        lookup.close();
-    }
+//    @Test(timeout = 250)
+//    public void speedTest() throws Exception {
+//        LongLookup lookup = new LongLookup(tempFile);
+//        lookup.close();
+//    }
 
 }
