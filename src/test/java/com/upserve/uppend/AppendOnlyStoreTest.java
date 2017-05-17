@@ -7,6 +7,8 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -52,27 +54,60 @@ public abstract class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testClear(){
+    public void testClear() throws Exception {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
         store.append("partition", key, bytes);
+        flush();
         store.clear();
         assertEquals(0, store.read("partition", key).count());
     }
 
     @Test
-    public void testReadStream() {
+    public void fillTheCache() {
+        // MAX_LOOKUPS_CACHE_SIZE * 2 keys ensures cache will be filled
+        int keys = 4096 * 2;
+
+        List<String> uuids = IntStream
+                .range(0, keys)
+                .mapToObj(i -> UUID.randomUUID().toString())
+                .collect(Collectors.toList());
+
+        Random random = new Random(9876);
+        random
+                .ints(keys * 10, 0, keys)
+                .parallel()
+                .forEach( i -> {
+                    String uuid = uuids.get(i);
+                    store.append(uuid.substring(0, 2), uuid, uuid.getBytes());
+                });
+
+        uuids
+                .stream()
+                .parallel()
+                .forEach(uuid ->
+                        store
+                                .read(uuid.substring(0, 2), uuid)
+                                .findFirst()
+                                .ifPresent(bytes -> assertArrayEquals(bytes, uuid.getBytes()))
+                );
+    }
+
+    @Test
+    public void testReadStream() throws Exception {
         store.append("partition", "stream", "bar".getBytes());
         store.append("partition", "stream", "baz".getBytes());
+        flush();
         assertArrayEquals(new String[] { "bar", "baz" }, store.read("partition", "stream").map(String::new).sorted().toArray(String[]::new));
     }
 
     @Test
-    public void testMultiPartition() {
+    public void testMultiPartition() throws Exception {
         store.append("partition", "key", "bar".getBytes());
         store.append("partition/bar", "key", "baz".getBytes());
         store.append("partition2", "key", "bap".getBytes());
+        flush();
         assertArrayEquals(new String[] { "bar" }, store.read("partition", "key").map(String::new).toArray(String[]::new));
         assertArrayEquals(new String[] { "baz" }, store.read("partition/bar", "key").map(String::new).toArray(String[]::new));
         assertArrayEquals(new String[] { "bap" }, store.read("partition2", "key").map(String::new).toArray(String[]::new));
@@ -247,5 +282,14 @@ public abstract class AppendOnlyStoreTest {
         byte[] bytes = new byte[12];
         new Random().nextBytes(bytes);
         return bytes;
+    }
+
+    private void flush() throws Exception {
+        try {
+            store.close();
+        } catch (Exception e){
+            throw new AssertionError("close should not raise: {}", e);
+        }
+        store = newStore();
     }
 }

@@ -9,6 +9,8 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -29,6 +31,9 @@ public class HashedLongLookups implements AutoCloseable {
 
         cache = Caffeine.newBuilder()
                 .maximumSize(maxCacheSize)
+                .initialCapacity(maxCacheSize)
+                .expireAfterAccess(1, TimeUnit.MINUTES)
+                .executor(new ForkJoinPool(1))
                 .removalListener((RemovalListener<Path, LongLookup>) (key, value, cause) -> {
                     try {
                         if (value != null) {
@@ -46,8 +51,13 @@ public class HashedLongLookups implements AutoCloseable {
         return cache.get(hashPath(partition, key));
     }
 
-    public LongLookup peek(String partition, String key) {
-        return peekLookup(hashPath(partition, key));
+    public Long getValue(String partition, String key) {
+        try (LongLookup lookup = new LongLookup(hashPath(partition, key))) {
+            return lookup.get(key);
+        } catch (IOException e) {
+            log.error("Unable to autoclose for " + partition + "/" + key, e);
+            throw new UncheckedIOException(e);
+        }
     }
 
     public Stream<String> keys(String partition) {
@@ -59,7 +69,7 @@ public class HashedLongLookups implements AutoCloseable {
         }
         return files
                 .filter(Files::isRegularFile)
-                .flatMap(p -> Arrays.stream(peekLookup(p).keys()));
+                .flatMap(this::lookupKeys);
     }
 
     public Stream<String> partitions() {
@@ -92,19 +102,20 @@ public class HashedLongLookups implements AutoCloseable {
             Path tmpDir = Files.createTempFile(dir.getParent(), dir.getFileName().toString(), ".defunct");
             Files.delete(tmpDir);
             Files.move(dir, tmpDir);
+            Files.createDirectories(dir);
             deleteDirectory(tmpDir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to delete lookups: " + dir, e);
         }
     }
 
-    private LongLookup peekLookup(Path p) {
-        // Use cached version if available, but don't turn over cache if not
-        LongLookup lookup = cache.getIfPresent(p);
-        if (lookup == null) {
-            lookup = new LongLookup(p);
+    private Stream<String> lookupKeys(Path path) {
+        try (LongLookup lookup = new LongLookup(path)) {
+            return Arrays.stream(lookup.keys());
+        } catch (IOException e) {
+            log.error("Unable to autoclose for " + path, e);
+            throw new UncheckedIOException(e);
         }
-        return lookup;
     }
 
     private Path hashPath(String partition, String key) {
