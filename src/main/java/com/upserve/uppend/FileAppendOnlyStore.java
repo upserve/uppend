@@ -33,8 +33,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         validatePartition(partition);
 
         long blobPos = blobs.append(value);
-        LongLookup lookup = lookups.get(partition, key);
-        long blockPos = lookup.putIfNotExists(key, blocks::allocate);
+        long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
         log.trace("appending {} bytes (blob pos {}) for key '{}' at block pos {}", value.length, blobPos, key, blockPos);
         blocks.append(blockPos, blobPos);
     }
