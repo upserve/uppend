@@ -9,7 +9,6 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -33,7 +32,7 @@ public class HashedLongLookups implements AutoCloseable {
                 .maximumSize(maxCacheSize)
                 .initialCapacity(maxCacheSize)
                 .expireAfterAccess(1, TimeUnit.MINUTES)
-                .executor(new ForkJoinPool(1))
+                .executor(Runnable::run)
                 .removalListener((RemovalListener<Path, LongLookup>) (key, value, cause) -> {
                     try {
                         if (value != null) {
@@ -52,12 +51,7 @@ public class HashedLongLookups implements AutoCloseable {
     }
 
     public Long getValue(String partition, String key) {
-        try (LongLookup lookup = new LongLookup(hashPath(partition, key))) {
-            return lookup.get(key);
-        } catch (IOException e) {
-            log.error("Unable to autoclose for " + partition + "/" + key, e);
-            throw new UncheckedIOException(e);
-        }
+        return longLookup(partition, key).get(key);
     }
 
     public Stream<String> keys(String partition) {
@@ -110,12 +104,7 @@ public class HashedLongLookups implements AutoCloseable {
     }
 
     private Stream<String> lookupKeys(Path path) {
-        try (LongLookup lookup = new LongLookup(path)) {
-            return Arrays.stream(lookup.keys());
-        } catch (IOException e) {
-            log.error("Unable to autoclose for " + path, e);
-            throw new UncheckedIOException(e);
-        }
+        return Arrays.stream(longLookup(path).keys());
     }
 
     private Path hashPath(String partition, String key) {
@@ -133,5 +122,13 @@ public class HashedLongLookups implements AutoCloseable {
                 .sorted(Comparator.reverseOrder())
                 .map(Path::toFile)
                 .forEach(File::delete);
+    }
+
+    private LongLookup longLookup(String partition, String key) {
+        return longLookup(hashPath(partition, key));
+    }
+
+    private LongLookup longLookup(Path path) {
+        return cache.get(path);
     }
 }
