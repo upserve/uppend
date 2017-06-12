@@ -10,6 +10,7 @@ import java.nio.file.*;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -46,8 +47,8 @@ public class HashedLongLookups implements AutoCloseable {
                 .build(LongLookup::new);
     }
 
-    public LongLookup get(String partition, String key) {
-        return cache.get(hashPath(partition, key));
+    public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
+        return longLookup(partition, key).putIfNotExists(key, allocateLongFunc);
     }
 
     public Long getValue(String partition, String key) {
