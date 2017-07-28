@@ -1,11 +1,11 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
+import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.concurrent.atomic.*;
 
@@ -21,8 +21,6 @@ public class Blobs implements AutoCloseable {
     private final Object appendMonitor = new Object();
     private DataOutputStream out;
     private final AtomicBoolean outDirty;
-
-    private final ThreadLocal<ByteBuffer> intBufferLocal;
 
     public Blobs(Path file) {
         this(file, DEFAULT_FLUSH_DELAY_SECONDS);
@@ -49,7 +47,6 @@ public class Blobs implements AutoCloseable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blob file: " + dir + "/blobs", e);
         }
-        intBufferLocal = new ThreadLocal<>();
     }
 
     public long append(byte[] bytes) {
@@ -114,7 +111,7 @@ public class Blobs implements AutoCloseable {
     }
 
     private int readInt(long pos) {
-        ByteBuffer intBuffer = intBufferLocal();
+        ByteBuffer intBuffer = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
         read(pos, intBuffer);
         intBuffer.flip();
         return intBuffer.getInt();
@@ -131,16 +128,5 @@ public class Blobs implements AutoCloseable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos + " in " + file, e);
         }
-    }
-
-    private ByteBuffer intBufferLocal() {
-        ByteBuffer buf = intBufferLocal.get();
-        if (buf == null) {
-            buf = ByteBuffer.allocate(4);
-            intBufferLocal.set(buf);
-        } else {
-            buf.clear();
-        }
-        return buf;
     }
 }

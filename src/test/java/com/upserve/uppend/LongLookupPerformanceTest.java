@@ -1,38 +1,31 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.test.Util;
 import org.junit.Before;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-import static org.junit.Assert.*;
-
 public class LongLookupPerformanceTest {
-
-    Path tempFile = Paths.get("build/test/lookup");
+    Path lookupDir = Paths.get("build/test/tmp/lookup");
 
     @Before
     public void initialize() throws Exception {
-        if (Files.exists(tempFile)) {
-            Files.delete(tempFile);
-        }
+        Util.removeTempPath(lookupDir);
 
         LongLookup lookup;
-        lookup = new LongLookup(tempFile);
+        lookup = new LongLookup(lookupDir);
         for(int i = 0; i < 500_000; ++i) {
-            lookup.put(String.valueOf(i), i);
+            lookup.put("my_partition", String.valueOf(i), i);
         }
         lookup.close();
     }
 
     @Test(timeout = 250)
     public void speedTest() throws Exception {
-        LongLookup lookup = new LongLookup(tempFile);
+        LongLookup lookup = new LongLookup(lookupDir);
         lookup.close();
     }
 

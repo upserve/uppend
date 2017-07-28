@@ -8,7 +8,6 @@ import java.util.stream.StreamSupport;
 
 import static org.junit.Assert.*;
 
-
 public class MergingIteratorTest {
     @Test
     public void testSimple() {
