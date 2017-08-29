@@ -56,7 +56,7 @@ public class AutoFlusher {
             throw new IllegalStateException("unknown delay: " + delaySeconds);
         }
         if (!flushables.remove(flushable)) {
-            throw new IllegalStateException("unknown flushable (delay flushables): " + flushable);
+            log.warn("unknown flushable (delay flushables): " + flushable);
         }
         if (flushables.isEmpty()) {
             if (delayFlushables.remove(delaySeconds) != flushables) {
@@ -68,21 +68,23 @@ public class AutoFlusher {
     }
 
     private static synchronized void flush(int delaySeconds) {
+        log.info("flushing {}", delaySeconds);
         try {
             Set<Flushable> errorFlushables = null;
             Set<Flushable> flushables = delayFlushables.get(delaySeconds);
             if (flushables == null) {
                 log.error("got null flushables set for delay: " + delaySeconds);
-            }
-            for (Flushable flushable : flushables) {
-                try {
-                    flushable.flush();
-                } catch (IOException e) {
-                    log.error("unable to flush " + flushable, e);
-                    if (errorFlushables == null) {
-                        errorFlushables = new HashSet<>();
+            } else {
+                for (Flushable flushable : flushables) {
+                    try {
+                        flushable.flush();
+                    } catch (IOException e) {
+                        log.error("unable to flush " + flushable, e);
+                        if (errorFlushables == null) {
+                            errorFlushables = new HashSet<>();
+                        }
+                        errorFlushables.add(flushable);
                     }
-                    errorFlushables.add(flushable);
                 }
             }
             if (errorFlushables != null) {
@@ -91,5 +93,6 @@ public class AutoFlusher {
         } catch (Exception e) {
             log.error("error during auto-flush", e);
         }
+        log.info("flushed {}", delaySeconds);
     }
 }

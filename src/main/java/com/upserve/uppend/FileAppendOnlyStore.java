@@ -13,6 +13,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     private static final int MAX_LOOKUPS_CACHE_SIZE = 4096;
     private static final int FLUSH_DELAY_SECONDS = 30;
 
+    private final Path dir;
     private final LongLookup lookups;
     private final BlockedLongs blocks;
     private final Blobs blobs;
@@ -24,6 +25,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
+        this.dir = dir;
         lookups = new LongLookup(dir.resolve("lookups"), MAX_LOOKUPS_CACHE_SIZE, FLUSH_DELAY_SECONDS);
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
         blobs = new Blobs(dir.resolve("blobs"));
@@ -64,7 +66,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
 
     @Override
     public void close() throws Exception {
-        log.info("closing");
+        log.info("closing: " + dir);
         try {
             blocks.close();
         } catch (Exception e) {

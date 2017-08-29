@@ -10,11 +10,14 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 import java.util.stream.*;
 
 @Slf4j
 public class LookupData implements AutoCloseable, Flushable {
+    private final AtomicBoolean isClosed;
+
     private final int keyLength;
     private final Path path;
     private final Path metadataPath;
@@ -54,6 +57,7 @@ public class LookupData implements AutoCloseable, Flushable {
         }
 
         AutoFlusher.register(flushDelaySeconds, this);
+        isClosed = new AtomicBoolean(false);
     }
 
     public synchronized void put(LookupKey key, long value) {
@@ -61,6 +65,10 @@ public class LookupData implements AutoCloseable, Flushable {
         long existingValue = mem.put(key, value);
         if (existingValue != Long.MIN_VALUE) {
             throw new IllegalStateException("can't put same key ('" + key + "') twice: new value = " + value + ", existing value = " + existingValue);
+        }
+        int pos = memOrder.size();
+        if (memOrder.put(key, pos) != Integer.MIN_VALUE) {
+            throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
         }
         append(key, value);
     }
@@ -70,6 +78,10 @@ public class LookupData implements AutoCloseable, Flushable {
         long existingValue = mem.put(key, value);
         if (existingValue != Long.MIN_VALUE) {
             return existingValue;
+        }
+        int pos = memOrder.size();
+        if (memOrder.put(key, pos) != Integer.MIN_VALUE) {
+            throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
         }
         append(key, value);
         return value;
@@ -106,13 +118,20 @@ public class LookupData implements AutoCloseable, Flushable {
 
     @Override
     public void close() throws IOException {
-        AutoFlusher.deregister(this);
-        out.close();
-        log.info("closed lookup data at {}", path);
+        log.trace("closing lookup data at {} (~{} entries)", path, mem.size());
+        if (isClosed.compareAndSet(false, true)) {
+            AutoFlusher.deregister(this);
+            flush();
+            out.close();
+            log.info("closed lookup data at {}", path);
+        } else {
+            log.warn("lookup data already closed at {}", path);
+        }
     }
 
     @Override
     public void flush() throws IOException {
+        log.trace("flushing lookup and metadata at {}", metadataPath);
         out.flush();
         LookupMetadata metadata = generateMetadata();
         metadata.writeTo(metadataPath);
@@ -160,17 +179,20 @@ public class LookupData implements AutoCloseable, Flushable {
             pos = nextPos;
         }
         if (chan.position() != chan.size()) {
-            throw new IllegalStateException("scan incomplete at pos " + pos);
+            log.warn("scan incomplete at pos " + chan.position() + " / " + chan.size());
         }
     }
 
     private synchronized LookupMetadata generateMetadata() {
+        LookupKey minKey = mem.firstKey();
+        LookupKey maxKey = mem.lastKey();
+        int[] keyStorageOrder = memOrder.values().toIntArray();
         return new LookupMetadata(
                 keyLength,
                 mem.size(),
-                mem.firstKey(),
-                mem.lastKey(),
-                memOrder.values().toIntArray()
+                minKey,
+                maxKey,
+                keyStorageOrder
         );
     }
 

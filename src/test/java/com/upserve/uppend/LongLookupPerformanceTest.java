@@ -1,19 +1,17 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.lookup.LongLookup;
-import com.upserve.uppend.test.Util;
-import org.junit.Before;
-import org.junit.Test;
+import com.upserve.uppend.util.SafeDeleting;
+import org.junit.*;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 
 public class LongLookupPerformanceTest {
-    Path lookupDir = Paths.get("build/test/tmp/lookup");
+    private Path lookupDir = Paths.get("build/test/tmp/lookup");
 
     @Before
     public void initialize() throws Exception {
-        Util.removeTempPath(lookupDir);
+        SafeDeleting.removeTempPath(lookupDir);
 
         LongLookup lookup;
         lookup = new LongLookup(lookupDir);
@@ -23,7 +21,7 @@ public class LongLookupPerformanceTest {
         lookup.close();
     }
 
-    @Test(timeout = 250)
+    @Test(timeout = 100)
     public void speedTest() throws Exception {
         LongLookup lookup = new LongLookup(lookupDir);
         lookup.close();

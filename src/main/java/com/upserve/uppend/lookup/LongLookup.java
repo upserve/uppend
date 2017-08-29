@@ -3,13 +3,14 @@ package com.upserve.uppend.lookup;
 import com.github.benmanes.caffeine.cache.*;
 import com.google.common.base.Charsets;
 import com.google.common.hash.*;
+import com.upserve.uppend.util.SafeDeleting;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.file.*;
-import java.util.Comparator;
+import java.util.concurrent.Phaser;
 import java.util.function.LongSupplier;
-import java.util.stream.*;
+import java.util.stream.Stream;
 
 @Slf4j
 public class LongLookup implements AutoCloseable {
@@ -18,6 +19,7 @@ public class LongLookup implements AutoCloseable {
 
     private final Path dir;
     private final HashFunction hashFunction;
+    private final Phaser lookupDataPhaser;
     private final LoadingCache<Path, LookupData> cache;
 
     public LongLookup(Path dir) {
@@ -34,6 +36,8 @@ public class LongLookup implements AutoCloseable {
 
         hashFunction = Hashing.murmur3_32();
 
+        lookupDataPhaser = new Phaser(1);
+
         cache = Caffeine.newBuilder()
                 .maximumSize(maxCacheSize)
                 .removalListener((RemovalListener<Path, LookupData>) (key, value, cause) -> {
@@ -44,14 +48,18 @@ public class LongLookup implements AutoCloseable {
                     } catch (IOException e) {
                         log.error("unable to close " + key, e);
                         throw new UncheckedIOException("unable to close " + key, e);
+                    } finally {
+                        lookupDataPhaser.arriveAndDeregister();
                     }
                 })
-                .build((lenPath) -> new LookupData(
-                        parseKeyLengthFromPath(lenPath),
-                        lenPath.resolve("data"),
-                        lenPath.resolve("meta"),
-                        flushDelaySeconds)
-                );
+                .build((lenPath) -> {
+                    lookupDataPhaser.register();
+                    return new LookupData(
+                                    parseKeyLengthFromPath(lenPath),
+                                    lenPath.resolve("data"),
+                                    lenPath.resolve("meta"),
+                                    flushDelaySeconds);
+                });
     }
 
     public long get(String partition, String key) {
@@ -67,6 +75,7 @@ public class LongLookup implements AutoCloseable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
+        //noinspection ConstantConditions
         cache.get(lenPath).put(lookupKey, value);
     }
 
@@ -74,6 +83,7 @@ public class LongLookup implements AutoCloseable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
+        //noinspection ConstantConditions
         return cache.get(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
     }
 
@@ -113,9 +123,16 @@ public class LongLookup implements AutoCloseable {
 
     @Override
     public void close() {
-        log.trace("closing {}", dir);
+        if (log.isTraceEnabled()) {
+            log.trace("closing {} (~{} entries)", dir, cache.estimatedSize());
+        }
         cache.invalidateAll();
         cache.cleanUp();
+        if (log.isTraceEnabled()) {
+            log.trace("waiting for {} registered lookup data closures", lookupDataPhaser.getRegisteredParties());
+        }
+        lookupDataPhaser.arriveAndAwaitAdvance();
+        log.trace("closed {}", dir);
     }
 
     public void clear() {
@@ -125,7 +142,7 @@ public class LongLookup implements AutoCloseable {
             Path tmpDir = Files.createTempFile(dir.getParent(), dir.getFileName().toString(), ".defunct");
             Files.delete(tmpDir);
             Files.move(dir, tmpDir);
-            deleteDirectory(tmpDir);
+            SafeDeleting.removeDirectory(tmpDir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to delete lookups: " + dir, e);
         }
@@ -140,16 +157,6 @@ public class LongLookup implements AutoCloseable {
 
     private static int parseKeyLengthFromPath(Path path) {
         return Integer.parseInt(path.getFileName().toString());
-    }
-
-    private static void deleteDirectory(Path path) throws IOException {
-        if (path == null || path.toFile().getAbsolutePath().length() < 4) {
-            throw new IOException("refusing to delete null or short path: " + path);
-        }
-        Files.walk(path)
-                .sorted(Comparator.reverseOrder())
-                .map(Path::toFile)
-                .forEach(File::delete);
     }
 
     private static void validatePartition(String partition) {

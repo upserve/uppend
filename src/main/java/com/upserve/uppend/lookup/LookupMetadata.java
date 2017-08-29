@@ -24,6 +24,7 @@ public class LookupMetadata {
     }
 
     public LookupMetadata(Path path) {
+        log.trace("constructing metadata at path: {}", path);
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
             try (DataInputStream din = new DataInputStream(Files.newInputStream(path, StandardOpenOption.READ))) {
                 keyLength = din.readInt();
@@ -76,8 +77,9 @@ public class LookupMetadata {
     }
 
     public void writeTo(Path path) throws IOException {
+        log.trace("writing metadata to path: {}", path);
         Path tmpPath = path.resolveSibling(path.getFileName() + ".tmp");
-        try (FileChannel chan = FileChannel.open(tmpPath, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+        try (FileChannel chan = FileChannel.open(tmpPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
             try (DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(chan), 1024))) {
                 if (keyLength != minKey.byteLength()) {
                     throw new IllegalStateException("expected key length (" + keyLength + ") does not agree with minKey length (" + minKey.byteLength() + ")");
@@ -85,17 +87,22 @@ public class LookupMetadata {
                 if (keyLength != maxKey.byteLength() || keyLength != maxKey.byteLength()) {
                     throw new IllegalStateException("expected key length (" + keyLength + ") does not agree with maxKey length (" + maxKey.byteLength() + ")");
                 }
+
                 dout.writeInt(keyLength);
                 dout.writeInt(numKeys);
                 dout.write(minKey.bytes());
                 dout.write(maxKey.bytes());
+
+                long pos =  8 + 2 * keyLength;
+                int mapSize = 4 * numKeys;
+                MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_WRITE, pos, mapSize);
+                IntBuffer ibuf = mbuf.asIntBuffer();
+                ibuf.put(keyStorageOrder);
+                mbuf.force();
             }
-            int mapSize = 4 * numKeys;
-            MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_WRITE, chan.size(), mapSize);
-            IntBuffer ibuf = mbuf.asIntBuffer();
-            ibuf.put(keyStorageOrder);
         }
         Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
+        log.trace("wrote metadata to path: {}: keyLength={}, numKeys={}, minKey={}, maxKey={}", path, keyLength, numKeys, minKey, maxKey);
     }
 
     @Override
