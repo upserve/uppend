@@ -105,12 +105,13 @@ public abstract class AppendOnlyStoreTest {
     @Test
     public void testMultiPartition() throws Exception {
         store.append("partition", "key", "bar".getBytes());
-        store.append("partition/bar", "key", "baz".getBytes());
+        store.append("partition_bar", "key", "baz".getBytes());
         store.append("partition2", "key", "bap".getBytes());
         flush();
         assertArrayEquals(new String[] { "bar" }, store.read("partition", "key").map(String::new).toArray(String[]::new));
-        assertArrayEquals(new String[] { "baz" }, store.read("partition/bar", "key").map(String::new).toArray(String[]::new));
+        assertArrayEquals(new String[] { "baz" }, store.read("partition_bar", "key").map(String::new).toArray(String[]::new));
         assertArrayEquals(new String[] { "bap" }, store.read("partition2", "key").map(String::new).toArray(String[]::new));
+        assertArrayEquals(new String[] { }, store.read("partition3", "key").map(String::new).toArray(String[]::new));
     }
 
     @Test
