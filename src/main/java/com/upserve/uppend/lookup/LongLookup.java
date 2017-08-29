@@ -123,6 +123,7 @@ public class LongLookup implements AutoCloseable {
 
         return files
                 .filter(Files::isDirectory)
+                .filter(p -> !p.equals(dir))
                 .map(p -> p.getFileName().toString());
     }
 
