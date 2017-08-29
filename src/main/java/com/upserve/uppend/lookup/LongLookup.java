@@ -67,6 +67,11 @@ public class LongLookup implements AutoCloseable {
 
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
+        Path metaPath = lenPath.resolve("meta");
+        if (!Files.exists(metaPath)) {
+            log.trace("no metadata for key {} at path {}", key, metaPath);
+            return -1;
+        }
         LookupMetadata metadata = new LookupMetadata(lenPath.resolve("meta"));
         return metadata.readData(lenPath.resolve("data"), lookupKey);
     }
