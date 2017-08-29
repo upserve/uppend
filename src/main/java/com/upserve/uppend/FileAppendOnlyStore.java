@@ -88,6 +88,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         log.trace("reading key: {}", key);
         long blockPos = lookups.get(partition, key);
         if (blockPos == -1) {
+            log.trace("key not found: {}", key);
             return LongStream.empty();
         }
         log.trace("streaming values at block pos {} for key: {}", blockPos, key);

@@ -36,8 +36,9 @@ public class LookupMetadata {
                 din.read(maxKeyBytes);
                 maxKey = new LookupKey(maxKeyBytes);
             }
+            long pos = 8 + 2 * keyLength;
             int mapSize = 4 * numKeys;
-            MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_ONLY, chan.position(), mapSize);
+            MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_ONLY, pos, mapSize);
             IntBuffer ibuf = mbuf.asIntBuffer();
             keyStorageOrder = new int[numKeys];
             ibuf.get(keyStorageOrder);
