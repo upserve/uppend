@@ -28,7 +28,7 @@ public class Main {
     int count;
     int maxPartitions;
     int maxKeys;
-
+    int sleep = 0;
 
     private final AppendOnlyStore testInstance;
 
@@ -52,6 +52,7 @@ public class Main {
             case READWRITE:
                 writer = simpleWriter();
                 reader = simpleReader();
+                sleep = 31;
                 break;
 
             case READ:
@@ -94,7 +95,7 @@ public class Main {
     }
 
     public static String partition(int integer, int maxPartitions) {
-        return String.format("%04X", integer % maxPartitions);
+        return String.format("_%04X", integer % maxPartitions);
     }
 
     public static byte[] bytes(int integer) {
@@ -132,7 +133,7 @@ public class Main {
         });
 
         writerThread.start();
-        Thread.sleep(5000); // give the writer a head start...
+        Thread.sleep(sleep * 1000); // give the writer a head start...
         readerThread.start();
         watcher.start();
 
