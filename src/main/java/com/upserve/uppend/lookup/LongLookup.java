@@ -15,7 +15,9 @@ import java.util.stream.Stream;
 @Slf4j
 public class LongLookup implements AutoCloseable {
     private static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
-    private static final int DEFAULT_MAX_CACHE_SIZE = 512;
+
+    // keep at 4096, aligned with hashAndLengthPath() format "%02x/%01x/", 0xff & (int) hash[0], 0xf & (int) hash[1]
+    private static final int MAX_CACHE_SIZE = 4096;
 
     private final Path dir;
     private final int flushDelaySeconds;
@@ -24,10 +26,10 @@ public class LongLookup implements AutoCloseable {
     private final LinkedHashMap<Path, LookupData> writeCache;
 
     public LongLookup(Path dir) {
-        this(dir, DEFAULT_MAX_CACHE_SIZE, DEFAULT_FLUSH_DELAY_SECONDS);
+        this(dir, DEFAULT_FLUSH_DELAY_SECONDS);
     }
 
-    public LongLookup(Path dir, int maxCacheSize, int flushDelaySeconds) {
+    private LongLookup(Path dir, int flushDelaySeconds) {
         this.dir = dir;
         try {
             Files.createDirectories(dir);
@@ -41,10 +43,10 @@ public class LongLookup implements AutoCloseable {
 
         lookupDataPhaser = new Phaser(1);
 
-        writeCache = new LinkedHashMap<Path, LookupData>(maxCacheSize + 1, 1.1f, true) {
+        writeCache = new LinkedHashMap<Path, LookupData>(MAX_CACHE_SIZE + 1, 1.1f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
-                if (size() > maxCacheSize) {
+                if (size() > MAX_CACHE_SIZE) {
                     Path path = eldest.getKey();
                     log.trace("cache removing {}", path);
                     try {

@@ -134,7 +134,7 @@ public class LookupMetadata {
             }
         }
         if (firstDifferentCharIndex == -1) {
-            log.warn("returning 50% search midpoint for key ({}); weight could not be determined from range [{}, {}]", key, lower, upper);
+            log.trace("returning 50% search midpoint for key ({}) in single element range [{}, {}]", key, lower, upper);
             return 50;
         }
         int keyDistance = keyChar - lowerChar;

@@ -67,7 +67,7 @@ public abstract class AppendOnlyStoreTest {
     @Test
     public void fillTheCache() {
         // MAX_LOOKUPS_CACHE_SIZE * 2 keys ensures cache will be filled
-        int keys = 512 * 2;
+        int keys = 4096 * 2;
 
         List<String> uuids = IntStream
                 .range(0, keys)
