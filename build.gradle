@@ -25,7 +25,6 @@ repositories {
 }
 
 dependencies {
-    compile 'com.github.ben-manes.caffeine:caffeine:2.3.5'
     compile 'com.google.guava:guava:21.0'
     compile 'it.unimi.dsi:fastutil:7.0.13'
     compile 'org.slf4j:slf4j-api:1.7.22'

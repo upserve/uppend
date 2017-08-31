@@ -29,6 +29,7 @@ public class LookupData implements AutoCloseable, Flushable {
     private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
 
     public LookupData(int keyLength, Path path, Path metadataPath, int flushDelaySeconds) {
+        log.trace("opening lookup data: {}", path);
         this.keyLength = keyLength;
 
         this.path = path;
@@ -123,7 +124,7 @@ public class LookupData implements AutoCloseable, Flushable {
             AutoFlusher.deregister(this);
             flush();
             out.close();
-            log.info("closed lookup data at {}", path);
+            log.trace("closed lookup data at {}", path);
         } else {
             log.warn("lookup data already closed at {}", path);
         }

@@ -10,8 +10,6 @@ import java.util.stream.*;
 @Slf4j
 public class FileAppendOnlyStore implements AppendOnlyStore {
     private static final int NUM_BLOBS_PER_BLOCK = 127;
-    private static final int MAX_LOOKUPS_CACHE_SIZE = 4096;
-    private static final int FLUSH_DELAY_SECONDS = 30;
 
     private final Path dir;
     private final LongLookup lookups;
@@ -26,7 +24,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         }
 
         this.dir = dir;
-        lookups = new LongLookup(dir.resolve("lookups"), MAX_LOOKUPS_CACHE_SIZE, FLUSH_DELAY_SECONDS);
+        lookups = new LongLookup(dir.resolve("lookups"));
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
         blobs = new Blobs(dir.resolve("blobs"));
     }

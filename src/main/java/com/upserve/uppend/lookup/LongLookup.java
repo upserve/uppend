@@ -1,6 +1,5 @@
 package com.upserve.uppend.lookup;
 
-import com.github.benmanes.caffeine.cache.*;
 import com.google.common.base.Charsets;
 import com.google.common.hash.*;
 import com.upserve.uppend.util.SafeDeleting;
@@ -8,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.*;
 import java.util.concurrent.Phaser;
 import java.util.function.LongSupplier;
 import java.util.stream.Stream;
@@ -15,12 +15,13 @@ import java.util.stream.Stream;
 @Slf4j
 public class LongLookup implements AutoCloseable {
     private static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
-    private static final int DEFAULT_MAX_CACHE_SIZE = 1024;
+    private static final int DEFAULT_MAX_CACHE_SIZE = 512;
 
     private final Path dir;
+    private final int flushDelaySeconds;
     private final HashFunction hashFunction;
     private final Phaser lookupDataPhaser;
-    private final LoadingCache<Path, LookupData> cache;
+    private final LinkedHashMap<Path, LookupData> writeCache;
 
     public LongLookup(Path dir) {
         this(dir, DEFAULT_MAX_CACHE_SIZE, DEFAULT_FLUSH_DELAY_SECONDS);
@@ -34,32 +35,31 @@ public class LongLookup implements AutoCloseable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
+        this.flushDelaySeconds = flushDelaySeconds;
+
         hashFunction = Hashing.murmur3_32();
 
         lookupDataPhaser = new Phaser(1);
 
-        cache = Caffeine.newBuilder()
-                .maximumSize(maxCacheSize)
-                .removalListener((RemovalListener<Path, LookupData>) (key, value, cause) -> {
+        writeCache = new LinkedHashMap<Path, LookupData>(maxCacheSize + 1, 1.1f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
+                if (size() > maxCacheSize) {
+                    Path path = eldest.getKey();
+                    log.trace("cache removing {}", path);
                     try {
-                        if (value != null) {
-                            value.close();
-                        }
+                        eldest.getValue().close();
                     } catch (IOException e) {
-                        log.error("unable to close " + key, e);
-                        throw new UncheckedIOException("unable to close " + key, e);
+                        log.error("unable to close " + path, e);
+                        throw new UncheckedIOException("unable to close " + path, e);
                     } finally {
                         lookupDataPhaser.arriveAndDeregister();
                     }
-                })
-                .build((lenPath) -> {
-                    lookupDataPhaser.register();
-                    return new LookupData(
-                                    parseKeyLengthFromPath(lenPath),
-                                    lenPath.resolve("data"),
-                                    lenPath.resolve("meta"),
-                                    flushDelaySeconds);
-                });
+                    return true;
+                }
+                return false;
+            }
+        };
     }
 
     public long get(String partition, String key) {
@@ -80,8 +80,21 @@ public class LongLookup implements AutoCloseable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
-        //noinspection ConstantConditions
-        cache.get(lenPath).put(lookupKey, value);
+        loadFromWriteCache(lenPath).put(lookupKey, value);
+    }
+
+    private LookupData loadFromWriteCache(Path lenPath) {
+        synchronized (writeCache) {
+            return writeCache.computeIfAbsent(lenPath, path -> {
+                log.trace("cache loading {}", lenPath);
+                return new LookupData(
+                        parseKeyLengthFromPath(lenPath),
+                        lenPath.resolve("data"),
+                        lenPath.resolve("meta"),
+                        flushDelaySeconds
+                );
+            });
+        }
     }
 
     public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
@@ -89,7 +102,7 @@ public class LongLookup implements AutoCloseable {
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
         //noinspection ConstantConditions
-        return cache.get(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
+        return loadFromWriteCache(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
     }
 
     public Stream<String> keys(String partition) {
@@ -130,10 +143,21 @@ public class LongLookup implements AutoCloseable {
     @Override
     public void close() {
         if (log.isTraceEnabled()) {
-            log.trace("closing {} (~{} entries)", dir, cache.estimatedSize());
+            log.trace("closing {} (~{} entries)", dir, writeCache.size());
         }
-        cache.invalidateAll();
-        cache.cleanUp();
+        writeCache.forEach((path, data) -> {
+            log.trace("cache removing {}", path);
+            try {
+                data.close();
+            } catch (IOException e) {
+                log.error("unable to close " + path, e);
+                throw new UncheckedIOException("unable to close " + path, e);
+            } finally {
+                lookupDataPhaser.arriveAndDeregister();
+            }
+
+        });
+        writeCache.clear();
         if (log.isTraceEnabled()) {
             log.trace("waiting for {} registered lookup data closures", lookupDataPhaser.getRegisteredParties());
         }

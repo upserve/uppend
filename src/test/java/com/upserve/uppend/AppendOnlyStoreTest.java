@@ -67,7 +67,7 @@ public abstract class AppendOnlyStoreTest {
     @Test
     public void fillTheCache() {
         // MAX_LOOKUPS_CACHE_SIZE * 2 keys ensures cache will be filled
-        int keys = 4096 * 2;
+        int keys = 512 * 2;
 
         List<String> uuids = IntStream
                 .range(0, keys)
@@ -80,18 +80,18 @@ public abstract class AppendOnlyStoreTest {
                 .parallel()
                 .forEach( i -> {
                     String uuid = uuids.get(i);
-                    store.append(uuid.substring(0, 2), uuid, uuid.getBytes());
+                    store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes());
                 });
 
         uuids
                 .stream()
                 .parallel()
-                .forEach(uuid ->
-                        store
-                                .read(uuid.substring(0, 2), uuid)
-                                .findFirst()
-                                .ifPresent(bytes -> assertArrayEquals(bytes, uuid.getBytes()))
-                );
+                .forEach(uuid -> {
+                    store
+                            .read("_" + uuid.substring(0, 2), uuid)
+                            .findFirst()
+                            .ifPresent(bytes -> assertArrayEquals(bytes, uuid.getBytes()));
+                });
     }
 
     @Test
