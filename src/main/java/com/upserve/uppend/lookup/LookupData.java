@@ -150,6 +150,7 @@ public class LookupData implements AutoCloseable, Flushable {
         long pos = 0;
         long size = chan.size();
         DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
+        // don't call dis.close() on wrapping InputStream since we don't want it to chain to chan.close()
         while (pos < size) {
             long nextPos = pos + keyLength + 8;
             if (nextPos > size) {
