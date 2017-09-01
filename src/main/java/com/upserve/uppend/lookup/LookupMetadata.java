@@ -56,7 +56,7 @@ public class LookupMetadata {
                 LookupKey upperKey = maxKey;
                 while (keyIndexLower <= keyIndexUpper) {
                     int midpointPercentage = searchMidpointPercentage(lowerKey.string(), upperKey.string(), key.string());
-                    int midpointKeyIndex = midpointPercentage == 0 ? 0 : (keyIndexLower + keyIndexUpper) * 100 / midpointPercentage;
+                    int midpointKeyIndex = midpointPercentage == 0 ? 0 : keyIndexLower + ((keyIndexUpper - keyIndexLower) * midpointPercentage / 100);
                     int keyNumber = keyStorageOrder[midpointKeyIndex];
                     LookupKey midpointKey = LookupData.readKey(dataChan, keyLength, keyNumber);
                     int comparison = key.compareTo(midpointKey);
