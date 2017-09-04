@@ -1,7 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.upserve.uppend.AutoFlusher;
-import com.upserve.uppend.util.ThreadLocalByteBuffers;
+import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -189,6 +189,8 @@ public class LookupData implements AutoCloseable, Flushable {
         LookupKey minKey = mem.firstKey();
         LookupKey maxKey = mem.lastKey();
         int[] keyStorageOrder = memOrder.values().toIntArray();
+        String[] keyStrings = memOrder.keySet().stream().map(LookupKey::toString).toArray(String[]::new);
+        IntArrayCustomSort.sort(keyStorageOrder, (a, b) -> keyStrings[a].compareTo(keyStrings[b]));
         return new LookupMetadata(
                 keyLength,
                 mem.size(),

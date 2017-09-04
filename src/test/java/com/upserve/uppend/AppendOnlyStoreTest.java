@@ -6,9 +6,10 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
+import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.*;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -69,28 +70,30 @@ public abstract class AppendOnlyStoreTest {
         // MAX_LOOKUPS_CACHE_SIZE * 2 keys ensures cache will be filled
         int keys = 4096 * 2;
 
-        List<String> uuids = IntStream
-                .range(0, keys)
-                .mapToObj(i -> UUID.randomUUID().toString())
-                .collect(Collectors.toList());
-
         Random random = new Random(9876);
-        random
-                .ints(keys * 10, 0, keys)
+        Set<String> uuidSet = new HashSet<>();
+        while (uuidSet.size() < keys) {
+            uuidSet.add(new UUID(random.nextLong(), random.nextLong()).toString());
+        }
+        String[] uuids = uuidSet.toArray(new String[0]);
+
+        Arrays.stream(uuids)
                 .parallel()
-                .forEach( i -> {
-                    String uuid = uuids.get(i);
+                .forEach(uuid -> {
                     store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes());
                 });
 
-        uuids
-                .stream()
+        cleanUp();
+        store = newStore();
+        String[] uuids2 = Arrays.copyOf(uuids, uuids.length);
+        Collections.shuffle(Arrays.asList(uuids2));
+        Arrays.stream(uuids2)
                 .parallel()
                 .forEach(uuid -> {
-                    store
-                            .read("_" + uuid.substring(0, 2), uuid)
-                            .findFirst()
-                            .ifPresent(bytes -> assertArrayEquals(bytes, uuid.getBytes()));
+                    byte[][] results = store.read("_" + uuid.substring(0, 2), uuid).toArray(byte[][]::new);
+                    assertEquals(1, results.length);
+                    byte[] bytes = results[0];
+                    assertArrayEquals("", bytes, uuid.getBytes());
                 });
     }
 

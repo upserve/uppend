@@ -54,12 +54,30 @@ public class LookupMetadata {
                 int keyIndexUpper = numKeys - 1;
                 LookupKey lowerKey = minKey;
                 LookupKey upperKey = maxKey;
-                while (keyIndexLower <= keyIndexUpper) {
+                do {
+                    int comparison = lowerKey.compareTo(key);
+                    if (comparison > 0 /* lowerKey is greater than key */) {
+                        return -1;
+                    }
+                    if (comparison == 0) {
+                        return LookupData.readValue(dataChan, keyLength, keyStorageOrder[keyIndexLower]);
+                    }
+                    comparison = upperKey.compareTo(key);
+                    if (comparison < 0 /* upperKey is less than key */ ) {
+                        return -1;
+                    }
+                    if (comparison == 0) {
+                        return LookupData.readValue(dataChan, keyLength, keyStorageOrder[keyIndexUpper]);
+                    }
                     int midpointPercentage = searchMidpointPercentage(lowerKey.string(), upperKey.string(), key.string());
-                    int midpointKeyIndex = midpointPercentage == 0 ? 0 : keyIndexLower + ((keyIndexUpper - keyIndexLower) * midpointPercentage / 100);
+                    int midpointKeyIndex = keyIndexLower + 1 + ((keyIndexUpper - keyIndexLower) * midpointPercentage / 100);
+                    if (midpointKeyIndex >= keyIndexUpper) {
+                        midpointKeyIndex = keyIndexUpper - 1;
+                    }
+                    log.trace("reading {} from {}: [{}, {}], [{}, {}], {}", key, dataPath, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
                     int keyNumber = keyStorageOrder[midpointKeyIndex];
                     LookupKey midpointKey = LookupData.readKey(dataChan, keyLength, keyNumber);
-                    int comparison = key.compareTo(midpointKey);
+                    comparison = key.compareTo(midpointKey);
                     if (comparison < 0) {
                         keyIndexUpper = midpointKeyIndex - 1;
                         upperKey = midpointKey;
@@ -69,7 +87,7 @@ public class LookupMetadata {
                     } else {
                         return LookupData.readValue(dataChan, keyLength, midpointKeyIndex);
                     }
-                }
+                } while (keyIndexLower < keyIndexUpper);
                 return -1;
             }
         } catch (IOException e) {
