@@ -1,8 +1,5 @@
 package com.upserve.uppend.schema;
 
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
-
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Stream;
@@ -25,7 +22,7 @@ public class StructType implements Type {
         //    clean up generated source
         // load classes into current classloader hierarchy
         //    clean up generated classfiles (if any)
-        throw new NotImplementedException(); // TODO
+        throw new RuntimeException("not yet implemented"); // TODO
     }
 
     private String colferSchema() {
