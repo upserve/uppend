@@ -41,7 +41,7 @@ public class LongLookup implements AutoCloseable {
         this(dir, DEFAULT_FLUSH_DELAY_SECONDS, DEFAULT_WRITE_CACHE_SIZE);
     }
 
-    private LongLookup(Path dir, int flushDelaySeconds, int writeCacheSize) {
+    public LongLookup(Path dir, int flushDelaySeconds, int writeCacheSize) {
         this.dir = dir;
         try {
             Files.createDirectories(dir);

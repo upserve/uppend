@@ -11,12 +11,19 @@ import java.util.stream.*;
 public class FileAppendOnlyStore implements AppendOnlyStore {
     private static final int NUM_BLOBS_PER_BLOCK = 127;
 
+    private static final int DEFAULT_LONG_LOOKUP_FLUSH_DELAY_SECONDS = LongLookup.DEFAULT_FLUSH_DELAY_SECONDS;
+    private static final int DEFAULT_LONG_LOOKUP_WRITE_CACHE_SIZE = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
+
     private final Path dir;
     private final LongLookup lookups;
     private final BlockedLongs blocks;
     private final Blobs blobs;
 
     public FileAppendOnlyStore(Path dir) {
+        this(dir, DEFAULT_LONG_LOOKUP_WRITE_CACHE_SIZE);
+    }
+
+    public FileAppendOnlyStore(Path dir, int longLookupWriteCacheSize) {
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
@@ -24,7 +31,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         }
 
         this.dir = dir;
-        lookups = new LongLookup(dir.resolve("lookups"));
+        lookups = new LongLookup(dir.resolve("lookups"), DEFAULT_LONG_LOOKUP_FLUSH_DELAY_SECONDS, longLookupWriteCacheSize);
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
         blobs = new Blobs(dir.resolve("blobs"));
     }
