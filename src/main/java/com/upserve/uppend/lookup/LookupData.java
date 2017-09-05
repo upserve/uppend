@@ -118,7 +118,7 @@ public class LookupData implements AutoCloseable, Flushable {
     }
 
     @Override
-    public void close() throws IOException {
+    public synchronized void close() throws IOException {
         log.trace("closing lookup data at {} (~{} entries)", path, mem.size());
         if (isClosed.compareAndSet(false, true)) {
             AutoFlusher.deregister(this);
@@ -131,7 +131,7 @@ public class LookupData implements AutoCloseable, Flushable {
     }
 
     @Override
-    public void flush() throws IOException {
+    public synchronized void flush() throws IOException {
         log.trace("flushing lookup and metadata at {}", metadataPath);
         out.flush();
         LookupMetadata metadata = generateMetadata();

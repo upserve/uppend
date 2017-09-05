@@ -9,85 +9,91 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 public class AutoFlusher {
-    private static final Map<Flushable, Integer> flushableDelays = new HashMap<>();
-    private static final Map<Integer, Set<Flushable>> delayFlushables = new HashMap<>();
-    private static final Map<Integer, ScheduledFuture> delayFutures = new HashMap<>();
+    private static final int FLUSH_EXEC_POOL_NUM_THREADS = 20;
+
+    private static final ConcurrentMap<Flushable, Integer> flushableDelays = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Integer, ConcurrentLinkedQueue<Flushable>> delayFlushables = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<Integer, ScheduledFuture> delayFutures = new ConcurrentHashMap<>();
+
     private static final ThreadFactory threadFactory;
+    private static final ExecutorService flushExecPool;
 
     static {
         ThreadGroup serverThreadGroup = new ThreadGroup("auto-flush");
         AtomicInteger threadNumber = new AtomicInteger();
         threadFactory = r -> new Thread(serverThreadGroup, r, "auto-flush-" + threadNumber.incrementAndGet());
+
+        AtomicInteger flushExecPoolThreadNumber = new AtomicInteger();
+        ThreadFactory flushExecPoolThreadFactory = r -> new Thread(serverThreadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
+        flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
     }
 
-    public static synchronized void register(int delaySeconds, Flushable flushable) {
+    public static void register(int delaySeconds, Flushable flushable) {
         Integer existingDelay = flushableDelays.put(flushable, delaySeconds);
         if (existingDelay != null) {
-            throw new ConcurrentModificationException("unexpected race in synchronized access to flushable delays: " + delaySeconds);
+            throw new IllegalStateException("flushable already registered: " + flushable);
         }
-        Set<Flushable> flushables = delayFlushables.get(delaySeconds);
-        if (flushables == null) {
-            ScheduledFuture future = Executors.newSingleThreadScheduledExecutor(threadFactory).scheduleWithFixedDelay(
-                    () -> AutoFlusher.flush(delaySeconds),
-                    delaySeconds,
-                    delaySeconds,
-                    TimeUnit.SECONDS
-            );
-            ScheduledFuture existingFuture = delayFutures.put(delaySeconds, future);
-            if (existingFuture != null) {
-                throw new ConcurrentModificationException("unexpected race in synchronized access to delay futures: " + delaySeconds);
+
+        ConcurrentLinkedQueue<Flushable> flushables = delayFlushables.computeIfAbsent(delaySeconds, delaySeconds2 -> {
+            synchronized (delayFutures) {
+                delayFutures.computeIfAbsent(delaySeconds2, delaySeconds3 ->
+                        Executors.newSingleThreadScheduledExecutor(threadFactory).scheduleWithFixedDelay(
+                                () -> AutoFlusher.flush(delaySeconds),
+                                delaySeconds,
+                                delaySeconds,
+                                TimeUnit.SECONDS
+                        )
+                );
             }
-            flushables = new HashSet<>();
-            Set<Flushable> existingFlushables = delayFlushables.put(delaySeconds, flushables);
-            if (existingFlushables != null) {
-                throw new ConcurrentModificationException("unexpected race in synchronized access to delay flushables: " + delaySeconds);
-            }
-        }
+            return new ConcurrentLinkedQueue<>();
+        });
+
         flushables.add(flushable);
     }
 
-    public static synchronized void deregister(Flushable flushable) {
+    public static void deregister(Flushable flushable) {
         Integer delaySeconds = flushableDelays.remove(flushable);
         if (delaySeconds == null) {
             throw new IllegalStateException("unknown flushable (flushable delays): " + flushable);
         }
-        Set<Flushable> flushables = delayFlushables.get(delaySeconds);
+        ConcurrentLinkedQueue<Flushable> flushables = delayFlushables.get(delaySeconds);
         if (flushables == null) {
             throw new IllegalStateException("unknown delay: " + delaySeconds);
         }
         if (!flushables.remove(flushable)) {
             log.warn("unknown flushable (delay flushables): " + flushable);
         }
-        if (flushables.isEmpty()) {
-            if (delayFlushables.remove(delaySeconds) != flushables) {
-                throw new ConcurrentModificationException("flushables list changed inside within synchronized access");
-            }
-            ScheduledFuture future = delayFutures.remove(delaySeconds);
-            future.cancel(false);
-        }
     }
 
-    private static synchronized void flush(int delaySeconds) {
+    private static void flush(int delaySeconds) {
         log.info("flushing {}", delaySeconds);
         try {
-            Set<Flushable> errorFlushables = null;
-            Set<Flushable> flushables = delayFlushables.get(delaySeconds);
+            ConcurrentLinkedQueue<Flushable> flushables = delayFlushables.get(delaySeconds);
             if (flushables == null) {
                 log.error("got null flushables set for delay: " + delaySeconds);
             } else {
+                ConcurrentLinkedQueue<Flushable> errorFlushables = new ConcurrentLinkedQueue<>();
+                ArrayList<Future> futures = new ArrayList<>();
                 for (Flushable flushable : flushables) {
-                    try {
-                        flushable.flush();
-                    } catch (IOException e) {
-                        log.error("unable to flush " + flushable, e);
-                        if (errorFlushables == null) {
-                            errorFlushables = new HashSet<>();
+                    futures.add(flushExecPool.submit(() -> {
+                        try {
+                            flushable.flush();
+                        } catch (IOException e) {
+                            log.error("unable to flush " + flushable, e);
+                            errorFlushables.add(flushable);
                         }
-                        errorFlushables.add(flushable);
-                    }
+                    }));
                 }
-            }
-            if (errorFlushables != null) {
+                futures.forEach(f -> {
+                    try {
+                        f.get();
+                    } catch (InterruptedException e) {
+                        log.error("interrupted while flushing", e);
+                        Thread.interrupted();
+                    } catch (ExecutionException e) {
+                        log.error("exception executing flush", e);
+                    }
+                });
                 flushables.removeAll(errorFlushables);
             }
         } catch (Exception e) {
