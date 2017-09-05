@@ -14,10 +14,22 @@ import java.util.stream.Stream;
 
 @Slf4j
 public class LongLookup implements AutoCloseable {
-    private static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
+    /**
+     * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
+     * automatically flushing open {@link LookupData} entries in the write
+     * cache.
+     */
+    public static final int DEFAULT_FLUSH_DELAY_SECONDS = 60;
 
-    // keep at 4096, aligned with hashAndLengthPath() format "%02x/%01x/", 0xff & (int) hash[0], 0xf & (int) hash[1]
-    private static final int MAX_CACHE_SIZE = 4096;
+    /**
+     * DEFAULT_WRITE_CACHE_SIZE is the maximum number of open
+     * {@link LookupData} entries in the write cache. It should be a multiple
+     * of 4096, which is the number of files described by hashAndLengthPath()
+     * format — "%02x/%01x/" , 0xff & (int) hash[0], 0xf & (int) hash[1] —
+     * within a partition.
+     */
+    @SuppressWarnings("PointlessArithmeticExpression")
+    public static final int DEFAULT_WRITE_CACHE_SIZE = 4096 * 1;
 
     private final Path dir;
     private final int flushDelaySeconds;
@@ -26,10 +38,10 @@ public class LongLookup implements AutoCloseable {
     private final LinkedHashMap<Path, LookupData> writeCache;
 
     public LongLookup(Path dir) {
-        this(dir, DEFAULT_FLUSH_DELAY_SECONDS);
+        this(dir, DEFAULT_FLUSH_DELAY_SECONDS, DEFAULT_WRITE_CACHE_SIZE);
     }
 
-    private LongLookup(Path dir, int flushDelaySeconds) {
+    private LongLookup(Path dir, int flushDelaySeconds, int writeCacheSize) {
         this.dir = dir;
         try {
             Files.createDirectories(dir);
@@ -43,10 +55,10 @@ public class LongLookup implements AutoCloseable {
 
         lookupDataPhaser = new Phaser(1);
 
-        writeCache = new LinkedHashMap<Path, LookupData>(MAX_CACHE_SIZE + 1, 1.1f, true) {
+        writeCache = new LinkedHashMap<Path, LookupData>(writeCacheSize + 1, 1.1f, true) {
             @Override
             protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
-                if (size() > MAX_CACHE_SIZE) {
+                if (size() > writeCacheSize) {
                     Path path = eldest.getKey();
                     log.trace("cache removing {}", path);
                     try {

@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.lookup.LongLookup;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -67,8 +68,7 @@ public abstract class AppendOnlyStoreTest {
 
     @Test
     public void fillTheCache() {
-        // MAX_LOOKUPS_CACHE_SIZE * 2 keys ensures cache will be filled
-        int keys = 4096 * 2;
+        int keys = LongLookup.DEFAULT_WRITE_CACHE_SIZE * 2;
 
         Random random = new Random(9876);
         Set<String> uuidSet = new HashSet<>();
