@@ -42,6 +42,10 @@ public class LongLookup implements AutoCloseable {
     }
 
     public LongLookup(Path dir, int flushDelaySeconds, int writeCacheSize) {
+        if (writeCacheSize < 1) {
+            throw new IllegalArgumentException("writeCacheSize must be >= 1");
+        }
+
         this.dir = dir;
         try {
             Files.createDirectories(dir);
@@ -57,7 +61,7 @@ public class LongLookup implements AutoCloseable {
 
         writeCache = new LinkedHashMap<Path, LookupData>(writeCacheSize + 1, 1.1f, true) {
             @Override
-            protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
+            protected synchronized boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
                 if (size() > writeCacheSize) {
                     Path path = eldest.getKey();
                     log.trace("cache removing {}", path);
@@ -66,7 +70,11 @@ public class LongLookup implements AutoCloseable {
                     } catch (IOException e) {
                         log.error("unable to close " + path, e);
                         throw new UncheckedIOException("unable to close " + path, e);
+                    } catch (Exception e) {
+                        log.error("unexpected error closing " + path, e);
+                        throw e;
                     } finally {
+                        log.warn("dir " + dir +": all set");
                         lookupDataPhaser.arriveAndDeregister();
                     }
                     return true;
@@ -156,24 +164,26 @@ public class LongLookup implements AutoCloseable {
 
     @Override
     public void close() {
-        if (log.isTraceEnabled()) {
-            log.trace("closing {} (~{} entries)", dir, writeCache.size());
-        }
-        writeCache.forEach((path, data) -> {
-            log.trace("cache removing {}", path);
-            try {
-                data.close();
-            } catch (IOException e) {
-                log.error("unable to close " + path, e);
-                throw new UncheckedIOException("unable to close " + path, e);
-            } finally {
-                lookupDataPhaser.arriveAndDeregister();
+        synchronized (writeCache) {
+            if (log.isTraceEnabled()) {
+                log.trace("closing {} (~{} entries)", dir, writeCache.size());
             }
+            writeCache.forEach((path, data) -> {
+                log.trace("cache removing {}", path);
+                try {
+                    data.close();
+                } catch (IOException e) {
+                    log.error("unable to close " + path, e);
+                    throw new UncheckedIOException("unable to close " + path, e);
+                } finally {
+                    lookupDataPhaser.arriveAndDeregister();
+                }
 
-        });
-        writeCache.clear();
-        if (log.isTraceEnabled()) {
-            log.trace("waiting for {} registered lookup data closures", lookupDataPhaser.getRegisteredParties());
+            });
+            writeCache.clear();
+            if (log.isTraceEnabled()) {
+                log.trace("waiting for {} registered lookup data closures", lookupDataPhaser.getRegisteredParties());
+            }
         }
         lookupDataPhaser.arriveAndAwaitAdvance();
         log.trace("closed {}", dir);

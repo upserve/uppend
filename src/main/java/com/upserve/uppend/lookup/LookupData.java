@@ -126,7 +126,7 @@ public class LookupData implements AutoCloseable, Flushable {
             out.close();
             log.trace("closed lookup data at {}", path);
         } else {
-            log.warn("lookup data already closed at {}", path);
+            log.warn("lookup data already closed: " + path, new RuntimeException("was closed") /* get stack */);
         }
     }
 
