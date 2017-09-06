@@ -74,7 +74,6 @@ public class LongLookup implements AutoCloseable {
                         log.error("unexpected error closing " + path, e);
                         throw e;
                     } finally {
-                        log.warn("dir " + dir +": all set");
                         lookupDataPhaser.arriveAndDeregister();
                     }
                     return true;
