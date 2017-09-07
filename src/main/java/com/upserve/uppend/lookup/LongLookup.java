@@ -22,26 +22,43 @@ public class LongLookup implements AutoCloseable {
     public static final int DEFAULT_FLUSH_DELAY_SECONDS = 60;
 
     /**
+     * DEFAULT_HASH_SIZE is the number of hash elements per partition. Key
+     * values hashed and modded by this number will be represented as paths
+     * of hexits representing the value, where each two hexits of a prefix
+     * will be a directory and the final one or two hexits will be a file.
+     */
+    public static final int DEFAULT_HASH_SIZE = 4096;
+    private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
+
+    /**
      * DEFAULT_WRITE_CACHE_SIZE is the maximum number of open
      * {@link LookupData} entries in the write cache. It should be a multiple
-     * of 4096, which is the number of files described by hashAndLengthPath()
-     * format — "%02x/%01x/" , 0xff & (int) hash[0], 0xf & (int) hash[1] —
-     * within a partition.
+     * of DEFAULT_HASH_SIZE so that we can write complete partitions without
+     * thrashing the cache.
      */
     @SuppressWarnings("PointlessArithmeticExpression")
-    public static final int DEFAULT_WRITE_CACHE_SIZE = 4096 * 1;
+    public static final int DEFAULT_WRITE_CACHE_SIZE = DEFAULT_HASH_SIZE * 1;
 
     private final Path dir;
     private final int flushDelaySeconds;
+    private final int hashSize;
+    private final int hashBytes;
+    private final int hashFinalByteMask;
     private final HashFunction hashFunction;
     private final Phaser lookupDataPhaser;
     private final LinkedHashMap<Path, LookupData> writeCache;
 
     public LongLookup(Path dir) {
-        this(dir, DEFAULT_FLUSH_DELAY_SECONDS, DEFAULT_WRITE_CACHE_SIZE);
+        this(dir, DEFAULT_FLUSH_DELAY_SECONDS, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
     }
 
-    public LongLookup(Path dir, int flushDelaySeconds, int writeCacheSize) {
+    public LongLookup(Path dir, int flushDelaySeconds, int hashSize, int writeCacheSize) {
+        if (hashSize < 1) {
+            throw new IllegalArgumentException("hashSize must be >= 1");
+        }
+        if (hashSize > MAX_HASH_SIZE) {
+            throw new IllegalArgumentException("hashSize must be <= " + MAX_HASH_SIZE);
+        }
         if (writeCacheSize < 1) {
             throw new IllegalArgumentException("writeCacheSize must be >= 1");
         }
@@ -54,6 +71,11 @@ public class LongLookup implements AutoCloseable {
         }
 
         this.flushDelaySeconds = flushDelaySeconds;
+
+        this.hashSize = hashSize;
+        String hashBinaryString = Integer.toBinaryString(hashSize - 1);
+        hashBytes = (hashBinaryString.length() + 7) / 8;
+        hashFinalByteMask = (1 << (hashBinaryString.length() % 8)) - 1;
 
         hashFunction = Hashing.murmur3_32();
 
@@ -204,7 +226,20 @@ public class LongLookup implements AutoCloseable {
     private Path hashAndLengthPath(String partition, LookupKey key) {
         log.trace("getting from {}: {}", dir, key);
         byte[] hash = hashFunction.hashString(key.string(), Charsets.UTF_8).asBytes();
-        String hashPath = String.format("%02x/%01x/%d", 0xff & (int) hash[0], 0xf & (int) hash[1], key.byteLength());
+        String hashPath;
+        switch (hashBytes) {
+            case 1:
+                hashPath = String.format("%02x/%d", hashFinalByteMask & (int) hash[0], key.byteLength());
+                break;
+            case 2:
+                hashPath = String.format("%02x/%02x/%d", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1], key.byteLength());
+                break;
+            case 3:
+                hashPath = String.format("%02x/%02x/%02x/%d", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2], key.byteLength());
+                break;
+            default:
+                throw new IllegalStateException("unhandled hashBytes: " + hashBytes);
+        }
         return dir.resolve(partition).resolve(hashPath);
     }
 

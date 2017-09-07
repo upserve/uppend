@@ -79,9 +79,7 @@ public abstract class AppendOnlyStoreTest {
 
         Arrays.stream(uuids)
                 .parallel()
-                .forEach(uuid -> {
-                    store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes());
-                });
+                .forEach(uuid -> store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes()));
 
         cleanUp();
         store = newStore();
@@ -91,9 +89,9 @@ public abstract class AppendOnlyStoreTest {
                 .parallel()
                 .forEach(uuid -> {
                     byte[][] results = store.read("_" + uuid.substring(0, 2), uuid).toArray(byte[][]::new);
-                    assertEquals(1, results.length);
+                    assertEquals("uuid failed to return 1 result: " + uuid, 1, results.length);
                     byte[] bytes = results[0];
-                    assertArrayEquals("", bytes, uuid.getBytes());
+                    assertArrayEquals("uuid result failed to check out: " + uuid, bytes, uuid.getBytes());
                 });
     }
 

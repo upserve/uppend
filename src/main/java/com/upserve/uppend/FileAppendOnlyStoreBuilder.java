@@ -6,10 +6,16 @@ import java.nio.file.Path;
 
 public class FileAppendOnlyStoreBuilder implements AppendOnlyStoreBuilder<FileAppendOnlyStore> {
     private Path dir;
+    private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
     private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
 
     public void withDir(Path dir) {
         this.dir = dir;
+    }
+
+    public FileAppendOnlyStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
+        this.longLookupHashSize = longLookupHashSize;
+        return this;
     }
 
     public FileAppendOnlyStoreBuilder withLongLookupWriteCacheSize(int longLookupWriteCacheSize) {
@@ -19,6 +25,6 @@ public class FileAppendOnlyStoreBuilder implements AppendOnlyStoreBuilder<FileAp
 
     @Override
     public FileAppendOnlyStore build() {
-        return new FileAppendOnlyStore(dir, longLookupWriteCacheSize);
+        return new FileAppendOnlyStore(dir, longLookupHashSize, longLookupWriteCacheSize);
     }
 }
