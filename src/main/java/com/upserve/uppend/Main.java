@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.lookup.LongLookup;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.Path;
@@ -28,20 +29,28 @@ public class Main {
     int count;
     int maxPartitions;
     int maxKeys;
+    int hashSize;
+    int cacheSize;
     int sleep = 0;
 
     private final AppendOnlyStore testInstance;
 
-    public Main(String mode, String location, int maxPartitions, int maxKeys, int count) {
+    public Main(String mode, String location, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize) {
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
         this.maxKeys = maxKeys; // max ~ 10,000,000
+        this.hashSize = hashSize;
+        this.cacheSize = cachesize;
 
         Path path = Paths.get(location);
         if (path.toFile().exists()) log.warn("Location already exists: appending to {}", path);
 
-        testInstance = new FileAppendOnlyStoreBuilder().withDir(path).build();
+        testInstance = new FileAppendOnlyStoreBuilder()
+                .withDir(path)
+                .withLongLookupHashSize(hashSize)
+                .withLongLookupWriteCacheSize(cachesize)
+                .build();
 
 
         range = maxPartitions * maxKeys * 199;
@@ -119,11 +128,15 @@ public class Main {
             while (true) {
                 try {
                     long written = writer.bytesWritten.get();
+                    long writeCount = writer.writeCount.get();
                     long read = reader.bytesRead.get();
+                    long readCount = reader.readCount.get();
                     Thread.sleep(1000);
                     double writeRate = (writer.bytesWritten.get() - written) / (1024.0 * 1024.0);
+                    long appendsPerSecond = writer.writeCount.get() - writeCount;
                     double readRate = (reader.bytesRead.get() - read) / (1024.0 * 1024.0);
-                    log.info(String.format("Read rate %5.2fmb/s, Write rate %5.2fmb/s", readRate, writeRate));
+                    long keysReadPerSecond = reader.readCount.get() - readCount;
+                    log.info(String.format("Read: rate %5.2fmb/s %6d keys/s, Write rate %5.2fmb/s %6d keys/s", readRate, keysReadPerSecond, writeRate, appendsPerSecond));
                 } catch (InterruptedException e) {
                     log.info("Interrupted - Stopping...");
                     break;
@@ -168,9 +181,11 @@ public class Main {
                 int maxPartitions = nargs > 2 ? Integer.parseInt(args[2]) : 64;
                 int maxKeys = nargs > 3 ? Integer.parseInt(args[3]) : 1000;
                 int count = nargs > 4 ? Integer.parseInt(args[4]) : 100_000;
+                int hashSize = nargs > 5 ? Integer.parseInt(args[5]) : LongLookup.DEFAULT_HASH_SIZE;
+                int cacheSize = nargs > 6 ? Integer.parseInt(args[6]) : LongLookup.DEFAULT_WRITE_CACHE_SIZE;
 
 
-                Main main = new Main(mode, path, maxPartitions, maxKeys, count);
+                Main main = new Main(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize);
 
                 status = main.run();
             }
