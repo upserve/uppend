@@ -31,7 +31,9 @@ public class IntArrayCustomSort {
         for (int i = 0; i < len; i++) {
             vObj[i] = values[i];
         }
-        Arrays.parallelSort(vObj, comparatorFunction::compare);
+        // TODO: find out why parallelSort() sometimes locks, see https://github.com/upserve/uppend/issues/24
+        // Arrays.parallelSort(vObj, comparatorFunction::compare);
+        Arrays.sort(vObj, comparatorFunction::compare);
         for (int i = 0; i < len; i++) {
             values[i] = vObj[i];
         }
