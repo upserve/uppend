@@ -25,7 +25,7 @@ public class Main {
 
     private final Random random = new Random();
 
-    int range;
+    long range;
     int count;
     int maxPartitions;
     int maxKeys;
@@ -53,7 +53,7 @@ public class Main {
                 .build();
 
 
-        range = maxPartitions * maxKeys * 199;
+        range = (long) maxPartitions * (long) maxKeys * 199;
 
 
         switch (mode) {
@@ -81,10 +81,10 @@ public class Main {
 
     private Writer simpleWriter(){
         return new Writer(
-                random.ints(count, 0, range).parallel(),
-                integer -> {
-                    byte[] myBytes = bytes(integer);
-                    testInstance.append(partition(integer, maxPartitions), key(integer/maxPartitions, maxKeys), myBytes);
+                random.longs(count, 0, range).parallel(),
+                longInt -> {
+                    byte[] myBytes = bytes(longInt);
+                    testInstance.append(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys), myBytes);
                     return myBytes.length;
                 }
         );
@@ -92,23 +92,23 @@ public class Main {
 
     private Reader simpleReader() {
         return new Reader(
-                random.ints(count, 0, range).parallel(),
-                integer -> testInstance.read(partition(integer, maxPartitions), key(integer/maxPartitions, maxKeys))
+                random.longs(count, 0, range).parallel(),
+                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
                             .mapToInt(theseBytes -> theseBytes.length)
                             .sum()
         );
     }
 
-    public static String key(int integer, int maxKeys) {
+    public static String key(long integer, int maxKeys) {
         return String.format("%08X", integer % maxKeys);
     }
 
-    public static String partition(int integer, int maxPartitions) {
+    public static String partition(long integer, int maxPartitions) {
         return String.format("_%04X", integer % maxPartitions);
     }
 
-    public static byte[] bytes(int integer) {
-        int length = (integer % 65536);
+    public static byte[] bytes(long integer) {
+        int length =(int) (integer % 65536);
         byte[] bytes = new byte[length];
         Arrays.fill(bytes, (byte) 0);
         return bytes;
@@ -125,6 +125,7 @@ public class Main {
         Thread readerThread = new Thread(reader);
 
         Thread watcher = new Thread(() -> {
+            Runtime runtime = Runtime.getRuntime();
             while (true) {
                 try {
                     long written = writer.bytesWritten.get();
@@ -136,7 +137,9 @@ public class Main {
                     long appendsPerSecond = writer.writeCount.get() - writeCount;
                     double readRate = (reader.bytesRead.get() - read) / (1024.0 * 1024.0);
                     long keysReadPerSecond = reader.readCount.get() - readCount;
-                    log.info(String.format("Read: rate %5.2fmb/s %6d keys/s, Write rate %5.2fmb/s %6d keys/s", readRate, keysReadPerSecond, writeRate, appendsPerSecond));
+                    double total = runtime.totalMemory() / (1024.0 * 1024.0);
+                    double free = runtime.freeMemory() / (1024.0 * 1024.0);
+                    log.info(String.format("Read: %7.2fmb/s %6dr/s; Write %7.2fmb/s %6da/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond,  writeRate, appendsPerSecond, free, total));
                 } catch (InterruptedException e) {
                     log.info("Interrupted - Stopping...");
                     break;

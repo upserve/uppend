@@ -4,18 +4,18 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
-import java.util.stream.IntStream;
+import java.util.stream.LongStream;
 
 @Slf4j
 public class Reader implements Runnable {
-    private final IntStream intStream;
-    private final Function<Integer, Integer> integerFunction;
+    private final LongStream longStream;
+    private final Function<Long, Integer> longFunction;
     public final AtomicLong bytesRead = new AtomicLong();
     public final AtomicLong readCount = new AtomicLong();
 
-    public Reader(IntStream intStream, Function<Integer, Integer> integerFunction){
-        this.intStream = intStream;
-        this.integerFunction = integerFunction;
+    public Reader(LongStream longStream, Function<Long, Integer> longFunction){
+        this.longStream = longStream;
+        this.longFunction = longFunction;
     }
 
     public static Reader noop(){
@@ -23,14 +23,14 @@ public class Reader implements Runnable {
     }
 
     public void run(){
-        if (integerFunction == null || intStream == null) {
+        if (longFunction == null || longStream == null) {
             log.info("skipping reader");
             return;
         }
         log.info("starting reader...");
         long tic = -1*System.currentTimeMillis();
-        intStream.forEach(i -> {
-            bytesRead.addAndGet(integerFunction.apply(i));
+        longStream.forEach(i -> {
+            bytesRead.addAndGet(longFunction.apply(i));
             readCount.addAndGet(1);
         });
         log.info(
