@@ -25,7 +25,6 @@ repositories {
 }
 
 dependencies {
-    compile 'com.github.ben-manes.caffeine:caffeine:2.3.5'
     compile 'com.google.guava:guava:21.0'
     compile 'it.unimi.dsi:fastutil:7.0.13'
     compile 'org.slf4j:slf4j-api:1.7.22'
@@ -36,7 +35,7 @@ dependencies {
 
     gradleLint.ignore {
       // gradle-lint doesn't like lombok, presumably because it's annotation-only
-      compileOnly 'org.projectlombok:lombok:1.16.12'
+      compile 'org.projectlombok:lombok:1.16.12'
 
       // gradle-lint doesn't like log4j, presumably because it's not used directly
       testCompile 'org.apache.logging.log4j:log4j-core:2.8'

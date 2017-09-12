@@ -1,38 +1,44 @@
 package com.upserve.uppend;
 
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.util.SafeDeleting;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.*;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.nio.file.*;
 
-import static org.junit.Assert.*;
-
+@Slf4j
 public class LongLookupPerformanceTest {
+    private static final int INITIAL_KEYS = 500_000;
 
-    Path tempFile = Paths.get("build/test/lookup");
+    private Path lookupDir = Paths.get("build/test/tmp/lookup");
 
     @Before
     public void initialize() throws Exception {
-        if (Files.exists(tempFile)) {
-            Files.delete(tempFile);
-        }
+        SafeDeleting.removeTempPath(lookupDir);
 
         LongLookup lookup;
-        lookup = new LongLookup(tempFile);
-        for(int i = 0; i < 500_000; ++i) {
-            lookup.put(String.valueOf(i), i);
+        lookup = new LongLookup(lookupDir);
+        long lastReportTime = System.currentTimeMillis();
+        log.info("init: starting");
+        for(int i = 0; i < INITIAL_KEYS; ++i) {
+            lookup.put("my_partition", String.valueOf(i), i);
+            if (i % 100 == 0) {
+                long now = System.currentTimeMillis();
+                if (now - lastReportTime > 1000) {
+                    lastReportTime = now;
+                    log.info("init: {}/{}", i, INITIAL_KEYS);
+                }
+
+            }
         }
+        log.info("init: {}: done");
         lookup.close();
     }
 
-    @Test(timeout = 250)
+    @Test(timeout = 100)
     public void speedTest() throws Exception {
-        LongLookup lookup = new LongLookup(tempFile);
+        LongLookup lookup = new LongLookup(lookupDir);
         lookup.close();
     }
 

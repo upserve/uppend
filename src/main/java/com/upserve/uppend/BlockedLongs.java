@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
@@ -7,6 +8,7 @@ import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.Arrays;
+import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
 @Slf4j
@@ -22,7 +24,7 @@ public class BlockedLongs implements AutoCloseable {
     private final FileChannel blocks;
     private final MappedByteBuffer[] pages;
 
-    private final ThreadLocal<ByteBuffer> bufferLocal;
+    private final Supplier<ByteBuffer> bufferLocal;
 
     private final FileChannel blocksPos;
     private final MappedByteBuffer posBuf;
@@ -50,7 +52,7 @@ public class BlockedLongs implements AutoCloseable {
 
         pages = new MappedByteBuffer[MAX_PAGES];
 
-        bufferLocal = new ThreadLocal<>();
+        bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
 
         try {
             blocksPos = FileChannel.open(posFile, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -168,7 +170,7 @@ public class BlockedLongs implements AutoCloseable {
     }
 
     private ByteBuffer readBlock(long pos) {
-        ByteBuffer buf = buffer();
+        ByteBuffer buf = bufferLocal.get();
         try {
             int numRead = blocks.read(buf, pos);
             if (numRead == -1) {
@@ -186,17 +188,6 @@ public class BlockedLongs implements AutoCloseable {
     private long readLong(long pos) {
         int pagePos = (int) (pos % (long) PAGE_SIZE);
         return page(pos).getLong(pagePos);
-    }
-
-    private ByteBuffer buffer() {
-        ByteBuffer buffer = bufferLocal.get();
-        if (buffer == null) {
-            buffer = ByteBuffer.allocate(blockSize);
-            bufferLocal.set(buffer);
-        } else {
-            buffer.clear();
-        }
-        return buffer;
     }
 
     private void writeLong(long pos, long val) {
