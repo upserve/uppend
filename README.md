@@ -1,6 +1,6 @@
 Uppend: an append-only, key-multivalue store 
 ============================================
-[![Build Status](https://travis-ci.com/upserve/uppend.svg?branch=master)](https://travis-ci.com/upserve/uppend)
+[![Build Status](https://travis-ci.com/upserve/uppend.svg?token=dpSeApDGQn1qo5LYyLJx&branch=add_travis_yml)](https://travis-ci.com/upserve/uppend)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.upserve/uppend/badge.svg)](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.upserve%22%20AND%20a%3Auppend)
 
 Uppend is an append-only, key-multivalue store, suitable for creating analytics
