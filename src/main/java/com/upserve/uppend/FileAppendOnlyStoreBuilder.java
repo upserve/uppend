@@ -9,8 +9,9 @@ public class FileAppendOnlyStoreBuilder implements AppendOnlyStoreBuilder<FileAp
     private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
     private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
 
-    public void withDir(Path dir) {
+    public FileAppendOnlyStoreBuilder withDir(Path dir) {
         this.dir = dir;
+        return this;
     }
 
     public FileAppendOnlyStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
