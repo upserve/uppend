@@ -1,23 +1,11 @@
-buildscript {
-    repositories {
-        mavenCentral()
-        maven {
-            url "http://dl.bintray.com/palantir/releases"
-        }
-    }
-    dependencies {
-        classpath 'com.palantir:gradle-gitsemver:0.6.0'
-    }
-}
-
 plugins {
+    id 'com.palantir.git-version' version '0.9.1'
     id 'nebula.lint' version '6.7.0'
 }
 
 import org.apache.tools.ant.filters.ExpandProperties
 
-apply plugin: 'gitsemver'
-version semverVersion()
+version gitVersion()
 
 group 'com.upserve'
 
