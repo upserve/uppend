@@ -1,10 +1,13 @@
-buildscript { repositories { jcenter() } }
 plugins {
+    id 'com.palantir.git-version' version '0.9.1'
     id 'nebula.lint' version '6.7.0'
 }
 
+import org.apache.tools.ant.filters.ExpandProperties
+
+version gitVersion()
+
 group 'com.upserve'
-version '1.0-SNAPSHOT'
 
 description = """Uppend: fast, append-only key-value store"""
 
@@ -26,6 +29,7 @@ repositories {
 
 dependencies {
     compile 'com.google.guava:guava:21.0'
+    compile 'info.picocli:picocli:2.0.1'
     compile 'it.unimi.dsi:fastutil:7.0.13'
     compile 'org.slf4j:slf4j-api:1.7.22'
 
@@ -34,12 +38,12 @@ dependencies {
     testCompile 'org.mockito:mockito-core:2.7.13'
 
     gradleLint.ignore {
-      // gradle-lint doesn't like lombok, presumably because it's annotation-only
+      // gradle-lint doesn't like lombok because it's annotation-only
       compile 'org.projectlombok:lombok:1.16.12'
 
-      // gradle-lint doesn't like log4j, presumably because it's not used directly
-      testCompile 'org.apache.logging.log4j:log4j-core:2.8'
-      testCompile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+      // gradle-lint doesn't like log4j because it's not used directly
+      compile 'org.apache.logging.log4j:log4j-core:2.8'
+      compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
     }
 }
 
@@ -49,6 +53,15 @@ sourceSets {
     }
     test {
         output.resourcesDir = "${buildDir}/classes/test"
+    }
+}
+
+ant.property(name: 'gradle_build_version', value: version)
+
+processResources {
+    from(sourceSets.main.resources.srcDirs) {
+        include '**/*.properties'
+        filter(ExpandProperties, project: ant.antProject)
     }
 }
 
