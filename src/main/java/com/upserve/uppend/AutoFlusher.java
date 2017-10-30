@@ -1,6 +1,5 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.lookup.LookupData;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
@@ -68,7 +67,6 @@ public class AutoFlusher {
 
     private static void flush(int delaySeconds) {
         log.info("flushing {}", delaySeconds);
-        LookupData.memKeyCount.set(0);
         try {
             ConcurrentLinkedQueue<Flushable> flushables = delayFlushables.get(delaySeconds);
             if (flushables == null) {
@@ -101,6 +99,6 @@ public class AutoFlusher {
         } catch (Exception e) {
             log.error("error during auto-flush", e);
         }
-        log.info("flushed {}, Lookupdata Mem Count {}", delaySeconds, LookupData.memKeyCount.get());
+        log.info("flushed {}", delaySeconds);
     }
 }

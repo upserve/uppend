@@ -11,15 +11,11 @@ import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 import java.util.stream.*;
 
 @Slf4j
 public class LookupData implements AutoCloseable, Flushable {
-
-    public static final AtomicLong memKeyCount = new AtomicLong();
-
     private final AtomicBoolean isClosed;
 
     private final int keyLength;
@@ -137,7 +133,6 @@ public class LookupData implements AutoCloseable, Flushable {
     @Override
     public synchronized void flush() throws IOException {
         log.trace("flushing lookup and metadata at {}", metadataPath);
-        memKeyCount.addAndGet(mem.size());
         out.flush();
         LookupMetadata metadata = generateMetadata();
         metadata.writeTo(metadataPath);
