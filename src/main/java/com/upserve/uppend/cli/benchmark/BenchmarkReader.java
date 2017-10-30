@@ -1,4 +1,4 @@
-package com.upserve.uppend.benchmark;
+package com.upserve.uppend.cli.benchmark;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -7,22 +7,22 @@ import java.util.function.Function;
 import java.util.stream.LongStream;
 
 @Slf4j
-public class Reader implements Runnable {
+public class BenchmarkReader implements Runnable {
     private final LongStream longStream;
     private final Function<Long, Integer> longFunction;
-    public final AtomicLong bytesRead = new AtomicLong();
-    public final AtomicLong readCount = new AtomicLong();
+    final AtomicLong bytesRead = new AtomicLong();
+    final AtomicLong readCount = new AtomicLong();
 
-    public Reader(LongStream longStream, Function<Long, Integer> longFunction){
+    BenchmarkReader(LongStream longStream, Function<Long, Integer> longFunction) {
         this.longStream = longStream;
         this.longFunction = longFunction;
     }
 
-    public static Reader noop(){
-        return new Reader(null, null);
+    static BenchmarkReader noop() {
+        return new BenchmarkReader(null, null);
     }
 
-    public void run(){
+    public void run() {
         if (longFunction == null || longStream == null) {
             log.info("skipping reader");
             return;
@@ -40,5 +40,6 @@ public class Reader implements Runnable {
                         (double) bytesRead.get(),
                         (tic + System.currentTimeMillis()) / 1000.0
                 )
-        );    }
+        );
+    }
 }

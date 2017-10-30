@@ -1,4 +1,4 @@
-package com.upserve.uppend.benchmark;
+package com.upserve.uppend.cli.benchmark;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -7,22 +7,22 @@ import java.util.function.Function;
 import java.util.stream.LongStream;
 
 @Slf4j
-public class Writer implements Runnable {
+public class BenchmarkWriter implements Runnable {
     private final LongStream longStream;
     private final Function<Long, Integer> longFunction;
-    public final AtomicLong bytesWritten = new AtomicLong();
-    public final AtomicLong writeCount = new AtomicLong();
+    final AtomicLong bytesWritten = new AtomicLong();
+    final AtomicLong writeCount = new AtomicLong();
 
-    public Writer(LongStream longStream, Function<Long, Integer> longFunction){
+    BenchmarkWriter(LongStream longStream, Function<Long, Integer> longFunction){
         this.longStream = longStream;
         this.longFunction = longFunction;
     }
 
-    public static Writer noop(){
-        return new Writer(null, null);
+    static BenchmarkWriter noop() {
+        return new BenchmarkWriter(null, null);
     }
 
-    public void run(){
+    public void run() {
         if (longFunction == null || longStream == null) {
             log.info("skipping writer");
             return;

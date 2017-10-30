@@ -1,50 +1,36 @@
-package com.upserve.uppend;
+package com.upserve.uppend.cli.benchmark;
 
-import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.*;
 import lombok.extern.slf4j.Slf4j;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Random;
-
-import com.upserve.uppend.benchmark.*;
+import java.nio.file.*;
+import java.util.*;
 
 
 @Slf4j
-public class Main {
-    public static final int EXIT_CODE_USAGE = 2;
-    public static final int EXIT_CODE_UNEXPECTED_FAIL = 4;
-
-    public static final String READWRITE = "ReadWrite";
-    public static final String READ = "Read";
-    public static final String WRITE = "Write";
-
-    public Writer writer;
-    public Reader reader;
+public class Benchmark {
+    private BenchmarkWriter writer;
+    private BenchmarkReader reader;
 
     private final Random random = new Random();
 
-    long range;
-    int count;
-    int maxPartitions;
-    int maxKeys;
-    int hashSize;
-    int cacheSize;
-    int sleep = 0;
+    private long range;
+    private int count;
+    private int maxPartitions;
+    private int maxKeys;
+    private int sleep = 0;
 
     private final AppendOnlyStore testInstance;
 
-    public Main(String mode, String location, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize) {
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
         this.maxKeys = maxKeys; // max ~ 10,000,000
-        this.hashSize = hashSize;
-        this.cacheSize = cachesize;
 
-        Path path = Paths.get(location);
-        if (path.toFile().exists()) log.warn("Location already exists: appending to {}", path);
+        if (Files.exists(path)) {
+            log.warn("Location already exists: appending to {}", path);
+        }
 
         testInstance = new FileAppendOnlyStoreBuilder()
                 .withDir(path)
@@ -57,21 +43,20 @@ public class Main {
 
 
         switch (mode) {
-
-            case READWRITE:
+            case readwrite:
                 writer = simpleWriter();
                 reader = simpleReader();
                 sleep = 31;
                 break;
 
-            case READ:
-                writer = Writer.noop();
+            case read:
+                writer = BenchmarkWriter.noop();
                 reader = simpleReader();
                 break;
 
-            case WRITE:
+            case write:
                 writer = simpleWriter();
-                reader = Reader.noop();
+                reader = BenchmarkReader.noop();
                 break;
             default:
                 throw new RuntimeException("Unknown mode: " + mode);
@@ -79,8 +64,8 @@ public class Main {
 
     }
 
-    private Writer simpleWriter(){
-        return new Writer(
+    private BenchmarkWriter simpleWriter() {
+        return new BenchmarkWriter(
                 random.longs(count, 0, range).parallel(),
                 longInt -> {
                     byte[] myBytes = bytes(longInt);
@@ -90,8 +75,8 @@ public class Main {
         );
     }
 
-    private Reader simpleReader() {
-        return new Reader(
+    private BenchmarkReader simpleReader() {
+        return new BenchmarkReader(
                 random.longs(count, 0, range).parallel(),
                 longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
                             .mapToInt(theseBytes -> theseBytes.length)
@@ -103,7 +88,7 @@ public class Main {
         return String.format("%08X", integer % maxKeys);
     }
 
-    public static String partition(long integer, int maxPartitions) {
+    private static String partition(long integer, int maxPartitions) {
         return String.format("_%04X", integer % maxPartitions);
     }
 
@@ -114,11 +99,7 @@ public class Main {
         return bytes;
     }
 
-    public static void usage() {
-        System.err.println("usage: java uppend.jar mode path/for/uppend/data partitions, keys, count");
-    }
-
-    public int run() throws InterruptedException {
+    public void run() throws InterruptedException {
         log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
 
         Thread writerThread = new Thread(writer);
@@ -165,39 +146,7 @@ public class Main {
             throw new RuntimeException("error closing test uppend store", e);
         }
 
-        log.info("Main is All Done!");
-
-        return 0;
-    }
-
-    public static void main(String... args) throws Exception {
-        int status;
-        try {
-            int nargs = args.length;
-            if (nargs < 2) {
-                usage();
-                status = EXIT_CODE_USAGE;
-            } else {
-                String mode = args[0];
-                String path = args[1];
-
-                int maxPartitions = nargs > 2 ? Integer.parseInt(args[2]) : 64;
-                int maxKeys = nargs > 3 ? Integer.parseInt(args[3]) : 1000;
-                int count = nargs > 4 ? Integer.parseInt(args[4]) : 100_000;
-                int hashSize = nargs > 5 ? Integer.parseInt(args[5]) : LongLookup.DEFAULT_HASH_SIZE;
-                int cacheSize = nargs > 6 ? Integer.parseInt(args[6]) : LongLookup.DEFAULT_WRITE_CACHE_SIZE;
-
-
-                Main main = new Main(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize);
-
-                status = main.run();
-            }
-        } catch (Throwable t) {
-            log.error("Unexpected Failure", t);
-            status = EXIT_CODE_UNEXPECTED_FAIL;
-        }
-
-        System.exit(status);
+        log.info("Benchmark is All Done!");
     }
 }
 
