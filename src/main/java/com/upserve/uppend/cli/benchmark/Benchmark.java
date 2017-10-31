@@ -32,8 +32,7 @@ public class Benchmark {
             log.warn("Location already exists: appending to {}", path);
         }
 
-        testInstance = new FileAppendOnlyStoreBuilder()
-                .withDir(path)
+        testInstance = Uppend.fileStore(path)
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)

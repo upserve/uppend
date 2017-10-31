@@ -3,6 +3,7 @@ package com.upserve.uppend;
 import com.upserve.uppend.cli.Cli;
 
 import java.io.*;
+import java.nio.file.*;
 
 public final class Uppend {
     public static final String VERSION;
@@ -19,8 +20,12 @@ public final class Uppend {
     private Uppend() {
     }
 
-    public static FileAppendOnlyStoreBuilder fileAppendOnlyStore() {
-        return new FileAppendOnlyStoreBuilder();
+    public static FileAppendOnlyStoreBuilder fileStore(String path) {
+        return fileStore(Paths.get(path));
+    }
+
+    public static FileAppendOnlyStoreBuilder fileStore(Path path) {
+        return new FileAppendOnlyStoreBuilder().withDir(path);
     }
 
     public static void main(String ... args) throws Exception {
