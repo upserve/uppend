@@ -1,4 +1,4 @@
-Uppend: an append-only, key-multivalue store 
+Uppend: an append-only, key-multivalue store
 ============================================
 [![Build Status](https://travis-ci.com/upserve/uppend.svg?token=***REMOVED***&branch=add_travis_yml)](https://travis-ci.com/upserve/uppend)
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.upserve/uppend/badge.svg)](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.upserve%22%20AND%20a%3Auppend)
@@ -9,7 +9,7 @@ views from event streams.
 Benefits:
 
 * Optimized to be I/O constrained on modest hardware
- 
+
 Tradeoffs:
 
 * Individual values are immutable
@@ -47,7 +47,14 @@ Development
 -----------
 
 To build Uppend, run:
- 
+
 ```sh
 ./gradlew build
+```
+
+To benchmark Uppend:
+
+```sh
+./gradlew clean fatJar
+java -jar build/libs/uppend-all-*.jar benchmark --help
 ```
