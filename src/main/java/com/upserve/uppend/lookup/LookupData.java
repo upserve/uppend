@@ -1,6 +1,5 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.AutoFlusher;
 import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.extern.slf4j.Slf4j;
@@ -28,7 +27,7 @@ public class LookupData implements AutoCloseable, Flushable {
     private Object2LongSortedMap<LookupKey> mem;
     private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
 
-    public LookupData(int keyLength, Path path, Path metadataPath, int flushDelaySeconds) {
+    public LookupData(int keyLength, Path path, Path metadataPath) {
         log.trace("opening lookup data: {}", path);
         this.keyLength = keyLength;
 
@@ -57,7 +56,6 @@ public class LookupData implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to initialize data at " + path, e);
         }
 
-        AutoFlusher.register(flushDelaySeconds, this);
         isClosed = new AtomicBoolean(false);
     }
 
@@ -121,7 +119,6 @@ public class LookupData implements AutoCloseable, Flushable {
     public synchronized void close() throws IOException {
         log.trace("closing lookup data at {} (~{} entries)", path, mem.size());
         if (isClosed.compareAndSet(false, true)) {
-            AutoFlusher.deregister(this);
             flush();
             out.close();
             log.trace("closed lookup data at {}", path);
