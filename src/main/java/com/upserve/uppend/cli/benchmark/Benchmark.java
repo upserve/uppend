@@ -22,7 +22,7 @@ public class Benchmark {
 
     private final AppendOnlyStore testInstance;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds) {
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
@@ -36,6 +36,7 @@ public class Benchmark {
                 .withDir(path)
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
+                .withFlushDelaySeconds(flushDelaySeconds)
                 .build();
 
 

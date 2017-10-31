@@ -29,6 +29,7 @@ public class AutoFlusher {
     }
 
     public static void register(int delaySeconds, Flushable flushable) {
+        log.info("registered delay {}: {}", delaySeconds, flushable);
         Integer existingDelay = flushableDelays.put(flushable, delaySeconds);
         if (existingDelay != null) {
             throw new IllegalStateException("flushable already registered: " + flushable);
@@ -63,6 +64,7 @@ public class AutoFlusher {
         if (!flushables.remove(flushable)) {
             log.warn("unknown flushable (delay flushables): " + flushable);
         }
+        log.info("deregistered delay {}: {}", delaySeconds, flushable);
     }
 
     private static void flush(int delaySeconds) {

@@ -1,6 +1,6 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.lookup.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
@@ -8,7 +8,13 @@ import java.nio.file.*;
 import java.util.stream.*;
 
 @Slf4j
-public class FileAppendOnlyStore implements AppendOnlyStore {
+public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
+    /**
+     * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
+     * automatically flushing writes.
+     */
+    public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
+
     private static final int NUM_BLOBS_PER_BLOCK = 127;
 
     private final Path dir;
@@ -20,11 +26,12 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         this(
                 dir,
                 LongLookup.DEFAULT_HASH_SIZE,
-                LongLookup.DEFAULT_WRITE_CACHE_SIZE
+                LongLookup.DEFAULT_WRITE_CACHE_SIZE,
+                DEFAULT_FLUSH_DELAY_SECONDS
         );
     }
 
-    public FileAppendOnlyStore(Path dir, int longLookupHashSize, int longLookupWriteCacheSize) {
+    public FileAppendOnlyStore(Path dir, int longLookupHashSize, int longLookupWriteCacheSize, int flushDelaySeconds) {
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
@@ -34,12 +41,12 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         this.dir = dir;
         lookups = new LongLookup(
                 dir.resolve("lookups"),
-                LongLookup.DEFAULT_FLUSH_DELAY_SECONDS,
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
         blobs = new Blobs(dir.resolve("blobs"));
+        AutoFlusher.register(flushDelaySeconds, this);
     }
 
     @Override
@@ -48,6 +55,16 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
         log.trace("appending {} bytes (blob pos {}) for key '{}' at block pos {}", value.length, blobPos, key, blockPos);
         blocks.append(blockPos, blobPos);
+    }
+
+    @Override
+    public void flush() {
+        log.info("flushing {}", dir);
+        // Flush lookups, then blocks, then blobs, since this is the access order of a read.
+        lookups.flush();
+        blocks.flush();
+        blobs.flush();
+        log.info("flushed {}", dir);
     }
 
     @Override
@@ -78,6 +95,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     @Override
     public void close() throws Exception {
         log.info("closing: " + dir);
+        AutoFlusher.deregister(this);
         try {
             blocks.close();
         } catch (Exception e) {

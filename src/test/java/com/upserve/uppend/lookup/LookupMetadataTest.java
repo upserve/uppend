@@ -24,7 +24,7 @@ public class LookupMetadataTest {
         Path dataPath = Paths.get("build/test/lookup-metadata-test/test-foo/data");
         Files.deleteIfExists(dataPath);
         Path metadataPath = dataPath.resolveSibling("meta");
-        LookupData lookupData = new LookupData(2, dataPath, metadataPath, 10);
+        LookupData lookupData = new LookupData(2, dataPath, metadataPath);
         lookupData.put(new LookupKey("00"), 1000);
         lookupData.put(new LookupKey("01"), 1001);
         lookupData.put(new LookupKey("02"), 1002);
