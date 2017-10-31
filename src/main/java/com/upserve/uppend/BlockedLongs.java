@@ -145,6 +145,35 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
+    public long lastValue(long pos) {
+        log.trace("reading last value from {} at {}", file, pos);
+        if (pos >= getPos()) {
+            return -1;
+        }
+        ByteBuffer buf = readBlock(pos);
+        if (buf == null) {
+            return -1;
+        }
+        buf.flip();
+        long numValuesLong = buf.getLong();
+        if (numValuesLong < 0) {
+            long nextPos = -numValuesLong;
+            return lastValue(nextPos); // TODO: consider tail pointer in first block
+        } else {
+            if (numValuesLong > valuesPerBlock) {
+                throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
+            }
+            int numValues = (int) numValuesLong;
+            if (numValues == 0) {
+                return -1;
+            }
+            int offset = numValues * 8; // one long for numValues itself
+            long value = buf.getLong(offset);
+            log.trace("got value from {} at {}: {}", file, pos, value);
+            return value;
+        }
+    }
+
     public void clear() {
         log.debug("clearing {}", file);
         try {
