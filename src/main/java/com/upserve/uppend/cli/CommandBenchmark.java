@@ -1,5 +1,6 @@
 package com.upserve.uppend.cli;
 
+import com.upserve.uppend.FileAppendOnlyStore;
 import com.upserve.uppend.cli.benchmark.*;
 import com.upserve.uppend.lookup.LongLookup;
 import picocli.CommandLine.*;
@@ -38,13 +39,16 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-c", "--cache-size"}, description = "Cache size")
     int cacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
 
+    @Option(names = {"-f", "--flush-delay"}, description = "Flush delay (sec)")
+    int flushDelay = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
+
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
     boolean help;
 
     @Override
     public Void call() throws Exception {
-        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize);
+        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize, flushDelay);
         benchmark.run();
         return null;
     }

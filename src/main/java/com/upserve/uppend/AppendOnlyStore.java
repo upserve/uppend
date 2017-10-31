@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import java.io.Flushable;
 import java.util.stream.Stream;
 
 /**
@@ -7,7 +8,7 @@ import java.util.stream.Stream;
  * retrieve them. Note the expectation that the byte arrays are appended to the
  * value, which can be thought of as an ever-growing list of byte arrays.
  */
-public interface AppendOnlyStore extends AutoCloseable {
+public interface AppendOnlyStore extends AutoCloseable, Flushable {
     /**
      * Append a byte array under a given key
      *
@@ -17,6 +18,13 @@ public interface AppendOnlyStore extends AutoCloseable {
      * @param value the value to append
      */
     void append(String partition, String key, byte[] value);
+
+    /**
+     * Flush any pending appends to durable storage. Will not return until
+     * the flush is completed.
+     */
+    @Override
+    void flush();
 
     /**
      * Read byte arrays that have been stored under a given key

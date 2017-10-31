@@ -10,11 +10,8 @@ import java.nio.file.*;
 import java.util.concurrent.atomic.*;
 
 @Slf4j
-public class Blobs implements AutoCloseable {
-    private static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
-
+public class Blobs implements AutoCloseable, Flushable {
     private final Path file;
-    private final int flushDelaySeconds;
 
     private final FileChannel blobs;
     private final AtomicLong blobPosition;
@@ -23,12 +20,7 @@ public class Blobs implements AutoCloseable {
     private final AtomicBoolean outDirty;
 
     public Blobs(Path file) {
-        this(file, DEFAULT_FLUSH_DELAY_SECONDS);
-    }
-
-    public Blobs(Path file, int flushDelaySeconds) {
         this.file = file;
-        this.flushDelaySeconds = flushDelaySeconds;
 
         Path dir = file.getParent();
         try {
@@ -42,7 +34,6 @@ public class Blobs implements AutoCloseable {
             blobs.position(blobs.size());
             out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(blobs)));
             blobPosition = new AtomicLong(blobs.size());
-            AutoFlusher.register(flushDelaySeconds, out);
             outDirty = new AtomicBoolean(false);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blob file: " + dir + "/blobs", e);
@@ -69,14 +60,7 @@ public class Blobs implements AutoCloseable {
     public byte[] read(long pos) {
         log.trace("reading from {} @ {}", file, pos);
         if (outDirty.get()) {
-            try {
-                synchronized (appendMonitor) {
-                    out.flush();
-                }
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to flush dirty output: " + file, e);
-            }
-            outDirty.set(false);
+            flush();
         }
         int size = readInt(pos);
         byte[] buf = new byte[size];
@@ -88,12 +72,11 @@ public class Blobs implements AutoCloseable {
     public void clear() {
         log.trace("clearing {}", file);
         try {
-            blobs.truncate(0);
-            blobPosition.set(0);
-            AutoFlusher.deregister(out);
-            out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file.toFile())));
-            AutoFlusher.register(flushDelaySeconds, out);
-            outDirty.set(false);
+            synchronized (appendMonitor) {
+                blobs.truncate(0);
+                blobPosition.set(0);
+                out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file.toFile())));
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
         }
@@ -104,10 +87,21 @@ public class Blobs implements AutoCloseable {
         log.trace("closing {}", file);
         synchronized (appendMonitor) {
             out.close();
-            AutoFlusher.deregister(out);
             outDirty.set(false);
         }
         blobs.close();
+    }
+
+    @Override
+    public void flush() {
+        try {
+            synchronized (appendMonitor) {
+                out.flush();
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to flush dirty output: " + file, e);
+        }
+        outDirty.set(false);
     }
 
     private int readInt(long pos) {
