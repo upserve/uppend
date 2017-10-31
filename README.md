@@ -8,14 +8,11 @@ views from event streams.
 
 Benefits:
 
-* Simple configuration of event schema and processing
-* Fast and compact serialization using [Colfer](https://github.com/pascaldekloe/colfer)
 * Optimized to be I/O constrained on modest hardware
  
 Tradeoffs:
 
 * Individual values are immutable
-* No ability list or range-scan keys
 * Assumes a single writer process
 
 
