@@ -12,8 +12,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.*;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 
 public abstract class AppendOnlyStoreTest {
     protected abstract AppendOnlyStore newStore();
@@ -101,6 +100,18 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition", "stream", "baz".getBytes());
         flush();
         assertArrayEquals(new String[] { "bar", "baz" }, store.read("partition", "stream").map(String::new).sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testReadLast() throws Exception {
+        store.append("partition", "stream", "foo".getBytes());
+        store.append("partition", "stream", "bar".getBytes());
+        store.append("partition", "stream", "baz".getBytes());
+        flush();
+        byte[] valueBytes = store.readLast("partition", "stream");
+        assertNotNull(valueBytes);
+        String value = new String(valueBytes);
+        assertEquals("baz", value);
     }
 
     @Test
