@@ -27,14 +27,25 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
     void flush();
 
     /**
-     * Read byte arrays that have been stored under a given key
+     * Read byte arrays that have been stored under a given key in parallel
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
-     * @return a stream of the stored byte arrays
+     * @return a parallel stream of the stored byte arrays
      */
     Stream<byte[]> read(String partition, String key);
+
+    /**
+     * Read byte arrays that have been stored under a given key in the order
+     * they were stored in
+     *
+     * @param partition the partition under which to retrieve
+     * @param key the key under which to retrieve
+     * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of the stored byte arrays in storage order
+     */
+    Stream<byte[]> readSequential(String partition, String key);
 
     /**
      * Enumerate the keys in the data store
