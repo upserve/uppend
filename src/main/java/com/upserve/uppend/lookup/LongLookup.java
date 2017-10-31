@@ -13,14 +13,7 @@ import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 
 @Slf4j
-public class LongLookup implements AutoCloseable {
-    /**
-     * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
-     * automatically flushing open {@link LookupData} entries in the write
-     * cache.
-     */
-    public static final int DEFAULT_FLUSH_DELAY_SECONDS = 60;
-
+public class LongLookup implements AutoCloseable, Flushable {
     /**
      * DEFAULT_HASH_SIZE is the number of hash elements per partition. Key
      * values hashed and modded by this number will be represented as paths
@@ -40,7 +33,6 @@ public class LongLookup implements AutoCloseable {
     public static final int DEFAULT_WRITE_CACHE_SIZE = DEFAULT_HASH_SIZE * 1;
 
     private final Path dir;
-    private final int flushDelaySeconds;
     private final int hashSize;
     private final int hashBytes;
     private final int hashFinalByteMask;
@@ -49,10 +41,10 @@ public class LongLookup implements AutoCloseable {
     private final LinkedHashMap<Path, LookupData> writeCache;
 
     public LongLookup(Path dir) {
-        this(dir, DEFAULT_FLUSH_DELAY_SECONDS, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
+        this(dir, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
     }
 
-    public LongLookup(Path dir, int flushDelaySeconds, int hashSize, int writeCacheSize) {
+    public LongLookup(Path dir, int hashSize, int writeCacheSize) {
         if (hashSize < 1) {
             throw new IllegalArgumentException("hashSize must be >= 1");
         }
@@ -69,8 +61,6 @@ public class LongLookup implements AutoCloseable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
-
-        this.flushDelaySeconds = flushDelaySeconds;
 
         this.hashSize = hashSize;
         String hashBinaryString = Integer.toBinaryString(hashSize - 1);
@@ -133,8 +123,7 @@ public class LongLookup implements AutoCloseable {
                 return new LookupData(
                         parseKeyLengthFromPath(lenPath),
                         lenPath.resolve("data"),
-                        lenPath.resolve("meta"),
-                        flushDelaySeconds
+                        lenPath.resolve("meta")
                 );
             });
         }
@@ -208,6 +197,25 @@ public class LongLookup implements AutoCloseable {
         }
         lookupDataPhaser.arriveAndAwaitAdvance();
         log.trace("closed {}", dir);
+    }
+
+    @Override
+    public void flush() {
+        synchronized (writeCache) {
+            if (log.isTraceEnabled()) {
+                log.trace("flushing {} (~{} entries)", dir, writeCache.size());
+            }
+            writeCache.forEach((path, data) -> {
+                log.trace("cache flushing {}", path);
+                try {
+                    data.flush();
+                } catch (IOException e) {
+                    log.error("unable to flush " + path, e);
+                    throw new UncheckedIOException("unable to flush " + path, e);
+                }
+            });
+        }
+        log.trace("flushed {}", dir);
     }
 
     public void clear() {

@@ -12,7 +12,7 @@ import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
 @Slf4j
-public class BlockedLongs implements AutoCloseable {
+public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
     private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
 
@@ -157,7 +157,7 @@ public class BlockedLongs implements AutoCloseable {
     }
 
     @Override
-    public void close() throws Exception {
+    public synchronized void close() throws Exception {
         log.trace("closing {}", file);
         for (MappedByteBuffer page : pages) {
             if (page != null) {
@@ -167,6 +167,17 @@ public class BlockedLongs implements AutoCloseable {
         blocks.close();
         posBuf.force();
         blocksPos.close();
+    }
+
+    @Override
+    public synchronized void flush() {
+        log.trace("flushing {}", file);
+        for (MappedByteBuffer page : pages) {
+            if (page != null) {
+                page.force();
+            }
+        }
+        posBuf.force();
     }
 
     private ByteBuffer readBlock(long pos) {
