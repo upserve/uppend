@@ -47,6 +47,14 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
      */
     Stream<byte[]> readSequential(String partition, String key);
 
+
+    /**
+     * Read the last byte array that was stored under a given key
+     *
+     * @return the stored byte array, or null if none
+     */
+    byte[] readLast(String partition, String key);
+
     /**
      * Enumerate the keys in the data store
      *

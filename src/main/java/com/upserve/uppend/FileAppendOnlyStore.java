@@ -80,6 +80,14 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
                 .mapToObj(blobs::read);
     }
 
+    public byte[] readLast(String partition, String key) {
+        long pos = blockLastValue(partition, key);
+        if (pos == -1) {
+            return null;
+        }
+        return blobs.read(pos);
+    }
+
     @Override
     public Stream<String> keys(String partition) {
         return lookups.keys(partition);
@@ -120,7 +128,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
     }
 
     private LongStream blockValues(String partition, String key) {
-        log.trace("reading key: {}", key);
+        log.trace("reading block values for key: {}", key);
         long blockPos = lookups.get(partition, key);
         if (blockPos == -1) {
             log.trace("key not found: {}", key);
@@ -128,5 +136,16 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
         }
         log.trace("streaming values at block pos {} for key: {}", blockPos, key);
         return blocks.values(blockPos);
+    }
+
+    private long blockLastValue(String partition, String key) {
+        log.trace("reading last valye for key: {}", key);
+        long blockPos = lookups.get(partition, key);
+        if (blockPos == -1) {
+            log.trace("key not found: {}", key);
+            return -1;
+        }
+        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
+        return blocks.lastValue(blockPos);
     }
 }
