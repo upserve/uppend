@@ -22,10 +22,10 @@ import static org.junit.Assert.*;
 public class DocExamplesTests {
     @Test
     public void testReadme01() throws IOException {
-        SafeDeleting.removeTempPath(Paths.get("tmp/uppend-test"));
+        SafeDeleting.removeTempPath(Paths.get("build/tmp-db"));
 
         // *** START SNIPPET ***
-        AppendOnlyStore db = Uppend.fileStore("tmp/uppend").build();
+        AppendOnlyStore db = Uppend.fileStore("build/tmp-db").build();
 
         db.append("my-partition", "my-key", "value-1".getBytes());
         db.append("my-partition", "my-key", "value-2".getBytes());
@@ -40,6 +40,6 @@ public class DocExamplesTests {
 
         assertEquals("value-1, value-2", values);
 
-        SafeDeleting.removeTempPath(Paths.get("tmp/uppend-test"));
+        SafeDeleting.removeTempPath(Paths.get("build/tmp-db"));
     }
 }

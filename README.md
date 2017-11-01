@@ -28,7 +28,7 @@ compile 'com.upserve:uppend:1.0.0'
 Hello world:
 
 ```java
-AppendOnlyStore db = Uppend.fileStore("tmp/uppend").build();
+AppendOnlyStore db = Uppend.fileStore("build/tmp-db").build();
 
 db.append("my-partition", "my-key", "value-1".getBytes());
 db.append("my-partition", "my-key", "value-2".getBytes());
