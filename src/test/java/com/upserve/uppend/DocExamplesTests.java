@@ -30,8 +30,6 @@ public class DocExamplesTests {
         db.append("my-partition", "my-key", "value-1".getBytes());
         db.append("my-partition", "my-key", "value-2".getBytes());
 
-        db.flush();
-
         String values = db.readSequential("my-partition", "my-key")
                 .map(String::new)
                 .collect(Collectors.joining(", "));
