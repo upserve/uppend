@@ -128,10 +128,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 values[i] = buf.getLong();
             }
             return LongStream.concat(Arrays.stream(values), values(nextPos));
+        } else if (numValuesLong > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
+        } else if (numValuesLong == 0) {
+            return LongStream.empty();
         } else {
-            if (numValuesLong > valuesPerBlock) {
-                throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
-            }
             int numValues = (int) numValuesLong;
             long[] values = new long[numValues];
             for (int i = 0; i < numValues; i++) {
@@ -159,14 +160,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (numValuesLong < 0) {
             long nextPos = -numValuesLong;
             return lastValue(nextPos); // TODO: consider tail pointer in first block
+        } else if (numValuesLong > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
+        } else if (numValuesLong == 0) {
+            return -1;
         } else {
-            if (numValuesLong > valuesPerBlock) {
-                throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
-            }
             int numValues = (int) numValuesLong;
-            if (numValues == 0) {
-                return -1;
-            }
             int offset = numValues * 8; // one long for numValues itself
             long value = buf.getLong(offset);
             log.trace("got value from {} at {}: {}", file, pos, value);
