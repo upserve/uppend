@@ -17,13 +17,13 @@ Maven:
 <dependency>
     <groupId>com.upserve</groupId>
     <artifactId>uppend</artifactId>
-    <version>1.0.0</version>
+    <version>0.0.1</version>
 </dependency>
 ```
 
 Gradle:
 ```gradle
-compile 'com.upserve:uppend:1.0.0'
+compile 'com.upserve:uppend:0.0.1'
 ```
 
 Hello world:
