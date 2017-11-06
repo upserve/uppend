@@ -33,7 +33,6 @@ public class LongLookup implements AutoCloseable, Flushable {
     public static final int DEFAULT_WRITE_CACHE_SIZE = DEFAULT_HASH_SIZE * 1;
 
     private final Path dir;
-    private final int hashSize;
     private final int hashBytes;
     private final int hashFinalByteMask;
     private final HashFunction hashFunction;
@@ -62,7 +61,6 @@ public class LongLookup implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
-        this.hashSize = hashSize;
         String hashBinaryString = Integer.toBinaryString(hashSize - 1);
         hashBytes = (hashBinaryString.length() + 7) / 8;
         hashFinalByteMask = (1 << (hashBinaryString.length() % 8)) - 1;
@@ -95,11 +93,25 @@ public class LongLookup implements AutoCloseable, Flushable {
         };
     }
 
+    /**
+     * Get the value associated with the given partition and key
+     *
+     * @param partition the partition to look up
+     * @param key the key to look up
+     * @return the value for the partition and key, or -1 if not found
+     */
     public long get(String partition, String key) {
         validatePartition(partition);
 
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
+
+        LookupData data = loadFromWriteCacheIfExists(lenPath);
+        if (data != null) {
+            long value = data.get(lookupKey);
+            return value == Long.MIN_VALUE ? -1 : value;
+        }
+
         Path metaPath = lenPath.resolve("meta");
         if (!Files.exists(metaPath)) {
             log.trace("no metadata for key {} at path {}", key, metaPath);
@@ -126,6 +138,12 @@ public class LongLookup implements AutoCloseable, Flushable {
                         lenPath.resolve("meta")
                 );
             });
+        }
+    }
+
+    private LookupData loadFromWriteCacheIfExists(Path lenPath) {
+        synchronized (writeCache) {
+            return writeCache.get(lenPath);
         }
     }
 
