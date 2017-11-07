@@ -1,3 +1,12 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.bmuschko:gradle-nexus-plugin:2.3.1'
+    }
+}
+
 plugins {
     id 'com.palantir.git-version' version '0.9.1'
     id 'nebula.lint' version '6.7.0'
@@ -9,7 +18,7 @@ version gitVersion()
 
 group 'com.upserve'
 
-description = """Uppend: fast, append-only key-value store"""
+description = """Uppend: fast, append-only key-multivalue store"""
 
 task wrapper(type: Wrapper) {
     gradleVersion = '3.3'
@@ -20,6 +29,7 @@ gradleLint.rules += 'unused-dependency'
 apply plugin: 'java'
 apply plugin: 'maven'
 apply plugin: 'jacoco'
+apply plugin: 'com.bmuschko.nexus'
 
 sourceCompatibility = 1.8
 targetCompatibility = 1.8
@@ -83,3 +93,49 @@ jacocoTestReport {
 }
 
 check.dependsOn jacocoTestReport
+
+modifyPom {
+    project {
+        name 'Uppend'
+        description 'Uppend is an append-only, key-multivalue store.'
+        url 'https://github.com/upserve/uppend'
+        inceptionYear '2017'
+
+        scm {
+            url 'https://github.com/upserve/uppend'
+            connection 'scm:https://upserve@github.com/upserve/uppend.git'
+            developerConnection 'scm:git://github.com/upserve/uppend.git'
+        }
+
+        licenses {
+            license {
+                name 'The MIT License'
+                url 'https://opensource.org/licenses/MIT'
+                distribution 'repo'
+            }
+        }
+
+        developers {
+            developer {
+                id 'bfulton'
+                name 'Bright Fulton'
+                url 'https://github.com/bfulton'
+            }
+            developer {
+                id 'dstuebe'
+                name 'David Stuebe'
+                url 'https://github.com/dstuebe'
+            }
+            developer {
+                id 'jazzdan'
+                name 'Dan Miller'
+                url 'https://github.com/jazzdan'
+            }
+            developer {
+                id 'kbarrette'
+                name 'Keith Barrette'
+                url 'https://github.com/kbarrette'
+            }
+        }
+    }
+}
