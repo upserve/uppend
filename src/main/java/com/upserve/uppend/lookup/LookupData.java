@@ -127,9 +127,29 @@ public class LookupData implements AutoCloseable, Flushable {
         long newValue = allocateLongFunc.getAsLong();
         long existingValue = putIfNotExists(key, newValue);
         if (existingValue != newValue) {
-            log.warn("lost race to allocate, wasted new value " + newValue + " for key: " + key);
+            throw new IllegalStateException("race while putting (if not exists) " + key + "=<lambda> in " + path);
         }
         return existingValue;
+    }
+
+    public synchronized long increment(LookupKey key, long delta) {
+        log.trace("incrementing {} by {} in {}", key, delta, path);
+        long value = mem.getLong(key);
+        if (value == Long.MIN_VALUE) {
+            value = delta;
+            long existingValue = putIfNotExists(key, value);
+            if (existingValue != value) {
+                throw new IllegalStateException("race while incrementing new key " + key + " by " + delta + " in " + path);
+            }
+        } else {
+            int index = memOrder.getInt(key);
+            if (index == Integer.MIN_VALUE) {
+                throw new IllegalStateException("unknown index order for existing key: " + key);
+            }
+            value += delta;
+            set(index, value);
+        }
+        return value;
     }
 
     private void append(LookupKey key, long value) {

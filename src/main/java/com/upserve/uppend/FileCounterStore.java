@@ -42,6 +42,13 @@ public class FileCounterStore implements CounterStore, Flushable {
         );
         AutoFlusher.register(flushDelaySeconds, this);
     }
+
+    @Override
+    public long set(String partition, String key, long value) {
+        log.trace("setting {}={} in partition '{}'", key, value, partition);
+        return lookup.put(partition, key, value);
+    }
+
     @Override
     public long increment(String partition, String key) {
         return increment(partition, key, 1);
@@ -50,8 +57,7 @@ public class FileCounterStore implements CounterStore, Flushable {
     @Override
     public long increment(String partition, String key, long delta) {
         log.trace("incrementing by {} key '{}' in partition '{}'", delta, key, partition);
-        //return lookup.increment(partition, key, delta);
-        return -1; // TODO: fix
+        return lookup.increment(partition, key, delta);
     }
 
     @Override

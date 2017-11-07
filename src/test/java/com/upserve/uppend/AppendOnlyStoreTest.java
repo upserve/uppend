@@ -1,23 +1,17 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.lookup.LongLookup;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.rules.ExpectedException;
 
-import java.nio.ByteBuffer;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
 public abstract class AppendOnlyStoreTest {
     protected abstract AppendOnlyStore newStore();
 
-    protected AppendOnlyStore store = newStore();
+    private AppendOnlyStore store;
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -227,12 +221,12 @@ public abstract class AppendOnlyStoreTest {
         tester(1, 0);
     }
 
-    public void tester(int number, int size){
+    private void tester(int number, int size){
         String key = "foobar";
         String partition = "partition";
 
         byte[] bytes;
-        ArrayList<byte[]> inputBytes = new ArrayList();
+        ArrayList<byte[]> inputBytes = new ArrayList<>();
         for(int i=0; i<number; i++){
             bytes = genBytes(size);
             inputBytes.add(bytes);
@@ -278,17 +272,11 @@ public abstract class AppendOnlyStoreTest {
                 return v1 < v2 ? -1 : 1;
             }
         }
-        if (o1.length == o2.length) {
-            return 0;
-        }
-        if (o1.length < o2.length) {
-            return -1;
-        }
-        return 1;
+        return Integer.compare(o1.length, o2.length);
     }
 
     private byte[] genBytes(int len){
-        byte[] bytes = new byte[12];
+        byte[] bytes = new byte[len];
         new Random().nextBytes(bytes);
         return bytes;
     }

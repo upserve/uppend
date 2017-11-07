@@ -121,19 +121,26 @@ public class LongLookup implements AutoCloseable, Flushable {
         return metadata.readData(lenPath.resolve("data"), lookupKey);
     }
 
-    public void put(String partition, String key, long value) {
+    public long put(String partition, String key, long value) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
-        loadFromWriteCache(lenPath).put(lookupKey, value);
+        return loadFromWriteCache(lenPath).put(lookupKey, value);
     }
 
     public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
-        //noinspection ConstantConditions
         return loadFromWriteCache(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
+    }
+
+    public long increment(String partition, String key, long delta) {
+        validatePartition(partition);
+        LookupKey lookupKey = new LookupKey(key);
+        Path lenPath = hashAndLengthPath(partition, lookupKey);
+        return loadFromWriteCache(lenPath).increment(lookupKey, delta);
+
     }
 
     public Stream<String> keys(String partition) {
@@ -160,6 +167,9 @@ public class LongLookup implements AutoCloseable, Flushable {
     public Stream<String> partitions() {
         Stream<Path> files;
         try {
+            if (!Files.exists(dir)) {
+                return Stream.empty();
+            }
             files = Files.walk(dir, 1);
         } catch (IOException e) {
             throw new UncheckedIOException("could not walk dir " + dir, e);

@@ -8,6 +8,17 @@ import java.util.stream.Stream;
  */
 public interface CounterStore extends AutoCloseable, Flushable {
     /**
+     * Set the counter under a given partition and key, to the given value
+     *
+     * @param partition the partition to increment under
+     * @param key the key to increment under
+     * @param value the value to set
+     * @throws IllegalArgumentException if partition is invalid
+     * @return the old value of the counter or 0 if it was previously unset
+     */
+    long set(String partition, String key, long value);
+
+    /**
      * Increment by 1 the counter under a given partition and key, whose value
      * is initialized to 0
      *
