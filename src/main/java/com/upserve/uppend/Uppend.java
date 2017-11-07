@@ -20,13 +20,22 @@ public final class Uppend {
     private Uppend() {
     }
 
-    public static FileAppendOnlyStoreBuilder fileStore(String path) {
-        return fileStore(Paths.get(path));
+    public static FileAppendOnlyStoreBuilder fileAppendOnlyStoreBuilder(String path) {
+        return fileAppendOnlyStoreBuilder(Paths.get(path));
     }
 
-    public static FileAppendOnlyStoreBuilder fileStore(Path path) {
+    public static FileAppendOnlyStoreBuilder fileAppendOnlyStoreBuilder(Path path) {
         return new FileAppendOnlyStoreBuilder().withDir(path);
     }
+
+    public static FileIncrementOnlyStoreBuilder fileIncrementOnlyStoreBuilder(String path) {
+        return fileIncrementOnlyStoreBuilder(Paths.get(path));
+    }
+
+    public static FileIncrementOnlyStoreBuilder fileIncrementOnlyStoreBuilder(Path path) {
+        return new FileIncrementOnlyStoreBuilder().withDir(path);
+    }
+
 
     public static void main(String ... args) throws Exception {
         Cli.main(args);

@@ -10,7 +10,7 @@ import java.util.stream.Stream;
  */
 public interface AppendOnlyStore extends AutoCloseable, Flushable {
     /**
-     * Append a byte array under a given key
+     * Append a byte array under a given partition and key
      *
      * @param partition the partition to store under
      * @param key the key to store under
@@ -27,7 +27,8 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
     void flush();
 
     /**
-     * Read byte arrays that have been stored under a given key in parallel
+     * Read byte arrays that have been stored under a given partition and key in
+     * parallel
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
@@ -37,8 +38,8 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
     Stream<byte[]> read(String partition, String key);
 
     /**
-     * Read byte arrays that have been stored under a given key in the order
-     * they were stored in
+     * Read byte arrays that have been stored under a given partition and key in
+     * the order they were stored
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
@@ -49,7 +50,7 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
 
 
     /**
-     * Read the last byte array that was stored under a given key
+     * Read the last byte array that was stored under a given partition and key
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
@@ -59,7 +60,7 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
     byte[] readLast(String partition, String key);
 
     /**
-     * Enumerate the keys in the data store
+     * Enumerate the keys for a given partition
      *
      * @param partition the partition under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
