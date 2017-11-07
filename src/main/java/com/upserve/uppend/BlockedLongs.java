@@ -8,6 +8,7 @@ import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.Arrays;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
@@ -28,6 +29,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     private final FileChannel blocksPos;
     private final MappedByteBuffer posBuf;
+
+    private final AtomicBoolean outDirty;
 
     public BlockedLongs(Path file, int valuesPerBlock) {
         this.file = file;
@@ -74,6 +77,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
+
+        outDirty = new AtomicBoolean(false);
     }
 
     public synchronized long allocate() {
@@ -81,6 +86,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         synchronized (posBuf) {
             long pos = getPos();
             putPos(pos + blockSize);
+            outDirty.set(true);
             return pos;
         }
     }
@@ -106,12 +112,16 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 writeLong(valuePos, val);
                 writeLong(pos, numValuesLong + 1);
             }
+            outDirty.set(true);
         }
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
     public LongStream values(long pos) {
         log.trace("streaming values from {} at {}", file, pos);
+        if (outDirty.get()) {
+            flush();
+        }
         if (pos >= getPos()) {
             return LongStream.empty();
         }
@@ -148,6 +158,9 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);
+        if (outDirty.get()) {
+            flush();
+        }
         if (pos >= getPos()) {
             return -1;
         }
@@ -173,12 +186,13 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
-    public void clear() {
+    public synchronized void clear() {
         log.debug("clearing {}", file);
         try {
             blocks.truncate(0);
             putPos(0);
             Arrays.fill(pages, null);
+            outDirty.set(true);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
         }
@@ -195,6 +209,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         blocks.close();
         posBuf.force();
         blocksPos.close();
+        outDirty.set(false);
     }
 
     @Override
@@ -206,6 +221,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             }
         }
         posBuf.force();
+        outDirty.set(false);
     }
 
     private ByteBuffer readBlock(long pos) {

@@ -1,20 +1,12 @@
 Uppend: an append-only, key-multivalue store
 ============================================
-[![Build Status](https://travis-ci.com/upserve/uppend.svg?token=***REMOVED***&branch=add_travis_yml)](https://travis-ci.com/upserve/uppend)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.upserve/uppend/badge.svg)](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.upserve%22%20AND%20a%3Auppend)
+[![Build Status](https://img.shields.io/travis/upserve/uppend/master.svg?style=flat-square)](https://travis-ci.org/upserve/uppend)
+[![Release Artifact](https://img.shields.io/maven-central/v/com.upserve/uppend.svg?style=flat-square)](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.upserve%22%20AND%20a%3Auppend)
+[![Test Coverage](https://img.shields.io/codecov/c/github/upserveuppend/master.svg?style=flat-square)](https://codecov.io/github/upserve/uppend?branch=master)
 
-Uppend is an append-only, key-multivalue store, suitable for creating analytics
-views from event streams.
-
-Benefits:
-
-* Optimized to be I/O constrained on modest hardware
-
-Tradeoffs:
-
-* Individual values are immutable
-* Assumes a single writer process
-
+Uppend is an append-only, key-multivalue store which is suitable for streaming
+event aggregation. It assumes a single writer process, and appended values are
+immutable.
 
 Use
 ---
@@ -25,22 +17,27 @@ Maven:
 <dependency>
     <groupId>com.upserve</groupId>
     <artifactId>uppend</artifactId>
-    <version>1.0.0</version>
+    <version>0.0.1</version>
 </dependency>
 ```
 
 Gradle:
 ```gradle
-compile 'com.upserve:uppend:1.0.0'
+compile 'com.upserve:uppend:0.0.1'
 ```
 
 Hello world:
 
 ```java
-//import com.upserve.uppend.*
-DB db = DBMaker.memoryDB().make();
-ConcurrentMap map = db.hashMap("map").make();
-map.put("something", "here");
+AppendOnlyStore db = Uppend.fileStore("build/tmp-db").build();
+
+db.append("my-partition", "my-key", "value-1".getBytes());
+db.append("my-partition", "my-key", "value-2".getBytes());
+
+String values = db.readSequential("my-partition", "my-key")
+        .map(String::new)
+        .collect(Collectors.joining(", "));
+// value-1, value-2
 ```
 
 Development

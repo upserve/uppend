@@ -75,6 +75,11 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
     }
 
     @Override
+    public Stream<byte[]> readSequential(String partition, String key) {
+        return blockValues(partition, key)
+                .mapToObj(blobs::read);
+    }
+
     public byte[] readLast(String partition, String key) {
         long pos = blockLastValue(partition, key);
         if (pos == -1) {

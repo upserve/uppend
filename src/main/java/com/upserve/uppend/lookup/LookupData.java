@@ -1,6 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.upserve.uppend.util.*;
+import it.unimi.dsi.fastutil.Function;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -57,6 +58,17 @@ public class LookupData implements AutoCloseable, Flushable {
         }
 
         isClosed = new AtomicBoolean(false);
+    }
+
+    /**
+     * Return the value associated with the given key
+     *
+     * @param key the key to look up
+     * @return the value associated with the key, or {@code Long.MIN_VALUE} if
+     *         the key was not found
+     */
+    public synchronized long get(LookupKey key) {
+        return mem.getLong(key);
     }
 
     public synchronized void put(LookupKey key, long value) {

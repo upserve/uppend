@@ -60,7 +60,6 @@ public abstract class AppendOnlyStoreTest {
 
         byte[] bytes = genBytes(12);
         store.append("partition", key, bytes);
-        flush();
         store.clear();
         assertEquals(0, store.read("partition", key).count());
     }
@@ -98,7 +97,6 @@ public abstract class AppendOnlyStoreTest {
     public void testReadStream() throws Exception {
         store.append("partition", "stream", "bar".getBytes());
         store.append("partition", "stream", "baz".getBytes());
-        flush();
         assertArrayEquals(new String[] { "bar", "baz" }, store.read("partition", "stream").map(String::new).sorted().toArray(String[]::new));
     }
 
@@ -107,7 +105,6 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition", "stream", "foo".getBytes());
         store.append("partition", "stream", "bar".getBytes());
         store.append("partition", "stream", "baz".getBytes());
-        flush();
         byte[] valueBytes = store.readLast("partition", "stream");
         assertNotNull(valueBytes);
         String value = new String(valueBytes);
@@ -119,7 +116,6 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition", "key", "bar".getBytes());
         store.append("partition_bar", "key", "baz".getBytes());
         store.append("partition2", "key", "bap".getBytes());
-        flush();
         assertArrayEquals(new String[] { "bar" }, store.read("partition", "key").map(String::new).toArray(String[]::new));
         assertArrayEquals(new String[] { "baz" }, store.read("partition_bar", "key").map(String::new).toArray(String[]::new));
         assertArrayEquals(new String[] { "bap" }, store.read("partition2", "key").map(String::new).toArray(String[]::new));
@@ -295,14 +291,5 @@ public abstract class AppendOnlyStoreTest {
         byte[] bytes = new byte[12];
         new Random().nextBytes(bytes);
         return bytes;
-    }
-
-    private void flush() throws Exception {
-        try {
-            store.close();
-        } catch (Exception e){
-            throw new AssertionError("close should not raise: {}", e);
-        }
-        store = newStore();
     }
 }
