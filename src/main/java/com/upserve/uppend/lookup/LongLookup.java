@@ -128,25 +128,6 @@ public class LongLookup implements AutoCloseable, Flushable {
         loadFromWriteCache(lenPath).put(lookupKey, value);
     }
 
-    private LookupData loadFromWriteCache(Path lenPath) {
-        synchronized (writeCache) {
-            return writeCache.computeIfAbsent(lenPath, path -> {
-                log.trace("cache loading {}", lenPath);
-                return new LookupData(
-                        parseKeyLengthFromPath(lenPath),
-                        lenPath.resolve("data"),
-                        lenPath.resolve("meta")
-                );
-            });
-        }
-    }
-
-    private LookupData loadFromWriteCacheIfExists(Path lenPath) {
-        synchronized (writeCache) {
-            return writeCache.get(lenPath);
-        }
-    }
-
     public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
@@ -246,6 +227,25 @@ public class LongLookup implements AutoCloseable, Flushable {
             SafeDeleting.removeDirectory(tmpDir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to delete lookups: " + dir, e);
+        }
+    }
+
+    private LookupData loadFromWriteCache(Path lenPath) {
+        synchronized (writeCache) {
+            return writeCache.computeIfAbsent(lenPath, path -> {
+                log.trace("cache loading {}", lenPath);
+                return new LookupData(
+                        parseKeyLengthFromPath(lenPath),
+                        lenPath.resolve("data"),
+                        lenPath.resolve("meta")
+                );
+            });
+        }
+    }
+
+    private LookupData loadFromWriteCacheIfExists(Path lenPath) {
+        synchronized (writeCache) {
+            return writeCache.get(lenPath);
         }
     }
 

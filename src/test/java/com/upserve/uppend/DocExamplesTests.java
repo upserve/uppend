@@ -25,7 +25,7 @@ public class DocExamplesTests {
         SafeDeleting.removeTempPath(Paths.get("build/tmp-db"));
 
         // *** START SNIPPET ***
-        AppendOnlyStore db = Uppend.fileAppendOnlyStoreBuilder("build/tmp-db").build();
+        AppendOnlyStore db = Uppend.store("build/tmp-db").build();
 
         db.append("my-partition", "my-key", "value-1".getBytes());
         db.append("my-partition", "my-key", "value-2".getBytes());

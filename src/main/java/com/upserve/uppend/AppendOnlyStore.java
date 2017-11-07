@@ -4,9 +4,9 @@ import java.io.Flushable;
 import java.util.stream.Stream;
 
 /**
- * Defines the minimum interface required to add byte arrays under a key, and to
- * retrieve them. Note the expectation that the byte arrays are appended to the
- * value, which can be thought of as an ever-growing list of byte arrays.
+ * Add byte arrays under a key and partition, and retrieve them. Note the
+ * expectation that the byte arrays are appended to the value, which is an
+ * ever-growing list of byte arrays.
  */
 public interface AppendOnlyStore extends AutoCloseable, Flushable {
     /**
@@ -69,7 +69,7 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
     Stream<String> keys(String partition);
 
     /**
-     * Enumerate the partition in the data store
+     * Enumerate the partitions in the data store
      *
      * @return a stream of string partition
      */

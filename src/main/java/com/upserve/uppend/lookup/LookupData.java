@@ -1,7 +1,6 @@
 package com.upserve.uppend.lookup;
 
 import com.upserve.uppend.util.*;
-import it.unimi.dsi.fastutil.Function;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.extern.slf4j.Slf4j;
 
@@ -10,8 +9,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.LongSupplier;
+import java.util.concurrent.atomic.*;
+import java.util.function.*;
 import java.util.stream.*;
 
 @Slf4j
@@ -21,9 +20,10 @@ public class LookupData implements AutoCloseable, Flushable {
     private final int keyLength;
     private final Path path;
     private final Path metadataPath;
-
-    private FileChannel chan;
-    private DataOutputStream out;
+    private final Supplier<ByteBuffer> recordBufSupplier;
+    private final Supplier<ByteBuffer> longValueBufSupplier;
+    private final FileChannel chan;
+    private final AtomicLong chanSize;
 
     private Object2LongSortedMap<LookupKey> mem;
     private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
@@ -43,13 +43,15 @@ public class LookupData implements AutoCloseable, Flushable {
             }
         }
 
+        recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(keyLength + 8);
+        longValueBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(8);
+
         try {
             chan = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            chan.position(chan.size());
+            chanSize = new AtomicLong(chan.size());
         } catch (IOException e) {
             throw new UncheckedIOException("can't open file: " + path, e);
         }
-        out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(chan), 8192));
 
         try {
             init();
@@ -71,17 +73,33 @@ public class LookupData implements AutoCloseable, Flushable {
         return mem.getLong(key);
     }
 
-    public synchronized void put(LookupKey key, long value) {
+    /**
+     * Set the value associated with the given key and return the prior value
+     *
+     * @param key the key whose value to set
+     * @param value the new value set
+     * @return the old value associated with the key, or {@code Long.MIN_VALUE}
+     *         if the entry didn't exist yet
+     */
+    public synchronized long put(LookupKey key, long value) {
         log.trace("putting {}={} in {}", key, value, path);
-        long existingValue = mem.put(key, value);
+        final long existingValue = mem.put(key, value);
+
         if (existingValue != Long.MIN_VALUE) {
-            throw new IllegalStateException("can't put same key ('" + key + "') twice: new value = " + value + ", existing value = " + existingValue);
+            int index = memOrder.getInt(key);
+            if (index == Integer.MIN_VALUE) {
+                throw new IllegalStateException("unknown index order for existing key: " + key);
+            }
+            set(index, value);
+        } else {
+            int index = memOrder.size();
+            if (memOrder.put(key, index) != Integer.MIN_VALUE) {
+                throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
+            }
+            append(key, value);
         }
-        int pos = memOrder.size();
-        if (memOrder.put(key, pos) != Integer.MIN_VALUE) {
-            throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
-        }
-        append(key, value);
+
+        return existingValue;
     }
 
     public synchronized long putIfNotExists(LookupKey key, long value) {
@@ -90,9 +108,9 @@ public class LookupData implements AutoCloseable, Flushable {
         if (existingValue != Long.MIN_VALUE) {
             return existingValue;
         }
-        int pos = memOrder.size();
-        if (memOrder.put(key, pos) != Integer.MIN_VALUE) {
-            throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
+        int index = memOrder.size();
+        if (memOrder.put(key, index) != Integer.MIN_VALUE) {
+            throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
         }
         append(key, value);
         return value;
@@ -120,19 +138,35 @@ public class LookupData implements AutoCloseable, Flushable {
             throw new IllegalStateException("unexpected key length: expected " + keyLength + ", got " + keyBytes.length);
         }
         try {
-            out.write(keyBytes);
-            out.writeLong(value);
+            long pos = chanSize.getAndAdd(keyLength + 8);
+            ByteBuffer buf = recordBufSupplier.get();
+            buf.put(keyBytes);
+            buf.putLong(value);
+            buf.flip();
+            chan.write(buf, pos);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to write key: " + key, e);
         }
     }
+
+    private void set(int index, long value) {
+        try {
+            ByteBuffer buf = longValueBufSupplier.get();
+            buf.putLong(value);
+            buf.flip();
+            chan.write(buf, index * (keyLength + 8) + keyLength);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to write value (" + value + ") at index: " + index, e);
+        }
+    }
+
 
     @Override
     public synchronized void close() throws IOException {
         log.trace("closing lookup data at {} (~{} entries)", path, mem.size());
         if (isClosed.compareAndSet(false, true)) {
             flush();
-            out.close();
+            chan.close();
             log.trace("closed lookup data at {}", path);
         } else {
             log.warn("lookup data already closed: " + path, new RuntimeException("was closed") /* get stack */);
@@ -142,7 +176,7 @@ public class LookupData implements AutoCloseable, Flushable {
     @Override
     public synchronized void flush() throws IOException {
         log.trace("flushing lookup and metadata at {}", metadataPath);
-        out.flush();
+        chan.force(true);
         LookupMetadata metadata = generateMetadata();
         metadata.writeTo(metadataPath);
         log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);

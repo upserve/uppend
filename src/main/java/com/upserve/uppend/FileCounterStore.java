@@ -8,7 +8,7 @@ import java.nio.file.*;
 import java.util.stream.Stream;
 
 @Slf4j
-public class FileIncrementOnlyStore implements IncrementOnlyStore, Flushable {
+public class FileCounterStore implements CounterStore, Flushable {
     /**
      * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
      * automatically flushing writes.
@@ -16,9 +16,9 @@ public class FileIncrementOnlyStore implements IncrementOnlyStore, Flushable {
     public static final int DEFAULT_FLUSH_DELAY_SECONDS = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
 
     private final Path dir;
-    private final LongLookup lookups;
+    private final LongLookup lookup;
 
-    public FileIncrementOnlyStore(Path dir) {
+    public FileCounterStore(Path dir) {
         this(
                 dir,
                 LongLookup.DEFAULT_HASH_SIZE,
@@ -27,7 +27,7 @@ public class FileIncrementOnlyStore implements IncrementOnlyStore, Flushable {
         );
     }
 
-    public FileIncrementOnlyStore(Path dir, int longLookupHashSize, int longLookupWriteCacheSize, int flushDelaySeconds) {
+    public FileCounterStore(Path dir, int longLookupHashSize, int longLookupWriteCacheSize, int flushDelaySeconds) {
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
@@ -35,8 +35,8 @@ public class FileIncrementOnlyStore implements IncrementOnlyStore, Flushable {
         }
 
         this.dir = dir;
-        lookups = new LongLookup(
-                dir.resolve("inc-lookups"),
+        lookup = new LongLookup(
+                dir.resolve("inc-lookup"),
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );
@@ -50,37 +50,37 @@ public class FileIncrementOnlyStore implements IncrementOnlyStore, Flushable {
     @Override
     public long increment(String partition, String key, long delta) {
         log.trace("incrementing by {} key '{}' in partition '{}'", delta, key, partition);
-        //return lookups.increment(partition, key, delta);
+        //return lookup.increment(partition, key, delta);
         return -1; // TODO: fix
     }
 
     @Override
     public void flush() {
         log.info("flushing {}", dir);
-        lookups.flush();
+        lookup.flush();
         log.info("flushed {}", dir);
     }
 
     @Override
     public long get(String partition, String key) {
-        long val = lookups.get(partition, key);
+        long val = lookup.get(partition, key);
         return val == -1 ? 0 : val;
     }
 
     @Override
     public Stream<String> keys(String partition) {
-        return lookups.keys(partition);
+        return lookup.keys(partition);
     }
 
     @Override
     public Stream<String> partitions() {
-        return lookups.partitions();
+        return lookup.partitions();
     }
 
     @Override
     public void clear() {
         log.trace("clearing");
-        lookups.clear();
+        lookup.clear();
     }
 
     @Override
@@ -88,9 +88,9 @@ public class FileIncrementOnlyStore implements IncrementOnlyStore, Flushable {
         log.info("closing: " + dir);
         AutoFlusher.deregister(this);
         try {
-            lookups.close();
+            lookup.close();
         } catch (Exception e) {
-            log.error("unable to close lookups", e);
+            log.error("unable to close lookup", e);
         }
     }
 }

@@ -6,41 +6,41 @@ import lombok.extern.slf4j.Slf4j;
 import java.nio.file.Path;
 
 @Slf4j
-public class FileIncrementOnlyStoreBuilder implements IncrementOnlyStoreBuilder<FileIncrementOnlyStore> {
+public class FileCounterStoreBuilder implements CounterStoreBuilder<FileCounterStore> {
     private Path dir;
     private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
     private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
-    private int flushDelaySeconds = FileIncrementOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
+    private int flushDelaySeconds = FileCounterStore.DEFAULT_FLUSH_DELAY_SECONDS;
 
-    public FileIncrementOnlyStoreBuilder withDir(Path dir) {
+    public FileCounterStoreBuilder withDir(Path dir) {
         this.dir = dir;
         return this;
     }
 
-    public FileIncrementOnlyStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
+    public FileCounterStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
         this.longLookupHashSize = longLookupHashSize;
         return this;
     }
 
-    public FileIncrementOnlyStoreBuilder withLongLookupWriteCacheSize(int longLookupWriteCacheSize) {
+    public FileCounterStoreBuilder withLongLookupWriteCacheSize(int longLookupWriteCacheSize) {
         this.longLookupWriteCacheSize = longLookupWriteCacheSize;
         return this;
     }
 
-    public FileIncrementOnlyStoreBuilder withFlushDelaySeconds(int flushDelaySeconds) {
+    public FileCounterStoreBuilder withFlushDelaySeconds(int flushDelaySeconds) {
         this.flushDelaySeconds = flushDelaySeconds;
         return this;
     }
 
     @Override
-    public FileIncrementOnlyStore build() {
-        log.info("building FileIncrementOnlyStore from builder: {}", this);
-        return new FileIncrementOnlyStore(dir, longLookupHashSize, longLookupWriteCacheSize, flushDelaySeconds);
+    public FileCounterStore build() {
+        log.info("building FileCounterStore from builder: {}", this);
+        return new FileCounterStore(dir, longLookupHashSize, longLookupWriteCacheSize, flushDelaySeconds);
     }
 
     @Override
     public String toString() {
-        return "FileIncrementOnlyStoreBuilder{" +
+        return "FileCounterStoreBuilder{" +
                 "dir=" + dir +
                 ", longLookupHashSize=" + longLookupHashSize +
                 ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +

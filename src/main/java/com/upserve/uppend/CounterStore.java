@@ -4,10 +4,9 @@ import java.io.Flushable;
 import java.util.stream.Stream;
 
 /**
- * Defines the minimum interface required to increment values under a key, and
- * to retrieve those values.
+ * Keep counters for partitioned keys.
  */
-public interface IncrementOnlyStore extends AutoCloseable, Flushable {
+public interface CounterStore extends AutoCloseable, Flushable {
     /**
      * Increment by 1 the counter under a given partition and key, whose value
      * is initialized to 0
@@ -58,7 +57,7 @@ public interface IncrementOnlyStore extends AutoCloseable, Flushable {
     Stream<String> keys(String partition);
 
     /**
-     * Enumerate the partition in the data store
+     * Enumerate the partitions in the data store
      *
      * @return a stream of string partition
      */
