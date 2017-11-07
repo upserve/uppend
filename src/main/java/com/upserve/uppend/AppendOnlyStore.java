@@ -51,6 +51,9 @@ public interface AppendOnlyStore extends AutoCloseable, Flushable {
     /**
      * Read the last byte array that was stored under a given key
      *
+     * @param partition the partition under which to retrieve
+     * @param key the key under which to retrieve
+     * @throws IllegalArgumentException if partition is invalid
      * @return the stored byte array, or null if none
      */
     byte[] readLast(String partition, String key);
