@@ -2,7 +2,7 @@ Uppend: an append-only, key-multivalue store
 ============================================
 [![Build Status](https://img.shields.io/travis/upserve/uppend/master.svg?style=flat-square)](https://travis-ci.org/upserve/uppend)
 [![Release Artifact](https://img.shields.io/maven-central/v/com.upserve/uppend.svg?style=flat-square)](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22com.upserve%22%20AND%20a%3Auppend)
-[![Test Coverage](https://img.shields.io/codecov/c/github/upserveuppend/master.svg?style=flat-square)](https://codecov.io/github/upserve/uppend?branch=master)
+[![Test Coverage](https://img.shields.io/codecov/c/github/upserve/uppend/master.svg?style=flat-square)](https://codecov.io/github/upserve/uppend?branch=master)
 
 Uppend is an append-only, key-multivalue store which is suitable for streaming
 event aggregation. It assumes a single writer process, and appended values are
