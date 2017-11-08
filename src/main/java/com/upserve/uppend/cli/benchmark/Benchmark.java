@@ -32,7 +32,7 @@ public class Benchmark {
             log.warn("Location already exists: appending to {}", path);
         }
 
-        testInstance = Uppend.fileStore(path)
+        testInstance = Uppend.store(path)
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
