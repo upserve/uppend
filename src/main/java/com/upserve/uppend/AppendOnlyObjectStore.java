@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import java.io.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
@@ -8,7 +9,7 @@ import java.util.stream.Stream;
  * convenience typed-access to the deserialized form in an append-only
  * multi-map.
  */
-public class AppendOnlyObjectStore<T> implements AutoCloseable {
+public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     private final AppendOnlyStore store;
     private final Function<T, byte[]> serializer;
     private final Function<byte[], T> deserializer;
@@ -81,5 +82,10 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable {
     @Override
     public void close() throws Exception {
         store.close();
+    }
+
+    @Override
+    public void flush() throws IOException {
+        store.flush();
     }
 }
