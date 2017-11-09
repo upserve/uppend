@@ -41,7 +41,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     }
 
     /**
-     * Read objects that have been stored under a given key
+     * Read objects that have been stored under a given partition and key in
+     * parallel
      *
      * @param partition the key under which to retrieve
      * @param key the key under which to retrieve
@@ -50,6 +51,31 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      */
     public Stream<T> read(String partition, String key) {
         return store.read(partition, key).map(deserializer);
+    }
+
+    /**
+     * Read objects that have been stored under a given partition and key in
+     * the order they were stored
+     *
+     * @param partition the partition under which to retrieve
+     * @param key the key under which to retrieve
+     * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of the stored objects in storage order
+     */
+    public Stream<T> readSequential(String partition, String key) {
+        return store.readSequential(partition, key).map(deserializer);
+    }
+
+    /**
+     * Read the last object that was stored under a given partition and key
+     *
+     * @param partition the partition under which to retrieve
+     * @param key the key under which to retrieve
+     * @throws IllegalArgumentException if partition is invalid
+     * @return the stored object, or null if none
+     */
+    public T readLast(String partition, String key) {
+        return deserializer.apply(store.readLast(partition, key));
     }
 
     /**
