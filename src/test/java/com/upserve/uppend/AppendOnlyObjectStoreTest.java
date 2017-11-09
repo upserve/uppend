@@ -79,6 +79,12 @@ public class AppendOnlyObjectStoreTest {
     }
 
     @Test
+    public void testFlush() throws Exception {
+        instance.flush();
+        verify(store).flush();
+    }
+
+    @Test
     public void testClose() throws Exception {
         instance.close();
         verify(store).close();
