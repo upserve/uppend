@@ -231,10 +231,12 @@ public class LongLookup implements AutoCloseable, Flushable {
         log.info("clearing {}", dir);
         close();
         try {
-            Path tmpDir = Files.createTempFile(dir.getParent(), dir.getFileName().toString(), ".defunct");
-            Files.delete(tmpDir);
-            Files.move(dir, tmpDir);
-            SafeDeleting.removeDirectory(tmpDir);
+            if (Files.exists(dir)) {
+                Path tmpDir = Files.createTempFile(dir.getParent(), dir.getFileName().toString(), ".defunct");
+                Files.delete(tmpDir);
+                Files.move(dir, tmpDir);
+                SafeDeleting.removeDirectory(tmpDir);
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("unable to delete lookups: " + dir, e);
         }
