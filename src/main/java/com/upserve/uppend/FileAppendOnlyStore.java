@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.*;
 
 @Slf4j
@@ -21,6 +22,8 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
     private final LongLookup lookups;
     private final BlockedLongs blocks;
     private final Blobs blobs;
+
+    private final AtomicBoolean isClosed;
 
     public FileAppendOnlyStore(Path dir) {
         this(
@@ -47,6 +50,8 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
         blobs = new Blobs(dir.resolve("blobs"));
         AutoFlusher.register(flushDelaySeconds, this);
+
+        isClosed = new AtomicBoolean(false);
     }
 
     @Override
@@ -108,6 +113,10 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
 
     @Override
     public void close() throws Exception {
+        if (!isClosed.compareAndSet(false, true)) {
+            log.warn("close called twice on store: " + dir);
+            return;
+        }
         log.info("closing: " + dir);
         AutoFlusher.deregister(this);
         try {

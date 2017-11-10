@@ -24,9 +24,6 @@ public abstract class AppendOnlyStoreTest {
 
     @After
     public void cleanUp() {
-        if (store == null) {
-            return;
-        }
         try {
             store.close();
         } catch (Exception e){
@@ -65,7 +62,6 @@ public abstract class AppendOnlyStoreTest {
     public void testClearThenClose() throws Exception {
         store.clear();
         store.close();
-        store = null;
     }
 
     @Test
@@ -73,7 +69,6 @@ public abstract class AppendOnlyStoreTest {
         store.append("partition", "foo", "bar".getBytes());
         store.clear();
         store.close();
-        store = null;
     }
 
     @Test

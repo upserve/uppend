@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 @Slf4j
@@ -17,6 +18,8 @@ public class FileCounterStore implements CounterStore, Flushable {
 
     private final Path dir;
     private final LongLookup lookup;
+
+    private final AtomicBoolean isClosed;
 
     public FileCounterStore(Path dir) {
         this(
@@ -41,6 +44,8 @@ public class FileCounterStore implements CounterStore, Flushable {
                 longLookupWriteCacheSize
         );
         AutoFlusher.register(flushDelaySeconds, this);
+
+        isClosed = new AtomicBoolean(false);
     }
 
     @Override
@@ -91,6 +96,10 @@ public class FileCounterStore implements CounterStore, Flushable {
 
     @Override
     public void close() throws Exception {
+        if (!isClosed.compareAndSet(false, true)) {
+            log.warn("close called twice on counter store: " + dir);
+            return;
+        }
         log.info("closing: " + dir);
         AutoFlusher.deregister(this);
         try {
