@@ -6,7 +6,8 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import java.util.Arrays;
+import java.util.*;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
@@ -15,24 +16,40 @@ import static org.mockito.Mockito.*;
 public class AppendOnlyObjectStoreTest {
 
     static class Data {
+        private final String value;
+
+        public Data(String value) {
+            this.value = value;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+
+            Data data = (Data) o;
+
+            return value != null ? value.equals(data.value) : data.value == null;
+        }
+
+        @Override
+        public int hashCode() {
+            return value != null ? value.hashCode() : 0;
+        }
+
         static byte[] serialize(Data d) {
-            if (d == DESERIALIZED) {
-                return SERIALIZED;
-            } else {
-                return null;
-            }
+            return d.value.getBytes();
         }
 
         static Data deserialize(byte[] d) {
-            if (d == SERIALIZED) {
-                return DESERIALIZED;
-            } else {
-                return null;
-            }
+            return new Data(new String(d));
         }
     }
-    static final byte[] SERIALIZED = "SERIALIZED".getBytes();
-    static final Data DESERIALIZED = new Data();
+    static final byte[] SERIALIZED01 = "SERIALIZED01".getBytes();
+    static final Data DESERIALIZED01 = new Data("SERIALIZED01");
+
+    static final byte[] SERIALIZED02 = "SERIALIZED02".getBytes();
+    static final Data DESERIALIZED02 = new Data("SERIALIZED02");
 
     @Mock
     AppendOnlyStore store;
@@ -46,17 +63,37 @@ public class AppendOnlyObjectStoreTest {
 
     @Test
     public void testAppend() {
-        instance.append("partition", "key", DESERIALIZED);
-        verify(store).append("partition", "key", SERIALIZED);
+        instance.append("partition", "key", DESERIALIZED01);
+        verify(store).append("partition", "key", SERIALIZED01);
     }
 
     @Test
     public void testRead() {
         when(store.read("partition", "key1"))
-                .thenReturn(Arrays.asList(SERIALIZED).stream());
+                .thenReturn(Stream.of(SERIALIZED02, SERIALIZED01));
         assertArrayEquals(
-                instance.read("partition", "key1").toArray(),
-                Arrays.asList(DESERIALIZED).toArray()
+                Arrays.asList(DESERIALIZED02, DESERIALIZED01).toArray(),
+                instance.read("partition", "key1").toArray()
+        );
+    }
+
+    @Test
+    public void testReadSequential() {
+        when(store.readSequential("partition", "key1"))
+                .thenReturn(Stream.of(SERIALIZED01, SERIALIZED02));
+        assertArrayEquals(
+                Arrays.asList(DESERIALIZED01, DESERIALIZED02).toArray(),
+                instance.readSequential("partition", "key1").toArray()
+        );
+    }
+
+    @Test
+    public void testReadLast() {
+        when(store.readLast("partition", "key1"))
+                .thenReturn(SERIALIZED02);
+        assertEquals(
+                DESERIALIZED02,
+                instance.readLast("partition", "key1")
         );
     }
 
