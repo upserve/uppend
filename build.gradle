@@ -14,7 +14,12 @@ plugins {
 
 import org.apache.tools.ant.filters.ExpandProperties
 
-version gitVersion()
+if (new File('.git').exists()) {
+    version gitVersion()
+} else {
+    version "unspecified"
+}
+
 
 group 'com.upserve'
 
