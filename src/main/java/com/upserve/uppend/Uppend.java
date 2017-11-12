@@ -36,7 +36,6 @@ public final class Uppend {
         return new FileCounterStoreBuilder().withDir(path);
     }
 
-
     public static void main(String ... args) throws Exception {
         Cli.main(args);
     }

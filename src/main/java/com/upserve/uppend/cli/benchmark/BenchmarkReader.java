@@ -2,7 +2,6 @@ package com.upserve.uppend.cli.benchmark;
 
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 import java.util.stream.LongStream;
 
@@ -10,8 +9,6 @@ import java.util.stream.LongStream;
 public class BenchmarkReader implements Runnable {
     private final LongStream longStream;
     private final Function<Long, Integer> longFunction;
-    final AtomicLong bytesRead = new AtomicLong();
-    final AtomicLong readCount = new AtomicLong();
 
     BenchmarkReader(LongStream longStream, Function<Long, Integer> longFunction) {
         this.longStream = longStream;
@@ -29,15 +26,10 @@ public class BenchmarkReader implements Runnable {
         }
         log.info("starting reader...");
         long tic = -1*System.currentTimeMillis();
-        longStream.forEach(i -> {
-            bytesRead.addAndGet(longFunction.apply(i));
-            readCount.addAndGet(1);
-        });
+        longStream.forEach(longFunction::apply);
         log.info(
                 String.format(
-                        "done reading %d byte arrays, total %8.3e bytes in %5.2f seconds",
-                        readCount.get(),
-                        (double) bytesRead.get(),
+                        "done reading in %5.2f seconds",
                         (tic + System.currentTimeMillis()) / 1000.0
                 )
         );

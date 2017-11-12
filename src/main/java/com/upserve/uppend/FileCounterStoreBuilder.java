@@ -46,4 +46,5 @@ public class FileCounterStoreBuilder implements CounterStoreBuilder<FileCounterS
                 ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +
                 ", flushDelaySeconds=" + flushDelaySeconds +
                 '}';
-    }}
+    }
+}
