@@ -54,6 +54,19 @@ public abstract class CounterStoreTest {
     }
 
     @Test
+    public void testClearThenClose() throws Exception {
+        store.clear();
+        store.close();
+    }
+
+    @Test
+    public void testWriteThenClearThenClose() throws Exception {
+        store.increment("partition", "foo");
+        store.clear();
+        store.close();
+    }
+
+    @Test
     public void testPartitions() throws Exception {
         store.increment("partition_one", "one", 1);
         store.increment("partition_two", "two", 2);
