@@ -27,7 +27,9 @@ public interface CounterStore extends AutoCloseable, Flushable {
      * @throws IllegalArgumentException if partition is invalid
      * @return the new value of the counter
      */
-    long increment(String partition, String key);
+    default long increment(String partition, String key) {
+        return increment(partition, key, 1);
+    }
 
     /**
      * Increment by a given amount the counter under a given partition and key,

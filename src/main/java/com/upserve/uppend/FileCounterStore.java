@@ -8,7 +8,7 @@ import java.nio.file.*;
 import java.util.stream.Stream;
 
 @Slf4j
-public class FileCounterStore implements CounterStore, Flushable {
+public class FileCounterStore implements CounterStore {
     /**
      * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
      * automatically flushing writes.
@@ -50,11 +50,6 @@ public class FileCounterStore implements CounterStore, Flushable {
     }
 
     @Override
-    public long increment(String partition, String key) {
-        return increment(partition, key, 1);
-    }
-
-    @Override
     public long increment(String partition, String key, long delta) {
         log.trace("incrementing by {} key '{}' in partition '{}'", delta, key, partition);
         return lookup.increment(partition, key, delta);
@@ -69,17 +64,20 @@ public class FileCounterStore implements CounterStore, Flushable {
 
     @Override
     public long get(String partition, String key) {
+        log.trace("getting value for key '{}' in partition '{}'", key, partition);
         long val = lookup.get(partition, key);
         return val == -1 ? 0 : val;
     }
 
     @Override
     public Stream<String> keys(String partition) {
+        log.trace("getting keys in partition '{}'", partition);
         return lookup.keys(partition);
     }
 
     @Override
     public Stream<String> partitions() {
+        log.trace("getting partitions");
         return lookup.partitions();
     }
 

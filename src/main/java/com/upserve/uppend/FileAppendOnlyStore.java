@@ -8,7 +8,7 @@ import java.nio.file.*;
 import java.util.stream.*;
 
 @Slf4j
-public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
+public class FileAppendOnlyStore implements AppendOnlyStore {
     /**
      * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
      * automatically flushing writes.
@@ -51,9 +51,10 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
 
     @Override
     public void append(String partition, String key, byte[] value) {
+        log.trace("appending for key '{}'", key);
         long blobPos = blobs.append(value);
         long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
-        log.trace("appending {} bytes (blob pos {}) for key '{}' at block pos {}", value.length, blobPos, key, blockPos);
+        log.trace("appending {} bytes (blob pos {}, block pos {}) for key '{}'", value.length, blobPos, blockPos, key);
         blocks.append(blockPos, blobPos);
     }
 
@@ -69,6 +70,7 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
 
     @Override
     public Stream<byte[]> read(String partition, String key) {
+        log.trace("reading in partition {} with key {}", partition, key);
         return blockValues(partition, key)
                 .parallel()
                 .mapToObj(blobs::read);
@@ -76,11 +78,13 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
 
     @Override
     public Stream<byte[]> readSequential(String partition, String key) {
+        log.trace("reading sequential in partition {} with key {}", partition, key);
         return blockValues(partition, key)
                 .mapToObj(blobs::read);
     }
 
     public byte[] readLast(String partition, String key) {
+        log.trace("reading last in partition {} with key {}", partition, key);
         long pos = blockLastValue(partition, key);
         if (pos == -1) {
             return null;
@@ -90,11 +94,13 @@ public class FileAppendOnlyStore implements AppendOnlyStore, Flushable {
 
     @Override
     public Stream<String> keys(String partition) {
+        log.trace("getting keys in partition {}", partition);
         return lookups.keys(partition);
     }
 
     @Override
     public Stream<String> partitions() {
+        log.trace("getting partitions");
         return lookups.partitions();
     }
 

@@ -1,11 +1,14 @@
 package com.upserve.uppend.cli.benchmark;
 
+import com.codahale.metrics.*;
+import com.codahale.metrics.Timer;
 import com.upserve.uppend.*;
 import lombok.extern.slf4j.Slf4j;
 
 import java.nio.file.*;
 import java.util.*;
 
+import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
 @Slf4j
 public class Benchmark {
@@ -20,6 +23,7 @@ public class Benchmark {
     private int maxKeys;
     private int sleep = 0;
 
+    private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
 
     public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds) {
@@ -32,15 +36,15 @@ public class Benchmark {
             log.warn("Location already exists: appending to {}", path);
         }
 
+        metrics = new MetricRegistry();
+
         testInstance = Uppend.store(path)
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
-                .build();
-
+                .buildWithMetrics(metrics);
 
         range = (long) maxPartitions * (long) maxKeys * 199;
-
 
         switch (mode) {
             case readwrite:
@@ -61,7 +65,6 @@ public class Benchmark {
             default:
                 throw new RuntimeException("Unknown mode: " + mode);
         }
-
     }
 
     private BenchmarkWriter simpleWriter() {
@@ -109,17 +112,25 @@ public class Benchmark {
             Runtime runtime = Runtime.getRuntime();
             while (true) {
                 try {
-                    long written = writer.bytesWritten.get();
-                    long writeCount = writer.writeCount.get();
-                    long read = reader.bytesRead.get();
-                    long readCount = reader.readCount.get();
+                    Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
+                    Meter writeBytesMeter = metrics.getMeters().get(WRITE_BYTES_METER_METRIC_NAME);
+                    Timer readTimer = metrics.getTimers().get(READ_TIMER_METRIC_NAME);
+                    Meter readBytesMeter = metrics.getMeters().get(READ_BYTES_METER_METRIC_NAME);
+
+                    long written = writeBytesMeter.getCount();
+                    long writeCount = writeTimer.getCount();
+                    long read = readBytesMeter.getCount();
+                    long readCount = readTimer.getCount();
+
                     Thread.sleep(1000);
-                    double writeRate = (writer.bytesWritten.get() - written) / (1024.0 * 1024.0);
-                    long appendsPerSecond = writer.writeCount.get() - writeCount;
-                    double readRate = (reader.bytesRead.get() - read) / (1024.0 * 1024.0);
-                    long keysReadPerSecond = reader.readCount.get() - readCount;
+
+                    double writeRate = (writeBytesMeter.getCount() - written) / (1024.0 * 1024.0);
+                    long appendsPerSecond = writeTimer.getCount() - writeCount;
+                    double readRate = (readBytesMeter.getCount() - read) / (1024.0 * 1024.0);
+                    long keysReadPerSecond = readTimer.getCount() - readCount;
                     double total = runtime.totalMemory() / (1024.0 * 1024.0);
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
+
                     log.info(String.format("Read: %7.2fmb/s %6dr/s; Write %7.2fmb/s %6da/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond,  writeRate, appendsPerSecond, free, total));
                 } catch (InterruptedException e) {
                     log.info("Interrupted - Stopping...");
@@ -136,7 +147,6 @@ public class Benchmark {
 
         writerThread.join();
         readerThread.join();
-
 
         watcher.join(1500);
 
