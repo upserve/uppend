@@ -29,6 +29,33 @@ public abstract class CounterStoreTest {
     }
 
     @Test
+    public void setTest() throws Exception {
+        store.set("partition", "foo", 5);
+        assertEquals(5, store.get("partition", "foo"));
+    }
+
+    @Test
+    public void incrTest() throws Exception {
+        store.increment("partition", "foo", 1);
+        assertEquals(1, store.get("partition", "foo"));
+    }
+
+    @Test
+    public void incrTwiceTest() throws Exception {
+        store.increment("partition", "foo", 1);
+        store.increment("partition", "foo", 1);
+        assertEquals(2, store.get("partition", "foo"));
+    }
+
+    @Test
+    public void incrTwiceTwoTest() throws Exception {
+        store.increment("partition", "foo", 1);
+        store.increment("partition", "foo", 2);
+        assertEquals(3, store.get("partition", "foo"));
+    }
+
+
+        @Test
     public void testWriteCloseReadRepeat() throws Exception {
         store.set("partition", "foo", 5);
         store.increment("partition", "foo");
@@ -39,7 +66,7 @@ public abstract class CounterStoreTest {
         store.increment("partition", "bar", 3);
         store.close();
         store = newStore();
-        assertEquals(9, store.get("partition", "foo"));
+        assertEquals(10, store.get("partition", "foo"));
         assertEquals(3, store.get("partition", "bar"));
         assertEquals(0, store.get("partition", "baz"));
     }
