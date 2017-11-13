@@ -1,14 +1,16 @@
 package com.upserve.uppend.lookup;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.*;
 import java.nio.file.*;
 
-@Slf4j
 public class LookupMetadata {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private final int keyLength;
     private final int numKeys;
     private final LookupKey minKey;

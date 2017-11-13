@@ -1,15 +1,17 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.lookup.*;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.*;
 
-@Slf4j
 public class FileAppendOnlyStore implements AppendOnlyStore {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     /**
      * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
      * automatically flushing writes.

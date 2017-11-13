@@ -1,12 +1,14 @@
 package com.upserve.uppend.cli.benchmark;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
+import java.lang.invoke.MethodHandles;
 import java.util.function.Function;
 import java.util.stream.LongStream;
 
-@Slf4j
 public class BenchmarkWriter implements Runnable {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private final LongStream longStream;
     private final Function<Long, Integer> longFunction;
 

@@ -1,14 +1,12 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.util.SafeDeleting;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 
 import java.nio.file.*;
 
 import static org.junit.Assert.*;
 
-@Slf4j
 public class UppendTest {
     @Test
     public void testVersion() {
