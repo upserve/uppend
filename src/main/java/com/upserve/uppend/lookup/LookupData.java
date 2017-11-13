@@ -137,16 +137,17 @@ public class LookupData implements AutoCloseable, Flushable {
         long value = mem.getLong(key);
         if (value == Long.MIN_VALUE) {
             value = delta;
-            long existingValue = putIfNotExists(key, value);
-            if (existingValue != value) {
-                throw new IllegalStateException("race while incrementing new key " + key + " by " + delta + " in " + path);
+            long existingValue = put(key, value);
+            if (existingValue != Long.MIN_VALUE) {
+                throw new IllegalStateException("unexpected race while incrementing new key " + key + " by " + delta + " in " + path);
             }
         } else {
+            value += delta;
+            mem.put(key, value);
             int index = memOrder.getInt(key);
             if (index == Integer.MIN_VALUE) {
                 throw new IllegalStateException("unknown index order for existing key: " + key);
             }
-            value += delta;
             set(index, value);
         }
         return value;
