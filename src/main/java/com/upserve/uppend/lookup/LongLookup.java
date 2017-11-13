@@ -305,7 +305,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     private static boolean isValidPartitionCharStart(char c) {
-        return Character.isJavaIdentifierStart(c);
+        return Character.isJavaIdentifierPart(c);
     }
 
     private static boolean isValidPartitionCharPart(char c) {
