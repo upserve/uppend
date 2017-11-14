@@ -3,15 +3,17 @@ package com.upserve.uppend.cli.benchmark;
 import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
 import com.upserve.uppend.*;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
+import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
 
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
-@Slf4j
 public class Benchmark {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private BenchmarkWriter writer;
     private BenchmarkReader reader;
 

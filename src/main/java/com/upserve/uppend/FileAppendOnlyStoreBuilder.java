@@ -1,12 +1,14 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.lookup.LongLookup;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
+import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 
-@Slf4j
 public class FileAppendOnlyStoreBuilder implements AppendOnlyStoreBuilder<FileAppendOnlyStore> {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private Path dir;
     private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
     private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;

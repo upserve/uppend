@@ -2,13 +2,15 @@ package com.upserve.uppend;
 
 import com.upserve.uppend.lookup.LongLookup;
 import com.upserve.uppend.util.SafeDeleting;
-import lombok.extern.slf4j.Slf4j;
 import org.junit.*;
+import org.slf4j.Logger;
 
+import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 
-@Slf4j
 public class LongLookupPerformanceTest {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private static final int INITIAL_KEYS = 500_000;
 
     private Path lookupDir = Paths.get("build/test/tmp/lookup");

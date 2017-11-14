@@ -1,14 +1,16 @@
 package com.upserve.uppend;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-@Slf4j
 public class AutoFlusher {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private static final int FLUSH_EXEC_POOL_NUM_THREADS = 20;
 
     private static final ConcurrentMap<Flushable, Integer> flushableDelays = new ConcurrentHashMap<>();

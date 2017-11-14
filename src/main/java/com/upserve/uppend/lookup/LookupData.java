@@ -2,9 +2,10 @@ package com.upserve.uppend.lookup;
 
 import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
@@ -13,8 +14,9 @@ import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-@Slf4j
 public class LookupData implements AutoCloseable, Flushable {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private final AtomicBoolean isClosed;
 
     private final int keyLength;

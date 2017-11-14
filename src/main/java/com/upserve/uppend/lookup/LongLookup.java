@@ -3,17 +3,19 @@ package com.upserve.uppend.lookup;
 import com.google.common.base.Charsets;
 import com.google.common.hash.*;
 import com.upserve.uppend.util.SafeDeleting;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.Phaser;
 import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 
-@Slf4j
 public class LongLookup implements AutoCloseable, Flushable {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     /**
      * DEFAULT_HASH_SIZE is the number of hash elements per partition. Key
      * values hashed and modded by this number will be represented as paths

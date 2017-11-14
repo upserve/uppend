@@ -1,9 +1,10 @@
 package com.upserve.uppend;
 
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
@@ -12,8 +13,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
-@Slf4j
 public class BlockedLongs implements AutoCloseable, Flushable {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
     private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
 
