@@ -2,14 +2,15 @@ package com.upserve.uppend.lookup;
 
 import com.google.common.base.Charsets;
 import com.google.common.hash.*;
-import com.upserve.uppend.util.SafeDeleting;
+import com.upserve.uppend.AutoFlusher;
+import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.Phaser;
+import java.util.concurrent.*;
 import java.util.function.LongSupplier;
 import java.util.stream.Stream;
 
@@ -212,20 +213,26 @@ public class LongLookup implements AutoCloseable, Flushable {
 
     @Override
     public void flush() {
-        synchronized (writeCache) {
-            if (log.isTraceEnabled()) {
-                log.trace("flushing {} (~{} entries)", dir, writeCache.size());
-            }
-            writeCache.forEach((path, data) -> {
-                log.trace("cache flushing {}", path);
-                try {
-                    data.flush();
-                } catch (IOException e) {
-                    log.error("unable to flush " + path, e);
-                    throw new UncheckedIOException("unable to flush " + path, e);
-                }
-            });
+        if (log.isTraceEnabled()) {
+            log.trace("flushing {}", dir);
         }
+        ConcurrentHashMap<Path, LookupData> cacheCopy;
+        synchronized (writeCache) {
+            cacheCopy = new ConcurrentHashMap<>(writeCache);
+        }
+        ArrayList<Future> futures = new ArrayList<>();
+        cacheCopy.forEach((path, data) -> {
+            futures.add(AutoFlusher.flushExecPool.submit(() -> {
+                try {
+                    log.trace("cache flushing {}", path);
+                    data.flush();
+                    log.trace("cache flushed {}", path);
+                } catch (Exception e) {
+                    log.error("unable to flush " + path, e);
+                }
+            }));
+        });
+        Futures.getAll(futures);
         log.trace("flushed {}", dir);
     }
 

@@ -1,12 +1,15 @@
 package com.upserve.uppend.lookup;
 
+import com.upserve.uppend.util.ThreadLocalByteBuffers;
+import me.lemire.integercompression.differential.IntegratedIntCompressor;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
-import java.nio.channels.*;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.function.Supplier;
 
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -16,6 +19,8 @@ public class LookupMetadata {
     private final LookupKey minKey;
     private final LookupKey maxKey;
     private final int[] keyStorageOrder;
+    private final int headerLength;
+    private final Supplier<ByteBuffer> headerBufSupplier;
 
     public LookupMetadata(int keyLength, int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder) {
         this.keyLength = keyLength;
@@ -23,14 +28,18 @@ public class LookupMetadata {
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
+        headerLength = 12 + 2 * keyLength;
+        headerBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(headerLength);
     }
 
     public LookupMetadata(Path path) {
         log.trace("constructing metadata at path: {}", path);
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
+            int numKeysCompressed;
             try (DataInputStream din = new DataInputStream(Files.newInputStream(path, StandardOpenOption.READ))) {
                 keyLength = din.readInt();
                 numKeys = din.readInt();
+                numKeysCompressed = din.readInt();
                 byte[] minKeyBytes = new byte[keyLength];
                 din.read(minKeyBytes);
                 minKey = new LookupKey(minKeyBytes);
@@ -38,15 +47,22 @@ public class LookupMetadata {
                 din.read(maxKeyBytes);
                 maxKey = new LookupKey(maxKeyBytes);
             }
-            long pos = 8 + 2 * keyLength;
-            int mapSize = 4 * numKeys;
+            long pos = 12 + 2 * keyLength;
+            int mapSize = 4 * numKeysCompressed;
             MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_ONLY, pos, mapSize);
             IntBuffer ibuf = mbuf.asIntBuffer();
-            keyStorageOrder = new int[numKeys];
-            ibuf.get(keyStorageOrder);
+            int[] compressedKeyStorageOrder = new int[numKeysCompressed];
+            ibuf.get(compressedKeyStorageOrder);
+            IntegratedIntCompressor iic = new IntegratedIntCompressor();
+            keyStorageOrder = iic.uncompress(compressedKeyStorageOrder);
+            if (keyStorageOrder.length != numKeys) {
+                throw new IllegalStateException("expected " + numKeys + " keys, got " + keyStorageOrder.length);
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("unable to construct metadata from path: " + path, e);
         }
+        headerLength = 12 + 2 * keyLength;
+        headerBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(headerLength);
     }
 
     public long readData(Path dataPath, LookupKey key) {
@@ -101,26 +117,32 @@ public class LookupMetadata {
         log.trace("writing metadata to path: {}", path);
         Path tmpPath = path.resolveSibling(path.getFileName() + ".tmp");
         try (FileChannel chan = FileChannel.open(tmpPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            try (DataOutputStream dout = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(chan), 1024))) {
-                if (keyLength != minKey.byteLength()) {
-                    throw new IllegalStateException("expected key length (" + keyLength + ") does not agree with minKey length (" + minKey.byteLength() + ")");
-                }
-                if (keyLength != maxKey.byteLength() || keyLength != maxKey.byteLength()) {
-                    throw new IllegalStateException("expected key length (" + keyLength + ") does not agree with maxKey length (" + maxKey.byteLength() + ")");
-                }
-
-                dout.writeInt(keyLength);
-                dout.writeInt(numKeys);
-                dout.write(minKey.bytes());
-                dout.write(maxKey.bytes());
-
-                long pos =  8 + 2 * keyLength;
-                int mapSize = 4 * numKeys;
-                MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_WRITE, pos, mapSize);
-                IntBuffer ibuf = mbuf.asIntBuffer();
-                ibuf.put(keyStorageOrder);
-                mbuf.force();
+            if (keyLength != minKey.byteLength()) {
+                throw new IllegalStateException("expected key length (" + keyLength + ") does not agree with minKey length (" + minKey.byteLength() + ")");
             }
+            if (keyLength != maxKey.byteLength() || keyLength != maxKey.byteLength()) {
+                throw new IllegalStateException("expected key length (" + keyLength + ") does not agree with maxKey length (" + maxKey.byteLength() + ")");
+            }
+
+            IntegratedIntCompressor iic = new IntegratedIntCompressor();
+            int[] compressedKeyStorageOrder = iic.compress(keyStorageOrder);
+            int numKeysCompressed = compressedKeyStorageOrder.length;
+
+            ByteBuffer headBuf = headerBufSupplier.get();
+            headBuf.putInt(keyLength);
+            headBuf.putInt(numKeys);
+            headBuf.putInt(numKeysCompressed);
+            headBuf.put(minKey.bytes());
+            headBuf.put(maxKey.bytes());
+            headBuf.flip();
+            chan.write(headBuf, 0);
+
+            int mapSize = 4 * numKeysCompressed;
+            MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_WRITE, headerLength, mapSize);
+            IntBuffer ibuf = mbuf.asIntBuffer();
+            ibuf.put(compressedKeyStorageOrder);
+            mbuf.force();
+            log.trace("compressed metadata: {}/{}", numKeysCompressed, numKeys);
         }
         Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
         log.trace("wrote metadata to path: {}: keyLength={}, numKeys={}, minKey={}, maxKey={}", path, keyLength, numKeys, minKey, maxKey);
