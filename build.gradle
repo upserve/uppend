@@ -14,7 +14,12 @@ plugins {
 
 import org.apache.tools.ant.filters.ExpandProperties
 
-if (new File('.git').exists()) {
+if (new File('.git').exists() && (exec {
+    commandLine "sh", "-c", "git --version"
+    standardOutput = new ByteArrayOutputStream()
+    errorOutput = new ByteArrayOutputStream()
+    ignoreExitValue true
+}).exitValue == 0) {
     version gitVersion()
 } else {
     version "unspecified"
