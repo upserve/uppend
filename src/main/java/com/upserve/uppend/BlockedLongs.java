@@ -35,6 +35,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicBoolean outDirty;
 
     public BlockedLongs(Path file, int valuesPerBlock) {
+        if (file == null) {
+            throw new IllegalArgumentException("null file");
+        }
+
         this.file = file;
 
         Path dir = file.getParent();
@@ -45,6 +49,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
 
         Path posFile = dir.resolve(file.getFileName() + ".pos");
+
+        if (valuesPerBlock < 1) {
+            throw new IllegalArgumentException("bad (< 1) values per block: " + valuesPerBlock);
+        }
 
         this.valuesPerBlock = valuesPerBlock;
         blockSize = (valuesPerBlock + 1) * 8;
@@ -83,6 +91,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         outDirty = new AtomicBoolean(false);
     }
 
+    /**
+     * Allocate a new block of longs
+     *
+     * @return the position of the new block
+     */
     public synchronized long allocate() {
         log.trace("allocating {} bytes in {}", blockSize, file);
         synchronized (posBuf) {
