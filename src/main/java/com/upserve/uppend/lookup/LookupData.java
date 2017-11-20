@@ -199,6 +199,10 @@ public class LookupData implements AutoCloseable, Flushable {
     @Override
     public synchronized void flush() throws IOException {
         log.trace("flushing lookup and metadata at {}", metadataPath);
+        if (isClosed.get()) {
+            log.debug("ignoring flush of closed lookup data at {}", path);
+            return;
+        }
         chan.force(true);
         LookupMetadata metadata = generateMetadata();
         metadata.writeTo(metadataPath);
