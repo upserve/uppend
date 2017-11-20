@@ -15,7 +15,7 @@ public class MergingIteratorTest {
         String[] b = "Suddenly you realize there's a wasp crawling on your arm.".split(" ");
         Arrays.sort(a);
         Arrays.sort(b);
-        MergingIterator<String> iter = new MergingIterator<>(
+        @SuppressWarnings("unchecked") MergingIterator<String> iter = new MergingIterator<>(
                 Comparator.naturalOrder(),
                 Arrays.stream(a).iterator(),
                 Arrays.stream(b).iterator()
