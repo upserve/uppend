@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
@@ -27,6 +28,8 @@ public class Benchmark {
 
     private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
+
+    private volatile boolean isDone = false;
 
     public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds) {
 
@@ -112,7 +115,7 @@ public class Benchmark {
 
         Thread watcher = new Thread(() -> {
             Runtime runtime = Runtime.getRuntime();
-            while (true) {
+            while (!isDone) {
                 try {
                     Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
                     Meter writeBytesMeter = metrics.getMeters().get(WRITE_BYTES_METER_METRIC_NAME);
@@ -159,6 +162,7 @@ public class Benchmark {
         }
 
         log.info("Benchmark is All Done!");
+        isDone = true;
     }
 }
 

@@ -14,7 +14,12 @@ plugins {
 
 import org.apache.tools.ant.filters.ExpandProperties
 
-if (new File('.git').exists()) {
+if (new File('.git').exists() && (exec {
+    commandLine "sh", "-c", "git --version"
+    standardOutput = new ByteArrayOutputStream()
+    errorOutput = new ByteArrayOutputStream()
+    ignoreExitValue true
+}).exitValue == 0) {
     version gitVersion()
 } else {
     version "unspecified"
@@ -48,6 +53,7 @@ dependencies {
     compile 'info.picocli:picocli:2.0.1'
     compile 'io.dropwizard.metrics:metrics-core:3.2.3'
     compile 'it.unimi.dsi:fastutil:7.0.13'
+    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
     compile 'org.slf4j:slf4j-api:1.7.22'
 
     testCompile 'junit:junit:4.12'

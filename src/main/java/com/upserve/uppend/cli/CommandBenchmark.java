@@ -25,13 +25,13 @@ public class CommandBenchmark implements Callable<Void> {
     @Parameters(index = "1", description = "Store path") Path path;
 
     @Option(names = {"-p", "--max-partitions"}, description = "Max partitions")
-    int maxPartitions = 64;
+    int maxPartitions = 1;
 
     @Option(names = {"-k", "--max-keys"}, description = "Max keys")
-    int maxKeys = 1000;
+    int maxKeys = 100_000;
 
     @Option(names = {"-n", "--count"}, description = "Count")
-    int count = 100_000;
+    int count = 1_000_000;
 
     @Option(names = {"-h", "--hash-size"}, description = "Hash size")
     int hashSize = LongLookup.DEFAULT_HASH_SIZE;

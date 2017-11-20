@@ -1,10 +1,11 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.util.Futures;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.util.*;
+import java.util.ArrayList;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -18,15 +19,20 @@ public class AutoFlusher {
     private static final ConcurrentMap<Integer, ScheduledFuture> delayFutures = new ConcurrentHashMap<>();
 
     private static final ThreadFactory threadFactory;
-    private static final ExecutorService flushExecPool;
+    public static final ExecutorService flushExecPool;
 
     static {
-        ThreadGroup serverThreadGroup = new ThreadGroup("auto-flush");
+        ThreadGroup threadGroup = new ThreadGroup("auto-flush");
+        threadGroup.setDaemon(true);
         AtomicInteger threadNumber = new AtomicInteger();
-        threadFactory = r -> new Thread(serverThreadGroup, r, "auto-flush-" + threadNumber.incrementAndGet());
+        threadFactory = r -> {
+            Thread t = new Thread(threadGroup, r, "auto-flush-" + threadNumber.incrementAndGet());
+            t.setDaemon(true);
+            return t;
+        };
 
         AtomicInteger flushExecPoolThreadNumber = new AtomicInteger();
-        ThreadFactory flushExecPoolThreadFactory = r -> new Thread(serverThreadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
+        ThreadFactory flushExecPoolThreadFactory = r -> new Thread(threadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
         flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
     }
 
@@ -88,16 +94,7 @@ public class AutoFlusher {
                         }
                     }));
                 }
-                futures.forEach(f -> {
-                    try {
-                        f.get();
-                    } catch (InterruptedException e) {
-                        log.error("interrupted while flushing", e);
-                        Thread.interrupted();
-                    } catch (ExecutionException e) {
-                        log.error("exception executing flush", e);
-                    }
-                });
+                Futures.getAll(futures);
                 flushables.removeAll(errorFlushables);
             }
         } catch (Exception e) {
