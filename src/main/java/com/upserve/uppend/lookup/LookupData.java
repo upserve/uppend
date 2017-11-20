@@ -188,7 +188,7 @@ public class LookupData implements AutoCloseable, Flushable {
     public synchronized void close() throws IOException {
         log.trace("closing lookup data at {} (~{} entries)", path, mem.size());
         if (isClosed.compareAndSet(false, true)) {
-            flush();
+            flushInternal();
             chan.close();
             log.trace("closed lookup data at {}", path);
         } else {
@@ -198,11 +198,15 @@ public class LookupData implements AutoCloseable, Flushable {
 
     @Override
     public synchronized void flush() throws IOException {
-        log.trace("flushing lookup and metadata at {}", metadataPath);
         if (isClosed.get()) {
             log.debug("ignoring flush of closed lookup data at {}", path);
             return;
         }
+        log.trace("flushing lookup and metadata at {}", metadataPath);
+        flushInternal();
+    }
+
+    private synchronized void flushInternal() throws IOException {
         chan.force(true);
         LookupMetadata metadata = generateMetadata();
         metadata.writeTo(metadataPath);
