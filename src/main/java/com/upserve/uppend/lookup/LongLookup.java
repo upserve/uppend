@@ -74,7 +74,7 @@ public class LongLookup implements AutoCloseable, Flushable {
 
         writeCache = new LinkedHashMap<Path, LookupData>(writeCacheSize + 1, 1.1f, true) {
             @Override
-            protected synchronized boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
+            protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
                 if (size() > writeCacheSize) {
                     Path path = eldest.getKey();
                     log.trace("cache removing {}", path);
