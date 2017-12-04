@@ -14,10 +14,10 @@ public class Futures {
             try {
                 f.get();
             } catch (InterruptedException e) {
-                log.error("interrupted while flushing", e);
+                log.error("interrupted while getting futures", e);
                 Thread.interrupted();
             } catch (ExecutionException e) {
-                log.error("exception executing flush", e);
+                log.error("execution exception while getting futures", e);
             }
         });
     }
