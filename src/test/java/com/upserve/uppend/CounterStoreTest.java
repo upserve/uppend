@@ -2,11 +2,21 @@ package com.upserve.uppend;
 
 import org.junit.*;
 import org.junit.rules.ExpectedException;
+import org.slf4j.Logger;
+
+import java.lang.invoke.MethodHandles;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.*;
 
 import static org.junit.Assert.*;
 
-public abstract class CounterStoreTest {
-    protected abstract CounterStore newStore();
+public class CounterStoreTest {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    private CounterStore newStore() {
+        return new CounterStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
+    }
 
     private CounterStore store;
 
@@ -101,5 +111,65 @@ public abstract class CounterStoreTest {
         store.increment("partition-four", "four", 4);
         store.increment("_2016-01-02", "five", 5);
         assertArrayEquals(new String[] { "_2016-01-02", "partition$three", "partition-four",  "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testExample() throws Exception {
+        store.close();
+        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, true, 1, 1);
+        store.clear();
+
+        store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
+        store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
+        store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
+        store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
+        store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
+
+        store.increment("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc");
+
+        store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
+
+        assertArrayEquals(new String[] { "2017-11-30" }, store.partitions().toArray(String[]::new));
+        assertEquals(5, store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
+        assertEquals(1, store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
+        assertEquals(1, store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));
+    }
+
+    @Test
+    public void testParallel() throws Exception {
+        store.close();
+        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, true, 1, 1);
+        store.clear();
+
+        final int numKeys = 1000;
+        final int totalIncrements = 1_000_000;
+        log.info("parallel: starting {} keys, {} total increments", numKeys, totalIncrements);
+        long[] vals = new long[numKeys];
+        ArrayList<Runnable> jobs = new ArrayList<>();
+        Random rand = new Random();
+        log.info("parallel: creating jobs");
+        for (int i = 0; i < totalIncrements; i++) {
+            int keyNum = rand.nextInt(numKeys);
+            vals[keyNum]++;
+            String key = String.format("k%010d", keyNum);
+            jobs.add(() -> store.increment("my_partition", key));
+        }
+        Collections.shuffle(jobs);
+        ArrayList<ForkJoinTask> futures = new ArrayList<>();
+        log.info("parallel: submitting jobs");
+        jobs.forEach(job -> futures.add(ForkJoinPool.commonPool().submit(job)));
+        log.info("parallel: waiting for jobs");
+        futures.forEach(ForkJoinTask::join);
+
+        log.info("parallel: flushing");
+        store.flush();
+
+        log.info("parallel: comparing");
+        for (int i = 0; i < vals.length; i++) {
+            long val = vals[i];
+            String key = String.format("k%010d", i);
+            assertEquals("expected value " + (i + 1) + "/" + vals.length + " to match", val, store.get("my_partition", key));
+        }
+        log.info("parallel: done");
     }
 }

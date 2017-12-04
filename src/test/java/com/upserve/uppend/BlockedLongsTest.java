@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.BlockedLongs;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 

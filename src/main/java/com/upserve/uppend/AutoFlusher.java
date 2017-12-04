@@ -36,7 +36,7 @@ public class AutoFlusher {
         flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
     }
 
-    public static void register(int delaySeconds, Flushable flushable) {
+    public static synchronized void register(int delaySeconds, Flushable flushable) {
         log.info("registered delay {}: {}", delaySeconds, flushable);
         Integer existingDelay = flushableDelays.put(flushable, delaySeconds);
         if (existingDelay != null) {
@@ -44,23 +44,21 @@ public class AutoFlusher {
         }
 
         ConcurrentLinkedQueue<Flushable> flushables = delayFlushables.computeIfAbsent(delaySeconds, delaySeconds2 -> {
-            synchronized (delayFutures) {
-                delayFutures.computeIfAbsent(delaySeconds2, delaySeconds3 ->
-                        Executors.newSingleThreadScheduledExecutor(threadFactory).scheduleWithFixedDelay(
-                                () -> AutoFlusher.flush(delaySeconds),
-                                delaySeconds,
-                                delaySeconds,
-                                TimeUnit.SECONDS
-                        )
-                );
-            }
+            delayFutures.computeIfAbsent(delaySeconds2, delaySeconds3 ->
+                    Executors.newSingleThreadScheduledExecutor(threadFactory).scheduleWithFixedDelay(
+                            () -> AutoFlusher.flush(delaySeconds),
+                            delaySeconds,
+                            delaySeconds,
+                            TimeUnit.SECONDS
+                    )
+            );
             return new ConcurrentLinkedQueue<>();
         });
 
         flushables.add(flushable);
     }
 
-    public static void deregister(Flushable flushable) {
+    public static synchronized void deregister(Flushable flushable) {
         Integer delaySeconds = flushableDelays.remove(flushable);
         if (delaySeconds == null) {
             throw new IllegalStateException("unknown flushable (flushable delays): " + flushable);
@@ -71,6 +69,12 @@ public class AutoFlusher {
         }
         if (!flushables.remove(flushable)) {
             log.warn("unknown flushable (delay flushables): " + flushable);
+        }
+        if (flushables.isEmpty()) {
+            log.info("deregistered last flushable at delay {}, removing schedule");
+            ScheduledFuture scheduledFuture = delayFutures.remove(delaySeconds);
+            scheduledFuture.cancel(false);
+            delayFlushables.remove(delaySeconds);
         }
         log.info("deregistered delay {}: {}", delaySeconds, flushable);
     }

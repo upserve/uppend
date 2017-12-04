@@ -3,6 +3,7 @@ package com.upserve.uppend.lookup;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
 
 import static org.junit.Assert.*;
@@ -52,5 +53,18 @@ public class LookupDataTest {
         data.close();
         data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
         assertEquals(80, data.get(key));
+    }
+
+    @Test
+    public void testNumEntries() throws Exception {
+        LookupData data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        FileChannel dataChan = FileChannel.open(lookupDir.resolve("data"), StandardOpenOption.READ);
+        assertEquals(0, LookupData.numEntries(dataChan, 5));
+        for (int i = 1; i <= 100; i++) {
+            LookupKey key = new LookupKey(String.format("%05d" /* len = 5 */, i));
+            data.put(key, i);
+            data.flush();
+            assertEquals(i, LookupData.numEntries(dataChan, 5));
+        }
     }
 }

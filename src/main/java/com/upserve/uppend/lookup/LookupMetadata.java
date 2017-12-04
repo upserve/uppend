@@ -68,6 +68,9 @@ public class LookupMetadata {
     public long readData(Path dataPath, LookupKey key) {
         try {
             try (FileChannel dataChan = FileChannel.open(dataPath, StandardOpenOption.READ)) {
+                if (numKeys > LookupData.numEntries(dataChan, keyLength)) {
+                    throw new IOException("metadata num keys (" + numKeys + ") exceeds num data entries");
+                }
                 int keyIndexLower = 0;
                 int keyIndexUpper = numKeys - 1;
                 LookupKey lowerKey = minKey;

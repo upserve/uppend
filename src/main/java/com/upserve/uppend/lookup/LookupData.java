@@ -231,13 +231,13 @@ public class LookupData implements AutoCloseable, Flushable {
         log.trace("closing lookup data at {}", path);
         synchronized (chan) {
             if (isClosed.compareAndSet(false, true)) {
-                LookupMetadata metadata = generateMetadata();
-                metadata.writeTo(metadataPath);
-                log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
                 chan.close();
                 log.trace("closed lookup data at {}", path);
+                LookupMetadata metadata = generateMetadata();
+                metadata.writeTo(metadataPath);
+                log.trace("wrote lookup metadata at {}: {}", metadataPath, metadata);
             } else {
-                log.warn("lookup data already closed: " + path, new RuntimeException("was closed") /* get stack */);
+                log.warn("lookup data already closed: " + path, new RuntimeException("already closed") /* get stack */);
             }
         }
     }
@@ -377,6 +377,10 @@ public class LookupData implements AutoCloseable, Flushable {
             keyIndex++;
             return key;
         }
+    }
+
+    static int numEntries(FileChannel chan, int keyLength) throws IOException {
+        return (int) (chan.size() / (keyLength + 8));
     }
 
     static LookupKey readKey(FileChannel chan, int keyLength, int keyNumber) throws IOException {

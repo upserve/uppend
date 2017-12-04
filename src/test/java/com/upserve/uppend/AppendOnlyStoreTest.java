@@ -4,12 +4,15 @@ import com.upserve.uppend.lookup.LongLookup;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.nio.file.Paths;
 import java.util.*;
 
 import static org.junit.Assert.*;
 
-public abstract class AppendOnlyStoreTest {
-    protected abstract AppendOnlyStore newStore();
+public class AppendOnlyStoreTest {
+    private AppendOnlyStore newStore() {
+        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
+    }
 
     private AppendOnlyStore store;
 
