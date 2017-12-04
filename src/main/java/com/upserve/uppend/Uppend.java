@@ -20,20 +20,20 @@ public final class Uppend {
     private Uppend() {
     }
 
-    public static FileAppendOnlyStoreBuilder store(String path) {
+    public static AppendOnlyStoreBuilder store(String path) {
         return store(Paths.get(path));
     }
 
-    public static FileAppendOnlyStoreBuilder store(Path path) {
-        return new FileAppendOnlyStoreBuilder().withDir(path);
+    public static AppendOnlyStoreBuilder store(Path path) {
+        return new AppendOnlyStoreBuilder().withDir(path);
     }
 
-    public static FileCounterStoreBuilder counterStore(String path) {
+    public static CounterStoreBuilder counterStore(String path) {
         return counterStore(Paths.get(path));
     }
 
-    public static FileCounterStoreBuilder counterStore(Path path) {
-        return new FileCounterStoreBuilder().withDir(path);
+    public static CounterStoreBuilder counterStore(Path path) {
+        return new CounterStoreBuilder().withDir(path);
     }
 
     public static void main(String ... args) throws Exception {

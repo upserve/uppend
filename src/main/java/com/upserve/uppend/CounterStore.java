@@ -1,12 +1,11 @@
 package com.upserve.uppend;
 
 import java.io.Flushable;
-import java.util.stream.Stream;
 
 /**
  * Keep counters for partitioned keys.
  */
-public interface CounterStore extends AutoCloseable, Flushable {
+public interface CounterStore extends ReadOnlyCounterStore, Flushable {
     /**
      * Set the counter under a given partition and key, to the given value
      *
@@ -49,32 +48,6 @@ public interface CounterStore extends AutoCloseable, Flushable {
      */
     @Override
     void flush();
-
-    /**
-     * Get the value for a given partition and key
-     *
-     * @param partition the partition to get
-     * @param key the key to get
-     * @throws IllegalArgumentException if partition is invalid
-     * @return the value for the given partition and key, or 0 if not found
-     */
-    long get(String partition, String key);
-
-    /**
-     * Enumerate the keys for a given partition
-     *
-     * @param partition the partition under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
-     * @return a stream of string keys
-     */
-    Stream<String> keys(String partition);
-
-    /**
-     * Enumerate the partitions in the data store
-     *
-     * @return a stream of string partition
-     */
-    Stream<String> partitions();
 
     /**
      * Remove all keys and values from the store.

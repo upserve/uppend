@@ -1,49 +1,24 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.lookup.*;
+import com.upserve.uppend.lookup.LongLookup;
 import org.slf4j.Logger;
 
-import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.nio.file.Path;
 import java.util.stream.*;
 
-public class FileAppendOnlyStore implements AppendOnlyStore {
+public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
-    /**
-     * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
-     * automatically flushing writes.
-     */
-    public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
 
     private static final int NUM_BLOBS_PER_BLOCK = 127;
 
-    private final Path dir;
     private final LongLookup lookups;
     private final BlockedLongs blocks;
     private final Blobs blobs;
 
-    private final AtomicBoolean isClosed;
+    FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize) {
+        super(dir, flushDelaySeconds, doLock);
 
-    public FileAppendOnlyStore(Path dir) {
-        this(
-                dir,
-                LongLookup.DEFAULT_HASH_SIZE,
-                LongLookup.DEFAULT_WRITE_CACHE_SIZE,
-                DEFAULT_FLUSH_DELAY_SECONDS
-        );
-    }
-
-    public FileAppendOnlyStore(Path dir, int longLookupHashSize, int longLookupWriteCacheSize, int flushDelaySeconds) {
-        try {
-            Files.createDirectories(dir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to mkdirs: " + dir, e);
-        }
-
-        this.dir = dir;
         lookups = new LongLookup(
                 dir.resolve("lookups"),
                 longLookupHashSize,
@@ -51,9 +26,6 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         );
         blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
         blobs = new Blobs(dir.resolve("blobs"));
-        AutoFlusher.register(flushDelaySeconds, this);
-
-        isClosed = new AtomicBoolean(false);
     }
 
     @Override
@@ -63,16 +35,6 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
         long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
         log.trace("appending {} bytes (blob pos {}, block pos {}) for key '{}'", value.length, blobPos, blockPos, key);
         blocks.append(blockPos, blobPos);
-    }
-
-    @Override
-    public void flush() {
-        log.info("flushing {}", dir);
-        // Flush lookups, then blocks, then blobs, since this is the access order of a read.
-        lookups.flush();
-        blocks.flush();
-        blobs.flush();
-        log.info("flushed {}", dir);
     }
 
     @Override
@@ -120,13 +82,20 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
     }
 
     @Override
-    public void close() throws Exception {
-        if (!isClosed.compareAndSet(false, true)) {
-            log.warn("close called twice on store: " + dir);
-            return;
+    protected void flushInternal() {
+        // Flush lookups, then blocks, then blobs, since this is the access order of a read.
+        lookups.flush();
+        blocks.flush();
+        blobs.flush();
+    }
+
+    @Override
+    protected void closeInternal() {
+        try {
+            lookups.close();
+        } catch (Exception e) {
+            log.error("unable to close lookups", e);
         }
-        log.info("closing: " + dir);
-        AutoFlusher.deregister(this);
         try {
             blocks.close();
         } catch (Exception e) {
@@ -136,11 +105,6 @@ public class FileAppendOnlyStore implements AppendOnlyStore {
             blobs.close();
         } catch (Exception e) {
             log.error("unable to close blobs", e);
-        }
-        try {
-            lookups.close();
-        } catch (Exception e) {
-            log.error("unable to close lookups", e);
         }
     }
 

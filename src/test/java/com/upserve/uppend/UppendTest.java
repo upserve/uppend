@@ -20,11 +20,11 @@ public class UppendTest {
         final Path path = Paths.get(pathStr);
         SafeDeleting.removeTempPath(path);
         assertFalse(Files.exists(path));
-        FileAppendOnlyStore store = Uppend.store(pathStr).build();
+        AppendOnlyStore store = Uppend.store(pathStr).build();
         store.append("partition", "foo", "bar".getBytes());
         assertTrue(Files.exists(path));
         store.flush();
-        FileAppendOnlyStore store2 = Uppend.store(path).build();
+        ReadOnlyAppendOnlyStore store2 = Uppend.store(path).buildReadOnly();
         assertArrayEquals(new String[] { "bar" }, store2.read("partition", "foo").map(String::new).toArray());
         store.close();
         store2.close();
@@ -37,11 +37,11 @@ public class UppendTest {
         final Path path = Paths.get(pathStr);
         SafeDeleting.removeTempPath(path);
         assertFalse(Files.exists(path));
-        FileCounterStore store = Uppend.counterStore(pathStr).build();
+        CounterStore store = Uppend.counterStore(pathStr).build();
         store.increment("partition", "foo", 5);
         assertTrue(Files.exists(path));
         store.flush();
-        FileCounterStore store2 = Uppend.counterStore(path).build();
+        ReadOnlyCounterStore store2 = Uppend.counterStore(path).buildReadOnly();
         assertEquals(5, store2.get("partition", "foo"));
         store.close();
         store2.close();

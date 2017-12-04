@@ -11,7 +11,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.LongSupplier;
+import java.util.function.*;
 import java.util.stream.Stream;
 
 public class LongLookup implements AutoCloseable, Flushable {
@@ -41,6 +41,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     private final HashFunction hashFunction;
     private final Phaser lookupDataPhaser;
     private final LinkedHashMap<Path, LookupData> writeCache;
+    private final Object writeCacheDataCloseMonitor = new Object();
 
     public LongLookup(Path dir) {
         this(dir, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
@@ -64,22 +65,29 @@ public class LongLookup implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
-        String hashBinaryString = Integer.toBinaryString(hashSize - 1);
-        hashBytes = (hashBinaryString.length() + 7) / 8;
-        hashFinalByteMask = (1 << (hashBinaryString.length() % 8)) - 1;
-
-        hashFunction = Hashing.murmur3_32();
+        if (hashSize == 1) {
+            hashBytes = 1;
+            hashFinalByteMask = 0;
+            hashFunction = null;
+        } else {
+            String hashBinaryString = Integer.toBinaryString(hashSize - 1);
+            hashBytes = (hashBinaryString.length() + 7) / 8;
+            hashFinalByteMask = (1 << (hashBinaryString.length() % 8)) - 1;
+            hashFunction = Hashing.murmur3_32();
+        }
 
         lookupDataPhaser = new Phaser(1);
 
         writeCache = new LinkedHashMap<Path, LookupData>(writeCacheSize + 1, 1.1f, true) {
             @Override
-            protected synchronized boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
+            protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
                 if (size() > writeCacheSize) {
                     Path path = eldest.getKey();
                     log.trace("cache removing {}", path);
                     try {
-                        eldest.getValue().close();
+                        synchronized (writeCacheDataCloseMonitor) {
+                            eldest.getValue().close();
+                        }
                     } catch (IOException e) {
                         log.error("unable to close " + path, e);
                         throw new UncheckedIOException("unable to close " + path, e);
@@ -87,7 +95,7 @@ public class LongLookup implements AutoCloseable, Flushable {
                         log.error("unexpected error closing " + path, e);
                         throw e;
                     } finally {
-                        lookupDataPhaser.arriveAndDeregister();
+                    lookupDataPhaser.arriveAndDeregister();
                     }
                     return true;
                 }
@@ -104,12 +112,17 @@ public class LongLookup implements AutoCloseable, Flushable {
      * @return the value for the partition and key, or -1 if not found
      */
     public long get(String partition, String key) {
+        log.trace("getting from {}: {}: {}", dir, partition, key);
+
         validatePartition(partition);
 
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
 
-        LookupData data = loadFromWriteCacheIfExists(lenPath);
+        LookupData data;
+        synchronized (writeCache) {
+            data = writeCache.get(lenPath);
+        }
         if (data != null) {
             long value = data.get(lookupKey);
             return value == Long.MIN_VALUE ? -1 : value;
@@ -128,22 +141,27 @@ public class LongLookup implements AutoCloseable, Flushable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
-        return loadFromWriteCache(lenPath).put(lookupKey, value);
+        synchronized (writeCacheDataCloseMonitor) {
+            return loadFromCache(lenPath).put(lookupKey, value);
+        }
     }
 
     public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
-        return loadFromWriteCache(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
+        synchronized (writeCacheDataCloseMonitor) {
+            return loadFromCache(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
+        }
     }
 
     public long increment(String partition, String key, long delta) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path lenPath = hashAndLengthPath(partition, lookupKey);
-        return loadFromWriteCache(lenPath).increment(lookupKey, delta);
-
+        synchronized (writeCacheDataCloseMonitor) {
+            return loadFromCache(lenPath).increment(lookupKey, delta);
+        }
     }
 
     public Stream<String> keys(String partition) {
@@ -190,19 +208,21 @@ public class LongLookup implements AutoCloseable, Flushable {
             if (log.isTraceEnabled()) {
                 log.trace("closing {} (~{} entries)", dir, writeCache.size());
             }
-            writeCache.forEach((path, data) -> {
-                log.trace("cache removing {}", path);
-                try {
-                    data.close();
-                } catch (IOException e) {
-                    log.error("unable to close " + path, e);
-                    throw new UncheckedIOException("unable to close " + path, e);
-                } finally {
-                    lookupDataPhaser.arriveAndDeregister();
-                }
+            synchronized (writeCacheDataCloseMonitor) {
+                writeCache.forEach((path, data) -> {
+                    log.trace("cache removing {}", path);
+                    try {
+                        data.close();
+                    } catch (IOException e) {
+                        log.error("unable to close " + path, e);
+                        throw new UncheckedIOException("unable to close " + path, e);
+                    } finally {
+                        lookupDataPhaser.arriveAndDeregister();
+                    }
 
-            });
-            writeCache.clear();
+                });
+                writeCache.clear();
+            }
             if (log.isTraceEnabled()) {
                 log.trace("waiting for {} registered lookup data closures", lookupDataPhaser.getRegisteredParties());
             }
@@ -221,7 +241,7 @@ public class LongLookup implements AutoCloseable, Flushable {
             cacheCopy = new ConcurrentHashMap<>(writeCache);
         }
         ArrayList<Future> futures = new ArrayList<>();
-        cacheCopy.forEach((path, data) -> {
+        cacheCopy.forEach((path, data) ->
             futures.add(AutoFlusher.flushExecPool.submit(() -> {
                 try {
                     log.trace("cache flushing {}", path);
@@ -230,8 +250,8 @@ public class LongLookup implements AutoCloseable, Flushable {
                 } catch (Exception e) {
                     log.error("unable to flush " + path, e);
                 }
-            }));
-        });
+            }
+        )));
         Futures.getAll(futures);
         log.trace("flushed {}", dir);
     }
@@ -251,41 +271,38 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
     }
 
-    private LookupData loadFromWriteCache(Path lenPath) {
+    private LookupData loadFromCache(Path lenPath) {
         synchronized (writeCache) {
             return writeCache.computeIfAbsent(lenPath, path -> {
                 log.trace("cache loading {}", lenPath);
                 return new LookupData(
-                        parseKeyLengthFromPath(lenPath),
+                    parseKeyLengthFromPath(lenPath),
                         lenPath.resolve("data"),
                         lenPath.resolve("meta")
-                );
+                    );
             });
         }
     }
 
-    private LookupData loadFromWriteCacheIfExists(Path lenPath) {
-        synchronized (writeCache) {
-            return writeCache.get(lenPath);
-        }
-    }
-
     private Path hashAndLengthPath(String partition, LookupKey key) {
-        log.trace("getting from {}: {}", dir, key);
-        byte[] hash = hashFunction.hashString(key.string(), Charsets.UTF_8).asBytes();
         String hashPath;
-        switch (hashBytes) {
-            case 1:
-                hashPath = String.format("%02x/%d", hashFinalByteMask & (int) hash[0], key.byteLength());
-                break;
-            case 2:
-                hashPath = String.format("%02x/%02x/%d", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1], key.byteLength());
-                break;
-            case 3:
-                hashPath = String.format("%02x/%02x/%02x/%d", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2], key.byteLength());
-                break;
-            default:
-                throw new IllegalStateException("unhandled hashBytes: " + hashBytes);
+        if (hashFunction == null) {
+            hashPath = String.format("00/%d", key.byteLength());
+        } else {
+            byte[] hash = hashFunction.hashString(key.string(), Charsets.UTF_8).asBytes();
+            switch (hashBytes) {
+                case 1:
+                    hashPath = String.format("%02x/%d", hashFinalByteMask & (int) hash[0], key.byteLength());
+                    break;
+                case 2:
+                    hashPath = String.format("%02x/%02x/%d", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1], key.byteLength());
+                    break;
+                case 3:
+                    hashPath = String.format("%02x/%02x/%02x/%d", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2], key.byteLength());
+                    break;
+                default:
+                    throw new IllegalStateException("unhandled hashBytes: " + hashBytes);
+            }
         }
         return dir.resolve(partition).resolve(hashPath);
     }

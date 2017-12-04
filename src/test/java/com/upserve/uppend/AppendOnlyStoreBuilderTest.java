@@ -15,7 +15,7 @@ public class AppendOnlyStoreBuilderTest {
         Path path = Paths.get("build/tmp/test/append-only-store-builder");
         SafeDeleting.removeDirectory(path);
         MetricRegistry metrics = new MetricRegistry();
-        AppendOnlyStore store = Uppend.store(path).buildWithMetrics(metrics);
+        AppendOnlyStore store = Uppend.store(path).withMetrics(metrics).build();
         store.flush();
         assertEquals(1, metrics.getTimers().get(AppendOnlyStoreWithMetrics.FLUSH_TIMER_METRIC_NAME).getCount());
     }

@@ -8,7 +8,6 @@ import org.slf4j.Logger;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
@@ -47,7 +46,8 @@ public class Benchmark {
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
-                .buildWithMetrics(metrics);
+                .withMetrics(metrics)
+                .build();
 
         range = (long) maxPartitions * (long) maxKeys * 199;
 

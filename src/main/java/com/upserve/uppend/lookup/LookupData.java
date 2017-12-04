@@ -23,10 +23,9 @@ public class LookupData implements AutoCloseable, Flushable {
     private final Path path;
     private final Path metadataPath;
     private final Supplier<ByteBuffer> recordBufSupplier;
-    private final Supplier<ByteBuffer> longValueBufSupplier;
     private final FileChannel chan;
-    private final AtomicLong chanSize;
 
+    private final Object memMonitor = new Object();
     private Object2LongSortedMap<LookupKey> mem;
     private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
 
@@ -46,11 +45,9 @@ public class LookupData implements AutoCloseable, Flushable {
         }
 
         recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(keyLength + 8);
-        longValueBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(8);
 
         try {
             chan = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            chanSize = new AtomicLong(chan.size());
         } catch (IOException e) {
             throw new UncheckedIOException("can't open file: " + path, e);
         }
@@ -71,8 +68,10 @@ public class LookupData implements AutoCloseable, Flushable {
      * @return the value associated with the key, or {@code Long.MIN_VALUE} if
      *         the key was not found
      */
-    public synchronized long get(LookupKey key) {
-        return mem.getLong(key);
+    public long get(LookupKey key) {
+        synchronized (memMonitor) {
+            return mem.getLong(key);
+        }
     }
 
     /**
@@ -83,90 +82,133 @@ public class LookupData implements AutoCloseable, Flushable {
      * @return the old value associated with the key, or {@code Long.MIN_VALUE}
      *         if the entry didn't exist yet
      */
-    public synchronized long put(LookupKey key, long value) {
+    public long put(LookupKey key, final long value) {
         log.trace("putting {}={} in {}", key, value, path);
-        final long existingValue = mem.put(key, value);
 
-        if (existingValue != Long.MIN_VALUE) {
-            int index = memOrder.getInt(key);
-            if (index == Integer.MIN_VALUE) {
-                throw new IllegalStateException("unknown index order for existing key: " + key);
+        final long existingValue;
+        final int index;
+        final boolean existing;
+
+        synchronized (memMonitor) {
+            existingValue = mem.put(key, value);
+            if (existing = existingValue != Long.MIN_VALUE) {
+                index = memOrder.getInt(key);
+                if (index == Integer.MIN_VALUE) {
+                    throw new IllegalStateException("unknown index order for existing key: " + key);
+                }
+            } else {
+                index = memOrder.size();
+                if (memOrder.put(key, index) != Integer.MIN_VALUE) {
+                    throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
+                }
             }
+        }
+
+        if (existing) {
             set(index, value);
         } else {
-            int index = memOrder.size();
+            set(index, key, value);
+        }
+
+        return existingValue;
+    }
+
+    public long putIfNotExists(LookupKey key, final long value) {
+        log.trace("putting (if not exists) {}={} in {}", key, value, path);
+
+        final int index;
+
+        synchronized (memMonitor) {
+            long existingValue = mem.put(key, value);
+            if (existingValue != Long.MIN_VALUE) {
+                return existingValue;
+            }
+            index = memOrder.size();
             if (memOrder.put(key, index) != Integer.MIN_VALUE) {
                 throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
             }
-            append(key, value);
         }
-
-        return existingValue;
-    }
-
-    public synchronized long putIfNotExists(LookupKey key, long value) {
-        log.trace("putting (if not exists) {}={} in {}", key, value, path);
-        long existingValue = mem.put(key, value);
-        if (existingValue != Long.MIN_VALUE) {
-            return existingValue;
-        }
-        int index = memOrder.size();
-        if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-            throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-        }
-        append(key, value);
+        set(index, key, value);
         return value;
     }
 
-    public synchronized long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
+    public long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
         log.trace("putting (if not exists) {}=<lambda> in {}", key, path);
 
-        long firstExistingValue = mem.getLong(key);
-        if (firstExistingValue != Long.MIN_VALUE) {
-            return firstExistingValue;
-        }
+        final long newValue;
+        final int index;
 
-        long newValue = allocateLongFunc.getAsLong();
-        long existingValue = putIfNotExists(key, newValue);
-        if (existingValue != newValue) {
-            throw new IllegalStateException("race while putting (if not exists) " + key + "=<lambda> in " + path);
-        }
-        return existingValue;
-    }
+        synchronized (memMonitor) {
+            long firstExistingValue = mem.getLong(key);
+            if (firstExistingValue != Long.MIN_VALUE) {
+                return firstExistingValue;
+            }
 
-    public synchronized long increment(LookupKey key, long delta) {
-        log.trace("incrementing {} by {} in {}", key, delta, path);
-        long value = mem.getLong(key);
-        if (value == Long.MIN_VALUE) {
-            value = delta;
-            long existingValue = put(key, value);
+            newValue = allocateLongFunc.getAsLong();
+            long existingValue = mem.put(key, newValue);
+
             if (existingValue != Long.MIN_VALUE) {
-                throw new IllegalStateException("unexpected race while incrementing new key " + key + " by " + delta + " in " + path);
+                throw new IllegalStateException("race while putting (if not exists) " + key + "=<lambda> in " + path);
             }
-        } else {
-            value += delta;
-            mem.put(key, value);
-            int index = memOrder.getInt(key);
-            if (index == Integer.MIN_VALUE) {
-                throw new IllegalStateException("unknown index order for existing key: " + key);
+            index = memOrder.size();
+            if (memOrder.put(key, index) != Integer.MIN_VALUE) {
+                throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
             }
-            set(index, value);
         }
-        return value;
+
+        set(index, key, newValue);
+
+        return newValue;
     }
 
-    private void append(LookupKey key, long value) {
+    public long increment(LookupKey key, long delta) {
+        log.trace("incrementing {} by {} in {}", key, delta, path);
+
+        final long existingValue;
+        final long newValue;
+        final int index;
+        final boolean existing;
+
+        synchronized (memMonitor) {
+            existingValue = mem.getLong(key);
+            if (existing = existingValue != Long.MIN_VALUE) {
+                newValue = existingValue + delta;
+                index = memOrder.getInt(key);
+                if (index == Integer.MIN_VALUE) {
+                    throw new IllegalStateException("unknown index order for existing key: " + key);
+                }
+            } else {
+                newValue = delta;
+                index = memOrder.size();
+                if (memOrder.put(key, index) != Integer.MIN_VALUE) {
+                    throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
+                }
+            }
+            if (mem.put(key, newValue) != existingValue) {
+                throw new IllegalStateException("race while incrementing key " + key + " in " + path);
+            }
+        }
+
+        if (existing) {
+            set(index, newValue);
+        } else {
+            set(index, key, newValue);
+        }
+
+        return newValue;
+    }
+
+    private void set(int index, LookupKey key, long value) {
         byte[] keyBytes = key.bytes();
         if (keyBytes.length != keyLength) {
             throw new IllegalStateException("unexpected key length: expected " + keyLength + ", got " + keyBytes.length);
         }
         try {
-            long pos = chanSize.getAndAdd(keyLength + 8);
             ByteBuffer buf = recordBufSupplier.get();
             buf.put(keyBytes);
             buf.putLong(value);
             buf.flip();
-            chan.write(buf, pos);
+            chan.write(buf, index * (keyLength + 8));
         } catch (IOException e) {
             throw new UncheckedIOException("unable to write key: " + key, e);
         }
@@ -174,7 +216,7 @@ public class LookupData implements AutoCloseable, Flushable {
 
     private void set(int index, long value) {
         try {
-            ByteBuffer buf = longValueBufSupplier.get();
+            ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
             buf.putLong(value);
             buf.flip();
             chan.write(buf, index * (keyLength + 8) + keyLength);
@@ -185,89 +227,101 @@ public class LookupData implements AutoCloseable, Flushable {
 
 
     @Override
-    public synchronized void close() throws IOException {
-        log.trace("closing lookup data at {} (~{} entries)", path, mem.size());
-        if (isClosed.compareAndSet(false, true)) {
-            flushInternal();
-            chan.close();
-            log.trace("closed lookup data at {}", path);
-        } else {
-            log.warn("lookup data already closed: " + path, new RuntimeException("was closed") /* get stack */);
+    public void close() throws IOException {
+        log.trace("closing lookup data at {}", path);
+        synchronized (chan) {
+            if (isClosed.compareAndSet(false, true)) {
+                chan.close();
+                log.trace("closed lookup data at {}", path);
+                LookupMetadata metadata = generateMetadata();
+                metadata.writeTo(metadataPath);
+                log.trace("wrote lookup metadata at {}: {}", metadataPath, metadata);
+            } else {
+                log.warn("lookup data already closed: " + path, new RuntimeException("already closed") /* get stack */);
+            }
         }
     }
 
     @Override
-    public synchronized void flush() throws IOException {
-        if (isClosed.get()) {
-            log.debug("ignoring flush of closed lookup data at {}", path);
-            return;
-        }
-        log.trace("flushing lookup and metadata at {}", metadataPath);
-        flushInternal();
-    }
-
-    private synchronized void flushInternal() throws IOException {
-        chan.force(true);
-        LookupMetadata metadata = generateMetadata();
-        metadata.writeTo(metadataPath);
-        log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
-    }
-
-    private synchronized void init() throws IOException {
-        mem = new Object2LongAVLTreeMap<>();
-        mem.defaultReturnValue(Long.MIN_VALUE);
-
-        memOrder = new Object2IntLinkedOpenHashMap<>();
-        memOrder.defaultReturnValue(Integer.MIN_VALUE);
-
-        chan.position(0);
-        long pos = 0;
-        long size = chan.size();
-        DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
-        // don't call dis.close() on wrapping InputStream since we don't want it to chain to chan.close()
-        while (pos < size) {
-            long nextPos = pos + keyLength + 8;
-            if (nextPos > size) {
-                // corrupt; fix
-                log.error("truncating at pos " + pos + " for file of corrupted size " + size + " with key length " + keyLength);
-                chan.truncate(pos);
-                break;
+    public void flush() throws IOException {
+        synchronized (chan) {
+            if (isClosed.get()) {
+                log.debug("ignoring flush of closed lookup data at {}", path);
+                return;
             }
-            byte[] keyBytes = new byte[keyLength];
-            try {
-                dis.readFully(keyBytes);
-            } catch (EOFException e) {
-                throw new IOException("got eof at pos " + pos + " while trying to read " + keyLength + " bytes", e);
-            }
-            LookupKey key = new LookupKey(keyBytes);
-            long val;
-            try {
-                val = dis.readLong();
-            } catch (IOException e) {
-                throw new IOException("read bad value for key " + key + " at pos " + pos, e);
-            }
-            if (mem.put(key, val) != Long.MIN_VALUE) {
-                throw new IllegalStateException("encountered repeated mem key at pos " + pos + ": " + key);
-            }
-            if (memOrder.put(key, memOrder.size()) != Integer.MIN_VALUE) {
-                throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
-            }
-            pos = nextPos;
-        }
-        if (chan.position() != chan.size()) {
-            log.warn("scan incomplete at pos " + chan.position() + " / " + chan.size());
+            log.trace("flushing lookup and metadata at {}", metadataPath);
+            chan.force(true);
+            LookupMetadata metadata = generateMetadata();
+            metadata.writeTo(metadataPath);
+            log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
         }
     }
 
-    private synchronized LookupMetadata generateMetadata() {
-        LookupKey minKey = mem.firstKey();
-        LookupKey maxKey = mem.lastKey();
-        int[] keyStorageOrder = memOrder.values().toIntArray();
-        String[] keyStrings = memOrder.keySet().stream().map(LookupKey::toString).toArray(String[]::new);
+    private void init() throws IOException {
+        synchronized (memMonitor) {
+            mem = new Object2LongAVLTreeMap<>();
+            mem.defaultReturnValue(Long.MIN_VALUE);
+
+            memOrder = new Object2IntLinkedOpenHashMap<>();
+            memOrder.defaultReturnValue(Integer.MIN_VALUE);
+
+            chan.position(0);
+            long pos = 0;
+            long size = chan.size();
+            DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
+            // don't call dis.close() on wrapping InputStream since we don't want it to chain to chan.close()
+            while (pos < size) {
+                long nextPos = pos + keyLength + 8;
+                if (nextPos > size) {
+                    // corrupt; fix
+                    log.error("truncating at pos " + pos + " for file of corrupted size " + size + " with key length " + keyLength);
+                    chan.truncate(pos);
+                    break;
+                }
+                byte[] keyBytes = new byte[keyLength];
+                try {
+                    dis.readFully(keyBytes);
+                } catch (EOFException e) {
+                    throw new IOException("got eof at pos " + pos + " while trying to read " + keyLength + " bytes", e);
+                }
+                LookupKey key = new LookupKey(keyBytes);
+                long val;
+                try {
+                    val = dis.readLong();
+                } catch (IOException e) {
+                    throw new IOException("read bad value for key " + key + " at pos " + pos, e);
+                }
+                if (mem.put(key, val) != Long.MIN_VALUE) {
+                    throw new IllegalStateException("encountered repeated mem key at pos " + pos + ": " + key);
+                }
+                if (memOrder.put(key, memOrder.size()) != Integer.MIN_VALUE) {
+                    throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
+                }
+                pos = nextPos;
+            }
+            if (chan.position() != chan.size()) {
+                log.warn("scan incomplete at pos " + chan.position() + " / " + chan.size());
+            }
+        }
+    }
+
+    private LookupMetadata generateMetadata() {
+        final LookupKey minKey;
+        final LookupKey maxKey;
+        final int[] keyStorageOrder;
+        final String[] keyStrings;
+
+        synchronized (memMonitor) {
+            minKey = mem.firstKey();
+            maxKey = mem.lastKey();
+            keyStorageOrder = memOrder.values().toIntArray();
+            keyStrings = memOrder.keySet().stream().map(LookupKey::toString).toArray(String[]::new);
+        }
+
         IntArrayCustomSort.sort(keyStorageOrder, (a, b) -> keyStrings[a].compareTo(keyStrings[b]));
         return new LookupMetadata(
                 keyLength,
-                mem.size(),
+                keyStrings.length,
                 minKey,
                 maxKey,
                 keyStorageOrder
@@ -323,6 +377,10 @@ public class LookupData implements AutoCloseable, Flushable {
             keyIndex++;
             return key;
         }
+    }
+
+    static int numEntries(FileChannel chan, int keyLength) throws IOException {
+        return (int) (chan.size() / (keyLength + 8));
     }
 
     static LookupKey readKey(FileChannel chan, int keyLength, int keyNumber) throws IOException {

@@ -9,7 +9,7 @@ import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
@@ -31,6 +31,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     private final FileChannel blocksPos;
     private final MappedByteBuffer posBuf;
+    private final AtomicLong posMem;
 
     private final AtomicBoolean outDirty;
 
@@ -77,13 +78,14 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             } catch (IOException e) {
                 throw new UncheckedIOException("unable to map pos buffer at in " + posFile, e);
             }
-            long pos = getPos();
+            long pos = posBuf.getLong(0);
             if (pos < 0) {
                 throw new IllegalStateException("negative pos (" + pos + "): " + posFile);
             }
             if (pos > blocks.size()) {
                 throw new IllegalStateException("pos (" + pos + ") > size of " + file + " (" + blocks.size() + "): " + posFile);
             }
+            posMem = new AtomicLong(pos);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
@@ -96,14 +98,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      *
      * @return the position of the new block
      */
-    public synchronized long allocate() {
+    public long allocate() {
         log.trace("allocating {} bytes in {}", blockSize, file);
-        synchronized (posBuf) {
-            long pos = getPos();
-            putPos(pos + blockSize);
-            outDirty.set(true);
-            return pos;
-        }
+        outDirty.set(true);
+        return posMem.getAndAdd(blockSize);
     }
 
     // TODO: find way to remove synchronized on this method
@@ -137,7 +135,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (outDirty.get()) {
             flush();
         }
-        if (pos >= getPos()) {
+        if (pos >= posMem.get()) {
             return LongStream.empty();
         }
         ByteBuffer buf = readBlock(pos);
@@ -176,7 +174,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (outDirty.get()) {
             flush();
         }
-        if (pos >= getPos()) {
+        if (pos >= posMem.get()) {
             return -1;
         }
         ByteBuffer buf = readBlock(pos);
@@ -205,7 +203,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.debug("clearing {}", file);
         try {
             blocks.truncate(0);
-            putPos(0);
+            posBuf.putLong(0, 0);
+            posMem.set(0);
             Arrays.fill(pages, null);
             outDirty.set(true);
         } catch (IOException e) {
@@ -216,15 +215,9 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public synchronized void close() throws Exception {
         log.trace("closing {}", file);
-        for (MappedByteBuffer page : pages) {
-            if (page != null) {
-                page.force();
-            }
-        }
+        flush();
         blocks.close();
-        posBuf.force();
         blocksPos.close();
-        outDirty.set(false);
     }
 
     @Override
@@ -235,6 +228,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 page.force();
             }
         }
+        posBuf.putLong(0, posMem.get());
         posBuf.force();
         outDirty.set(false);
     }
@@ -282,13 +276,5 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             pages[pageIndex] = page;
         }
         return page;
-    }
-
-    private long getPos() {
-        return posBuf.getLong(0);
-    }
-
-    private void putPos(long pos) {
-        posBuf.putLong(0, pos);
     }
 }
