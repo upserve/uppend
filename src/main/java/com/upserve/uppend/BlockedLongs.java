@@ -1,6 +1,6 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.util.ThreadLocalByteBuffers;
+import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -8,10 +8,10 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.Arrays;
+import java.util.*;
 import java.util.concurrent.atomic.*;
-import java.util.function.Supplier;
-import java.util.stream.LongStream;
+import java.util.function.*;
+import java.util.stream.*;
 
 public class BlockedLongs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -56,7 +56,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
 
         this.valuesPerBlock = valuesPerBlock;
-        blockSize = (valuesPerBlock + 1) * 8;
+        blockSize = 16 + valuesPerBlock * 8;
+
+        // size | -next
+        // prev | -last
 
         try {
             blocks = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -99,34 +102,46 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      * @return the position of the new block
      */
     public long allocate() {
-        log.trace("allocating {} bytes in {}", blockSize, file);
+        log.trace("allocating block of {} bytes in {}", blockSize, file);
+        long pos = posMem.getAndAdd(blockSize);
         outDirty.set(true);
-        return posMem.getAndAdd(blockSize);
+        return pos;
     }
 
-    // TODO: find way to remove synchronized on this method
-    public synchronized void append(long pos, long val) {
+    public synchronized void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
-        long numValuesLong = readLong(pos);
-        if (numValuesLong < 0) {
-            long nextPos = -numValuesLong;
-            append(nextPos, val);
-            // TODO: avoid navigating a long list by having a tail pointer?
-        } else {
-            if (numValuesLong > valuesPerBlock) {
-                throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
-            }
-            if (numValuesLong == valuesPerBlock) {
-                long newBlockPos = allocate();
-                append(newBlockPos, val);
-                writeLong(pos, -newBlockPos);
-            } else {
-                long valuePos = pos + 8 + (numValuesLong * 8);
-                writeLong(valuePos, val);
-                writeLong(pos, numValuesLong + 1);
-            }
-            outDirty.set(true);
+
+        // size | -next
+        // prev | -last
+
+        final long prev = readLong(pos + 8);
+        if (prev > 0) {
+            throw new IllegalStateException("append called at non-starting block: pos=" + pos);
         }
+        final long last = prev == 0 ? pos : -prev;
+        final long size = readLong(last);
+        if (size < 0) {
+            throw new IllegalStateException("last block has a next: pos=" + pos);
+        }
+        if (size > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos);
+        }
+        if (size == valuesPerBlock) {
+            long newPos = allocate();
+            // write new value in new block
+            writeLong(newPos, 1);
+            writeLong(newPos + 8, last);
+            writeLong(newPos + 16, val);
+            // link to last->next
+            writeLong(last, -newPos);
+            // link to first->last
+            writeLong(pos + 8, -newPos);
+        } else {
+            writeLong(last + 16 + 8 * size, val);
+            writeLong(last, size + 1);
+        }
+
+        outDirty.set(true);
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
@@ -143,20 +158,26 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return LongStream.empty();
         }
         buf.flip();
-        long numValuesLong = buf.getLong();
-        if (numValuesLong < 0) {
-            long nextPos = -numValuesLong;
+
+        // size | -next
+        // prev | -last
+
+        long size = buf.getLong();
+        buf.getLong();
+
+        if (size < 0) {
+            long nextPos = -size;
             long[] values = new long[valuesPerBlock];
             for (int i = 0; i < valuesPerBlock; i++) {
                 values[i] = buf.getLong();
             }
-            return LongStream.concat(Arrays.stream(values), values(nextPos));
-        } else if (numValuesLong > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
-        } else if (numValuesLong == 0) {
+            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
+        } else if (size > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
+        } else if (size == 0) {
             return LongStream.empty();
         } else {
-            int numValues = (int) numValuesLong;
+            int numValues = (int) size;
             long[] values = new long[numValues];
             for (int i = 0; i < numValues; i++) {
                 values[i] = buf.getLong();
@@ -182,21 +203,32 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return -1;
         }
         buf.flip();
-        long numValuesLong = buf.getLong();
-        if (numValuesLong < 0) {
-            long nextPos = -numValuesLong;
-            return lastValue(nextPos); // TODO: consider tail pointer in first block
-        } else if (numValuesLong > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + numValuesLong);
-        } else if (numValuesLong == 0) {
-            return -1;
-        } else {
-            int numValues = (int) numValuesLong;
-            int offset = numValues * 8; // one long for numValues itself
-            long value = buf.getLong(offset);
-            log.trace("got value from {} at {}: {}", file, pos, value);
-            return value;
+
+        // size | -next
+        // prev | -last
+
+        final long prev = readLong(pos + 8);
+        if (prev > 0) {
+            throw new IllegalStateException("lastValue called at non-starting block: pos=" + pos);
         }
+        long last = prev == 0 ? pos : -prev;
+        long size = readLong(last);
+        if (size == 0) {
+            if (prev < 0) {
+                throw new IllegalStateException("got to empty last block: pos=" + pos);
+            }
+            return -1;
+        }
+        if (size < 0) {
+            log.warn("racing with writer while reading last, using last value of previously last block (at " + last + "): pos=" + pos);
+            size = valuesPerBlock;
+        }
+        if (size > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos);
+        }
+        long value = readLong(last + 16 + 8 * (size - 1));
+        log.trace("got value from {} at {}: {}", file, pos, value);
+        return value;
     }
 
     public synchronized void clear() {

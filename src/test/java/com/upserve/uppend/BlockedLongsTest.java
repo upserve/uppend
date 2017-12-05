@@ -1,6 +1,5 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.BlockedLongs;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
@@ -47,7 +46,7 @@ public class BlockedLongsTest {
             long pos1 = v.allocate();
             long pos2 = v.allocate();
             assertEquals(0, pos1);
-            assertEquals(8 + (8 * i), pos2); // brittle
+            assertEquals(16 + (8 * i), pos2); // brittle
             v.clear();
         }
     }
