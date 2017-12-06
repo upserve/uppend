@@ -6,10 +6,9 @@ import org.slf4j.Logger;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
-import java.nio.channels.*;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.concurrent.atomic.*;
-import java.util.function.Supplier;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -30,10 +29,10 @@ public class Blobs implements AutoCloseable, Flushable {
         }
 
         try {
-            blobs = FileChannel.open(dir.resolve("blobs"), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
             blobPosition = new AtomicLong(blobs.size());
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to init blob file: " + dir + "/blobs", e);
+            throw new UncheckedIOException("unable to init blob file: " + file, e);
         }
     }
 
@@ -105,5 +104,28 @@ public class Blobs implements AutoCloseable, Flushable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos + " in " + file, e);
         }
+    }
+
+    public static byte[] read(FileChannel chan, long pos) {
+        log.trace("reading @ {}", pos);
+        ByteBuffer intBuffer = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
+        try {
+            chan.read(intBuffer, pos);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to read 4 bytes at pos " + pos, e);
+        }
+        intBuffer.flip();
+        int size = intBuffer.getInt();
+        byte[] bytes = new byte[size];
+        ByteBuffer buf = ByteBuffer.wrap(bytes);
+        int len = buf.remaining();
+        try {
+            chan.read(buf, pos + 4);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos, e);
+        }
+        log.trace("read {} bytes @ {}", size, pos);
+        return bytes;
+
     }
 }

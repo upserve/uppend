@@ -117,50 +117,50 @@ public class LongLookup implements AutoCloseable, Flushable {
         validatePartition(partition);
 
         LookupKey lookupKey = new LookupKey(key);
-        Path lenPath = hashAndLengthPath(partition, lookupKey);
+        Path hashPath = hashPath(partition, lookupKey);
 
         LookupData data;
         synchronized (writeCache) {
-            data = writeCache.get(lenPath);
+            data = writeCache.get(hashPath);
         }
         if (data != null) {
             long value = data.get(lookupKey);
             return value == Long.MIN_VALUE ? -1 : value;
         }
 
-        Path metaPath = lenPath.resolve("meta");
+        Path metaPath = hashPath.resolve("meta");
         if (!Files.exists(metaPath)) {
             log.trace("no metadata for key {} at path {}", key, metaPath);
             return -1;
         }
-        LookupMetadata metadata = new LookupMetadata(lenPath.resolve("meta"));
-        return metadata.readData(lenPath.resolve("data"), lookupKey);
+        LookupMetadata metadata = new LookupMetadata(hashPath.resolve("meta"));
+        return metadata.readData(hashPath.resolve("data"), lookupKey);
     }
 
     public long put(String partition, String key, long value) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
-        Path lenPath = hashAndLengthPath(partition, lookupKey);
+        Path hashPath = hashPath(partition, lookupKey);
         synchronized (writeCacheDataCloseMonitor) {
-            return loadFromCache(lenPath).put(lookupKey, value);
+            return loadFromCache(hashPath).put(lookupKey, value);
         }
     }
 
     public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
-        Path lenPath = hashAndLengthPath(partition, lookupKey);
+        Path hashPath = hashPath(partition, lookupKey);
         synchronized (writeCacheDataCloseMonitor) {
-            return loadFromCache(lenPath).putIfNotExists(lookupKey, allocateLongFunc);
+            return loadFromCache(hashPath).putIfNotExists(lookupKey, allocateLongFunc);
         }
     }
 
     public long increment(String partition, String key, long delta) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
-        Path lenPath = hashAndLengthPath(partition, lookupKey);
+        Path hashPath = hashPath(partition, lookupKey);
         synchronized (writeCacheDataCloseMonitor) {
-            return loadFromCache(lenPath).increment(lookupKey, delta);
+            return loadFromCache(hashPath).increment(lookupKey, delta);
         }
     }
 
@@ -181,7 +181,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         return files
                 .filter(Files::isRegularFile)
                 .filter(p -> p.getFileName().toString().equals("data"))
-                .flatMap(p -> LookupData.keys(p, parseKeyLengthFromPath(p.getParent())))
+                .flatMap(LookupData::keys)
                 .map(LookupKey::string);
     }
 
@@ -271,44 +271,39 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
     }
 
-    private LookupData loadFromCache(Path lenPath) {
+    private LookupData loadFromCache(Path hashPath) {
         synchronized (writeCache) {
-            return writeCache.computeIfAbsent(lenPath, path -> {
-                log.trace("cache loading {}", lenPath);
+            return writeCache.computeIfAbsent(hashPath, path -> {
+                log.trace("cache loading {}", hashPath);
                 return new LookupData(
-                    parseKeyLengthFromPath(lenPath),
-                        lenPath.resolve("data"),
-                        lenPath.resolve("meta")
+                        hashPath.resolve("data"),
+                        hashPath.resolve("meta")
                     );
             });
         }
     }
 
-    private Path hashAndLengthPath(String partition, LookupKey key) {
+    private Path hashPath(String partition, LookupKey key) {
         String hashPath;
         if (hashFunction == null) {
-            hashPath = String.format("00/%d", key.byteLength());
+            hashPath = "00";
         } else {
             byte[] hash = hashFunction.hashString(key.string(), Charsets.UTF_8).asBytes();
             switch (hashBytes) {
                 case 1:
-                    hashPath = String.format("%02x/%d", hashFinalByteMask & (int) hash[0], key.byteLength());
+                    hashPath = String.format("%02x", hashFinalByteMask & (int) hash[0]);
                     break;
                 case 2:
-                    hashPath = String.format("%02x/%02x/%d", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1], key.byteLength());
+                    hashPath = String.format("%02x/%02x", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1]);
                     break;
                 case 3:
-                    hashPath = String.format("%02x/%02x/%02x/%d", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2], key.byteLength());
+                    hashPath = String.format("%02x/%02x/%02x", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2]);
                     break;
                 default:
                     throw new IllegalStateException("unhandled hashBytes: " + hashBytes);
             }
         }
         return dir.resolve(partition).resolve(hashPath);
-    }
-
-    private static int parseKeyLengthFromPath(Path path) {
-        return Integer.parseInt(path.getFileName().toString());
     }
 
     private static void validatePartition(String partition) {

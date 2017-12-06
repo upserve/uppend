@@ -1,5 +1,6 @@
 package com.upserve.uppend.lookup;
 
+import com.upserve.uppend.Blobs;
 import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
 import org.slf4j.Logger;
@@ -19,7 +20,6 @@ public class LookupData implements AutoCloseable, Flushable {
 
     private final AtomicBoolean isClosed;
 
-    private final int keyLength;
     private final Path path;
     private final Path metadataPath;
     private final Supplier<ByteBuffer> recordBufSupplier;
@@ -29,9 +29,10 @@ public class LookupData implements AutoCloseable, Flushable {
     private Object2LongSortedMap<LookupKey> mem;
     private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
 
-    public LookupData(int keyLength, Path path, Path metadataPath) {
+    private final Blobs keyBlobs;
+
+    public LookupData(Path path, Path metadataPath) {
         log.trace("opening lookup data: {}", path);
-        this.keyLength = keyLength;
 
         this.path = path;
         this.metadataPath = metadataPath;
@@ -44,13 +45,15 @@ public class LookupData implements AutoCloseable, Flushable {
             }
         }
 
-        recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(keyLength + 8);
+        recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(16);
 
         try {
             chan = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
         } catch (IOException e) {
             throw new UncheckedIOException("can't open file: " + path, e);
         }
+
+        keyBlobs = new Blobs(path.resolveSibling("keys"));
 
         try {
             init();
@@ -199,16 +202,13 @@ public class LookupData implements AutoCloseable, Flushable {
     }
 
     private void set(int index, LookupKey key, long value) {
-        byte[] keyBytes = key.bytes();
-        if (keyBytes.length != keyLength) {
-            throw new IllegalStateException("unexpected key length: expected " + keyLength + ", got " + keyBytes.length);
-        }
         try {
+            long keyPos = keyBlobs.append(key.bytes());
             ByteBuffer buf = recordBufSupplier.get();
-            buf.put(keyBytes);
+            buf.putLong(keyPos);
             buf.putLong(value);
             buf.flip();
-            chan.write(buf, index * (keyLength + 8));
+            chan.write(buf, index * 16);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to write key: " + key, e);
         }
@@ -219,7 +219,7 @@ public class LookupData implements AutoCloseable, Flushable {
             ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
             buf.putLong(value);
             buf.flip();
-            chan.write(buf, index * (keyLength + 8) + keyLength);
+            chan.write(buf, index * 16 + 8);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to write value (" + value + ") at index: " + index, e);
         }
@@ -231,6 +231,11 @@ public class LookupData implements AutoCloseable, Flushable {
         log.trace("closing lookup data at {}", path);
         synchronized (chan) {
             if (isClosed.compareAndSet(false, true)) {
+                try {
+                    keyBlobs.close();
+                } catch (Exception e) {
+                    log.error("unable to close key blobs", e);
+                }
                 chan.close();
                 log.trace("closed lookup data at {}", path);
                 LookupMetadata metadata = generateMetadata();
@@ -250,6 +255,7 @@ public class LookupData implements AutoCloseable, Flushable {
                 return;
             }
             log.trace("flushing lookup and metadata at {}", metadataPath);
+            keyBlobs.flush();
             chan.force(true);
             LookupMetadata metadata = generateMetadata();
             metadata.writeTo(metadataPath);
@@ -271,19 +277,20 @@ public class LookupData implements AutoCloseable, Flushable {
             DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
             // don't call dis.close() on wrapping InputStream since we don't want it to chain to chan.close()
             while (pos < size) {
-                long nextPos = pos + keyLength + 8;
+                long nextPos = pos + 16;
                 if (nextPos > size) {
                     // corrupt; fix
-                    log.error("truncating at pos " + pos + " for file of corrupted size " + size + " with key length " + keyLength);
+                    log.error("truncating at pos " + pos + " for file of corrupted size " + size);
                     chan.truncate(pos);
                     break;
                 }
-                byte[] keyBytes = new byte[keyLength];
+                long keyPos;
                 try {
-                    dis.readFully(keyBytes);
-                } catch (EOFException e) {
-                    throw new IOException("got eof at pos " + pos + " while trying to read " + keyLength + " bytes", e);
+                    keyPos = dis.readLong();
+                } catch (IOException e) {
+                    throw new IOException("read bad key pos at pos " + pos, e);
                 }
+                byte[] keyBytes = keyBlobs.read(keyPos);
                 LookupKey key = new LookupKey(keyBytes);
                 long val;
                 try {
@@ -320,7 +327,6 @@ public class LookupData implements AutoCloseable, Flushable {
 
         IntArrayCustomSort.sort(keyStorageOrder, (a, b) -> keyStrings[a].compareTo(keyStrings[b]));
         return new LookupMetadata(
-                keyLength,
                 keyStrings.length,
                 minKey,
                 maxKey,
@@ -328,10 +334,10 @@ public class LookupData implements AutoCloseable, Flushable {
         );
     }
 
-    static Stream<LookupKey> keys(Path path, int keyLength) {
+    static Stream<LookupKey> keys(Path path) {
         KeyIterator iter;
         try {
-            iter = new KeyIterator(path, keyLength);
+            iter = new KeyIterator(path);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
         }
@@ -345,16 +351,16 @@ public class LookupData implements AutoCloseable, Flushable {
 
     private static class KeyIterator implements Iterator<LookupKey> {
         private final Path path;
-        private final int keyLength;
         private final FileChannel chan;
+        private final FileChannel keysChan;
         private final int numKeys;
         private int keyIndex = 0;
 
-        public KeyIterator(Path path, int keyLength) throws IOException {
+        public KeyIterator(Path path) throws IOException {
             this.path = path;
-            this.keyLength = keyLength;
             chan = FileChannel.open(path, StandardOpenOption.READ);
-            numKeys = (int) (chan.size() / (keyLength + 8));
+            numKeys = (int) (chan.size() / 16);
+            keysChan = numKeys > 0 ? FileChannel.open(path.resolveSibling("keys"), StandardOpenOption.READ) : null;
         }
 
         public int getNumKeys() {
@@ -370,7 +376,7 @@ public class LookupData implements AutoCloseable, Flushable {
         public LookupKey next() {
             LookupKey key;
             try {
-                key = readKey(chan, keyLength, keyIndex);
+                key = readKey(chan, keysChan, keyIndex);
             } catch (IOException e) {
                 throw new UncheckedIOException("unable to read at key index " + keyIndex + " from " + path, e);
             }
@@ -379,20 +385,22 @@ public class LookupData implements AutoCloseable, Flushable {
         }
     }
 
-    static int numEntries(FileChannel chan, int keyLength) throws IOException {
-        return (int) (chan.size() / (keyLength + 8));
+    static int numEntries(FileChannel chan) throws IOException {
+        return (int) (chan.size() / 16);
     }
 
-    static LookupKey readKey(FileChannel chan, int keyLength, int keyNumber) throws IOException {
-        byte[] keyBytes = new byte[keyLength];
-        ByteBuffer keyBuf = ByteBuffer.wrap(keyBytes);
-        long pos = keyNumber * (keyLength + 8);
-        chan.read(keyBuf, pos);
+    static LookupKey readKey(FileChannel chan, FileChannel keysChan, int keyNumber) throws IOException {
+        ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
+        long pos = keyNumber * 16;
+        chan.read(longBuf, pos);
+        longBuf.flip();
+        long keyPos = longBuf.getLong();
+        byte[] keyBytes = Blobs.read(keysChan, keyPos);
         return new LookupKey(keyBytes);
     }
 
-    static long readValue(FileChannel chan, int keyLength, int keyIndex) throws IOException {
-        long pos = keyIndex * (keyLength + 8) + keyLength;
+    static long readValue(FileChannel chan, int keyIndex) throws IOException {
+        long pos = keyIndex * 16 + 8;
         ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
         chan.read(buf, pos);
         buf.flip();
