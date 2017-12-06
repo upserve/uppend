@@ -14,39 +14,42 @@ public class LongStreams {
         private PrimitiveIterator.OfLong iter;
         private Supplier<LongStream> next;
 
-        private boolean havePeeked = false;
-        private boolean peekHasNext;
-        private long peekValue;
-
         LazyConcatLongIter(LongStream a, Supplier<LongStream> b) {
             this.iter = a.iterator();
             this.next = b;
         }
 
-        private void peek() {
-            if (!havePeeked) {
-                if (peekHasNext = iter.hasNext()) {
-                    peekValue = iter.next();
-                } else if (next != null) {
-                    iter = next.get().iterator();
-                    next = null;
-                    peek();
-                }
-                havePeeked = true;
-            }
-        }
-
         @Override
         public boolean hasNext() {
-            peek();
-            return peekHasNext;
+            if (iter.hasNext()) {
+                return true;
+            }
+
+            if (next == null) {
+                return false;
+            }
+
+            swap();
+            return iter.hasNext();
         }
 
         @Override
         public long nextLong() {
-            peek();
-            havePeeked = false;
-            return peekValue;
+            try {
+                return iter.nextLong();
+            } catch (NoSuchElementException e) {
+                if (next == null) {
+                    throw e;
+                }
+                swap();
+                return iter.nextLong();
+            }
         }
+
+        private void swap() {
+            iter = next.get().iterator();
+            next = null;
+        }
+
     }
 }
