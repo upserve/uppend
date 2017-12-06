@@ -18,53 +18,39 @@ public class LookupDataTest {
 
     @Test
     public void testCtor() throws Exception {
-        new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
     }
 
     @Test
     public void testGetAndPut() throws Exception {
-        LookupData data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
-        final LookupKey key = new LookupKey("mykey"); // len = 5
+        LookupData data = new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        final LookupKey key = new LookupKey("mykey");
         assertEquals(Long.MIN_VALUE, data.get(key));
         data.put(key, 80);
         assertEquals(80, data.get(key));
     }
 
     @Test
-    public void testPutThrowsWithBadKeySize() throws Exception {
-        LookupData data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
-        final LookupKey key = new LookupKey("myke");
-        Exception expected = null;
-        try {
-            data.put(key, 80);
-        } catch (Exception e) {
-            expected = e;
-        }
-        assertNotNull(expected);
-        assertTrue(expected.getMessage().contains("unexpected key length"));
-    }
-
-    @Test
     public void testFlushAndClose() throws Exception {
-        LookupData data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
-        final LookupKey key = new LookupKey("mykey"); // len = 5
+        LookupData data = new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        final LookupKey key = new LookupKey("mykey");
         data.put(key, 80);
         data.flush();
         data.close();
-        data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        data = new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
         assertEquals(80, data.get(key));
     }
 
     @Test
     public void testNumEntries() throws Exception {
-        LookupData data = new LookupData(5, lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        LookupData data = new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
         FileChannel dataChan = FileChannel.open(lookupDir.resolve("data"), StandardOpenOption.READ);
-        assertEquals(0, LookupData.numEntries(dataChan, 5));
+        assertEquals(0, LookupData.numEntries(dataChan));
         for (int i = 1; i <= 100; i++) {
-            LookupKey key = new LookupKey(String.format("%05d" /* len = 5 */, i));
+            LookupKey key = new LookupKey(String.format("%05d", i));
             data.put(key, i);
             data.flush();
-            assertEquals(i, LookupData.numEntries(dataChan, 5));
+            assertEquals(i, LookupData.numEntries(dataChan));
         }
     }
 }
