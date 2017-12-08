@@ -349,42 +349,6 @@ public class LookupData implements AutoCloseable, Flushable {
         return StreamSupport.stream(spliter, true);
     }
 
-    private static class KeyIterator implements Iterator<LookupKey> {
-        private final Path path;
-        private final FileChannel chan;
-        private final FileChannel keysChan;
-        private final int numKeys;
-        private int keyIndex = 0;
-
-        public KeyIterator(Path path) throws IOException {
-            this.path = path;
-            chan = FileChannel.open(path, StandardOpenOption.READ);
-            numKeys = (int) (chan.size() / 16);
-            keysChan = numKeys > 0 ? FileChannel.open(path.resolveSibling("keys"), StandardOpenOption.READ) : null;
-        }
-
-        public int getNumKeys() {
-            return numKeys;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return keyIndex < numKeys;
-        }
-
-        @Override
-        public LookupKey next() {
-            LookupKey key;
-            try {
-                key = readKey(chan, keysChan, keyIndex);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to read at key index " + keyIndex + " from " + path, e);
-            }
-            keyIndex++;
-            return key;
-        }
-    }
-
     static int numEntries(FileChannel chan) throws IOException {
         return (int) (chan.size() / 16);
     }
