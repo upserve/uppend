@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
 
-public class KeyIterator implements Iterator<LookupKey>, Closeable {
+public class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
     private final Path path;
     private final FileChannel chan;
     private final FileChannel keysChan;
