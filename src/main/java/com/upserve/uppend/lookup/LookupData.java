@@ -335,9 +335,9 @@ public class LookupData implements AutoCloseable, Flushable {
     }
 
     static Stream<LookupKey> keys(Path path) {
-        KeyIterator iter;
+        LookupKeyIterator iter;
         try {
-            iter = new KeyIterator(path);
+            iter = new LookupKeyIterator(path);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
         }
@@ -346,7 +346,7 @@ public class LookupData implements AutoCloseable, Flushable {
                 iter.getNumKeys(),
                 Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
         );
-        return StreamSupport.stream(spliter, true);
+        return StreamSupport.stream(spliter, true).onClose(iter::close);
     }
 
     static int numEntries(FileChannel chan) throws IOException {

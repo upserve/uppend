@@ -1,28 +1,32 @@
 package com.upserve.uppend.lookup;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.UncheckedIOException;
+import org.slf4j.Logger;
+
+import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.channels.FileChannel;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.nio.file.*;
 import java.util.Iterator;
 
-public class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
+class LookupKeyIterator implements Iterator<LookupKey>, AutoCloseable {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     private final Path path;
+    private final Path keysPath;
     private final FileChannel chan;
     private final FileChannel keysChan;
     private final int numKeys;
     private int keyIndex = 0;
 
-    public KeyIterator(Path path) throws IOException {
+    LookupKeyIterator(Path path) throws IOException {
         this.path = path;
         chan = FileChannel.open(path, StandardOpenOption.READ);
         numKeys = (int) (chan.size() / 16);
-        keysChan = numKeys > 0 ? FileChannel.open(path.resolveSibling("keys"), StandardOpenOption.READ) : null;
+        keysPath = path.resolveSibling("keys");
+        keysChan = numKeys > 0 ? FileChannel.open(keysPath, StandardOpenOption.READ) : null;
     }
 
-    public int getNumKeys() {
+    int getNumKeys() {
         return numKeys;
     }
 
@@ -44,8 +48,16 @@ public class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
     }
 
     @Override
-    public void close() throws IOException {
-        if (chan != null && chan.isOpen()) chan.close();
-        if (keysChan != null && keysChan.isOpen()) keysChan.close();
+    public void close() {
+        try {
+            chan.close();
+        } catch (IOException e) {
+            log.error("trouble closing: " + path, e);
+        }
+        try {
+            keysChan.close();
+        } catch (IOException e) {
+            log.error("trouble closing: " + keysPath, e);
+        }
     }
 }
