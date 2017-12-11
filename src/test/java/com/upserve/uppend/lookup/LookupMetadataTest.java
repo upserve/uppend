@@ -1,14 +1,12 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.util.Throwables;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.*;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 public class LookupMetadataTest {
     @Test
@@ -52,11 +50,53 @@ public class LookupMetadataTest {
         assertEquals(1009, metadata.readData(dataPath, new LookupKey("09")));
     }
 
-    private static ByteBuffer bytesFor(int ... values) {
-        byte[] bytes = new byte[values.length];
-        for (int i = 0; i < bytes.length; i++) {
-            bytes[i] = (byte) values[i];
-        }
-        return ByteBuffer.wrap(bytes);
+    @Test
+    public void testMetadataLookup2() throws IOException {
+        Path storePath = Paths.get("build/test/lookup-metadata-test/testMetadataLookup");
+        SafeDeleting.removeDirectory(storePath);
+        Path dataPath = storePath.resolve("data");
+        Path metadataPath = storePath.resolve("meta");
+        LookupData lookupData = new LookupData(dataPath, metadataPath);
+        lookupData.put(new LookupKey("412"), 1000);
+        lookupData.put(new LookupKey("3036"), 1001);
+        lookupData.put(new LookupKey("7132"), 1002);
+        lookupData.close();
+        LookupMetadata metadata = new LookupMetadata(metadataPath);
+        assertEquals(1000, metadata.readData(dataPath, new LookupKey("412")));
+        assertEquals(1001, metadata.readData(dataPath, new LookupKey("3036")));
+        assertEquals(1002, metadata.readData(dataPath, new LookupKey("7132")));
+    }
+
+    @Test
+    public void testMetadataLookup3() throws IOException {
+        Path storePath = Paths.get("build/test/lookup-metadata-test/testMetadataLookup");
+        SafeDeleting.removeDirectory(storePath);
+        Path dataPath = storePath.resolve("data");
+        Path metadataPath = storePath.resolve("meta");
+        LookupData lookupData = new LookupData(dataPath, metadataPath);
+        lookupData.put(new LookupKey("00"), 1000);
+        lookupData.put(new LookupKey("01"), 1001);
+        lookupData.put(new LookupKey("02"), 1002);
+        lookupData.put(new LookupKey("03"), 1003);
+        lookupData.put(new LookupKey("04"), 1004);
+        lookupData.put(new LookupKey("05"), 1005);
+        lookupData.put(new LookupKey("06"), 1006);
+        lookupData.put(new LookupKey("07"), 1007);
+        lookupData.put(new LookupKey("08"), 1008);
+        lookupData.put(new LookupKey("09"), 1009);
+        lookupData.put(new LookupKey("010"), 1010);
+        lookupData.close();
+        LookupMetadata metadata = new LookupMetadata(metadataPath);
+        assertEquals(1000, metadata.readData(dataPath, new LookupKey("00")));
+        assertEquals(1001, metadata.readData(dataPath, new LookupKey("01")));
+        assertEquals(1002, metadata.readData(dataPath, new LookupKey("02")));
+        assertEquals(1003, metadata.readData(dataPath, new LookupKey("03")));
+        assertEquals(1004, metadata.readData(dataPath, new LookupKey("04")));
+        assertEquals(1005, metadata.readData(dataPath, new LookupKey("05")));
+        assertEquals(1006, metadata.readData(dataPath, new LookupKey("06")));
+        assertEquals(1007, metadata.readData(dataPath, new LookupKey("07")));
+        assertEquals(1008, metadata.readData(dataPath, new LookupKey("08")));
+        assertEquals(1009, metadata.readData(dataPath, new LookupKey("09")));
+        assertEquals(1010, metadata.readData(dataPath, new LookupKey("010")));
     }
 }
