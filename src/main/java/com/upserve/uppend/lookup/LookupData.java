@@ -346,24 +346,26 @@ public class LookupData implements AutoCloseable, Flushable {
                 iter.getNumKeys(),
                 Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
         );
-        return StreamSupport.stream(spliter, true);
+        return StreamSupport.stream(spliter, true).onClose(iter::close);
     }
 
-    private static class KeyIterator implements Iterator<LookupKey> {
+    private static class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
         private final Path path;
+        private final Path keysPath;
         private final FileChannel chan;
         private final FileChannel keysChan;
         private final int numKeys;
         private int keyIndex = 0;
 
-        public KeyIterator(Path path) throws IOException {
+        KeyIterator(Path path) throws IOException {
             this.path = path;
             chan = FileChannel.open(path, StandardOpenOption.READ);
             numKeys = (int) (chan.size() / 16);
-            keysChan = numKeys > 0 ? FileChannel.open(path.resolveSibling("keys"), StandardOpenOption.READ) : null;
+            keysPath = path.resolveSibling("keys");
+            keysChan = numKeys > 0 ? FileChannel.open(keysPath, StandardOpenOption.READ) : null;
         }
 
-        public int getNumKeys() {
+        int getNumKeys() {
             return numKeys;
         }
 
@@ -376,12 +378,26 @@ public class LookupData implements AutoCloseable, Flushable {
         public LookupKey next() {
             LookupKey key;
             try {
-                key = readKey(chan, keysChan, keyIndex);
+                key = LookupData.readKey(chan, keysChan, keyIndex);
             } catch (IOException e) {
                 throw new UncheckedIOException("unable to read at key index " + keyIndex + " from " + path, e);
             }
             keyIndex++;
             return key;
+        }
+
+        @Override
+        public void close() {
+            try {
+                chan.close();
+            } catch (IOException e) {
+                log.error("trouble closing: " + path, e);
+            }
+            try {
+                keysChan.close();
+            } catch (IOException e) {
+                log.error("trouble closing: " + keysPath, e);
+            }
         }
     }
 
