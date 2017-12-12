@@ -97,13 +97,17 @@ public class LookupMetadata {
                         if (comparison < 0) {
                             keyIndexUpper = midpointKeyIndex - 1;
                             upperKey = midpointKey;
+                            keyIndexLower++;
+                            lowerKey = LookupData.readKey(dataChan, keysChan, keyIndexLower);
                         } else if (comparison > 0) {
                             keyIndexLower = midpointKeyIndex + 1;
                             lowerKey = midpointKey;
+                            keyIndexUpper--;
+                            upperKey = LookupData.readKey(dataChan, keysChan, keyIndexUpper);
                         } else {
-                            return LookupData.readValue(dataChan, midpointKeyIndex);
+                            return LookupData.readValue(dataChan, keyNumber);
                         }
-                    } while (keyIndexLower < keyIndexUpper);
+                    } while (keyIndexLower <= keyIndexUpper);
                     return -1;
                 }
             }
