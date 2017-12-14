@@ -96,17 +96,15 @@ public class LookupMetadata {
                         comparison = key.compareTo(midpointKey);
                         if (comparison < 0) {
                             keyIndexUpper = midpointKeyIndex - 1;
-                            upperKey = midpointKey;
                             keyIndexLower++;
-                            lowerKey = LookupData.readKey(dataChan, keysChan, keyIndexLower);
                         } else if (comparison > 0) {
                             keyIndexLower = midpointKeyIndex + 1;
-                            lowerKey = midpointKey;
                             keyIndexUpper--;
-                            upperKey = LookupData.readKey(dataChan, keysChan, keyIndexUpper);
                         } else {
                             return LookupData.readValue(dataChan, keyNumber);
                         }
+                        upperKey = LookupData.readKey(dataChan, keysChan, keyStorageOrder[keyIndexUpper]);
+                        lowerKey = LookupData.readKey(dataChan, keysChan, keyStorageOrder[keyIndexLower]);
                     } while (keyIndexLower <= keyIndexUpper);
                     return -1;
                 }
@@ -182,6 +180,13 @@ public class LookupMetadata {
             log.warn("returning 50% search midpoint for key ({}); weight could not be determined from range [{}, {}]", key, lower, upper);
             return 50;
         }
-        return 100 * keyDistance / rangeDistance;
+        int pct = 100 * keyDistance / rangeDistance;
+        if (pct > 90) {
+            return 90;
+        }
+        if (pct < 10) {
+            return 10;
+        }
+        return pct;
     }
 }

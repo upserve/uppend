@@ -162,6 +162,7 @@ public class Benchmark {
         }
 
         log.info("Benchmark is All Done!");
+        System.out.println("[benchmark is done]"); // used in CliTest
         isDone = true;
     }
 }
