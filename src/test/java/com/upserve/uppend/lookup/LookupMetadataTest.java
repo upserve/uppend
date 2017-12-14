@@ -1,10 +1,14 @@
 package com.upserve.uppend.lookup;
 
+import com.google.common.collect.Lists;
+import com.google.common.primitives.Ints;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.*;
+import java.util.stream.IntStream;
 
 import static org.junit.Assert.assertEquals;
 
@@ -98,5 +102,23 @@ public class LookupMetadataTest {
         assertEquals(1008, metadata.readData(dataPath, new LookupKey("08")));
         assertEquals(1009, metadata.readData(dataPath, new LookupKey("09")));
         assertEquals(1010, metadata.readData(dataPath, new LookupKey("010")));
+    }
+
+    @Test
+    public void testMetadataLookup4() throws IOException {
+        Path storePath = Paths.get("build/test/lookup-metadata-test/testMetadataLookup");
+        SafeDeleting.removeDirectory(storePath);
+        Path dataPath = storePath.resolve("data");
+        Path metadataPath = storePath.resolve("meta");
+        LookupData lookupData = new LookupData(dataPath, metadataPath);
+        List<Integer> keys = Ints.asList(IntStream.range(0, 1000).toArray());
+        Collections.shuffle(keys, new Random(1234));
+        keys.forEach(k -> lookupData.put(new LookupKey(String.valueOf(k)), 1000 + k));
+        lookupData.close();
+        LookupMetadata metadata = new LookupMetadata(metadataPath);
+        keys.sort(Integer::compareTo);
+        for (Integer key : keys) {
+            assertEquals(1000 + key, metadata.readData(dataPath, new LookupKey(String.valueOf(key))));
+        }
     }
 }
