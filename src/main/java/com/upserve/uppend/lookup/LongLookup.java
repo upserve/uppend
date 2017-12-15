@@ -12,6 +12,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class LongLookup implements AutoCloseable, Flushable {
@@ -199,7 +200,9 @@ public class LongLookup implements AutoCloseable, Flushable {
         return files
                 .filter(Files::isDirectory)
                 .filter(p -> !p.equals(dir))
-                .map(p -> p.getFileName().toString());
+                .map(p -> p.getFileName().toString())
+                .collect(Collectors.toList())
+                .parallelStream();
     }
 
     @Override
