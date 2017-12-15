@@ -45,4 +45,16 @@ public class LongLookupTest {
         assertArrayEquals(new String[] { "a", "b", "c" }, longLookup.keys("partition").sorted().toArray());
         longLookup.close();
     }
+
+    @Test
+    public void testPartitions() throws Exception {
+        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
+        SafeDeleting.removeDirectory(path);
+        LongLookup longLookup = new LongLookup(path);
+        longLookup.put("b", "b", 1);
+        longLookup.put("c", "c", 1);
+        longLookup.put("a", "a", 1);
+        assertArrayEquals(new String[] { "a", "b", "c" }, longLookup.partitions().sorted().toArray());
+        longLookup.close();
+    }
 }

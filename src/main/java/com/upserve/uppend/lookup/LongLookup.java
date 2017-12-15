@@ -193,20 +193,15 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     public Stream<String> partitions() {
-        Stream<Path> files;
-        try {
-            if (!Files.exists(dir)) {
-                return Stream.empty();
-            }
-            files = Files.walk(dir, 1);
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not walk dir " + dir, e);
+        File[] files = dir.toFile().listFiles();
+        if (files == null) {
+            return Stream.empty();
         }
 
-        return files
-                .filter(Files::isDirectory)
-                .filter(p -> !p.equals(dir))
-                .map(p -> p.getFileName().toString());
+        return Arrays
+                .stream(files)
+                .filter(File::isDirectory)
+                .map(File::getName);
     }
 
     @Override
