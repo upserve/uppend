@@ -12,7 +12,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.*;
-import java.util.stream.Stream;
+import java.util.stream.*;
 
 public class LongLookup implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -172,34 +172,36 @@ public class LongLookup implements AutoCloseable, Flushable {
             return Stream.empty();
         }
 
-        Stream<Path> files;
-        try {
-            files = Files.walk(partitionPath);
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not walk partition " + partitionPath, e);
+        // Also see hashPath method in this class
+        Stream<String> paths = IntStream
+                .range(0, hashFinalByteMask + 1)
+                .mapToObj(i ->  String.format("%02x/data", i));
+
+        for (int i = 1; i < hashBytes; i++) {
+            paths = paths
+                    .flatMap(child -> IntStream
+                            .range(0, 256)
+                            .mapToObj(j -> String.format("%02x/%s", j, child))
+                    );
         }
-        return files
-                .filter(Files::isRegularFile)
-                .filter(p -> p.getFileName().toString().equals("data"))
+
+        return paths
+                .map(partitionPath::resolve)
+                .filter(Files::exists)
                 .flatMap(LookupData::keys)
                 .map(LookupKey::string);
     }
 
     public Stream<String> partitions() {
-        Stream<Path> files;
-        try {
-            if (!Files.exists(dir)) {
-                return Stream.empty();
-            }
-            files = Files.walk(dir, 1);
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not walk dir " + dir, e);
+        File[] files = dir.toFile().listFiles();
+        if (files == null) {
+            return Stream.empty();
         }
 
-        return files
-                .filter(Files::isDirectory)
-                .filter(p -> !p.equals(dir))
-                .map(p -> p.getFileName().toString());
+        return Arrays
+                .stream(files)
+                .filter(File::isDirectory)
+                .map(File::getName);
     }
 
     @Override
@@ -288,6 +290,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         if (hashFunction == null) {
             hashPath = "00";
         } else {
+            // Also see keys method in this class
             byte[] hash = hashFunction.hashString(key.string(), Charsets.UTF_8).asBytes();
             switch (hashBytes) {
                 case 1:
