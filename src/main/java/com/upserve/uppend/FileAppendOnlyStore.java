@@ -40,7 +40,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public Stream<byte[]> read(String partition, String key) {
         log.trace("reading in partition {} with key {}", partition, key);
-        return blockValues(partition, key)
+        return blockValues(partition, key, true)
                 .parallel()
                 .mapToObj(blobs::read);
     }
@@ -48,13 +48,38 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public Stream<byte[]> readSequential(String partition, String key) {
         log.trace("reading sequential in partition {} with key {}", partition, key);
-        return blockValues(partition, key)
+        return blockValues(partition, key, true)
                 .mapToObj(blobs::read);
     }
 
     public byte[] readLast(String partition, String key) {
         log.trace("reading last in partition {} with key {}", partition, key);
-        long pos = blockLastValue(partition, key);
+        long pos = blockLastValue(partition, key, true);
+        if (pos == -1) {
+            return null;
+        }
+        return blobs.read(pos);
+    }
+
+    @Override
+    public Stream<byte[]> readFlushed(String partition, String key) {
+        log.trace("reading cached in partition {} with key {}", partition, key);
+        return blockValues(partition, key, false)
+                .parallel()
+                .mapToObj(blobs::read);
+    }
+
+    @Override
+    public Stream<byte[]> readSequentialFlushed(String partition, String key) {
+        log.trace("reading sequential cached in partition {} with key {}", partition, key);
+        return blockValues(partition, key, false)
+                .mapToObj(blobs::read);
+    }
+
+    @Override
+    public byte[] readLastFlushed(String partition, String key) {
+        log.trace("reading last cached in partition {} with key {}", partition, key);
+        long pos = blockLastValue(partition, key, false);
         if (pos == -1) {
             return null;
         }
@@ -108,9 +133,9 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         }
     }
 
-    private LongStream blockValues(String partition, String key) {
+    private LongStream blockValues(String partition, String key, boolean useCache) {
         log.trace("reading block values for key: {}", key);
-        long blockPos = lookups.get(partition, key);
+        long blockPos = blockPos(partition, key, useCache);
         if (blockPos == -1) {
             log.trace("key not found: {}", key);
             return LongStream.empty();
@@ -119,14 +144,22 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         return blocks.values(blockPos);
     }
 
-    private long blockLastValue(String partition, String key) {
-        log.trace("reading last valye for key: {}", key);
-        long blockPos = lookups.get(partition, key);
+    private long blockLastValue(String partition, String key, boolean useCache) {
+        log.trace("reading last value for key: {}", key);
+        long blockPos = blockPos(partition, key, useCache);
         if (blockPos == -1) {
             log.trace("key not found: {}", key);
             return -1;
         }
-        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
+        log.trace("returning last value at block pos {} for key: {}", blockPos, key);
         return blocks.lastValue(blockPos);
+    }
+
+    private long blockPos(String partition, String key, boolean useCache) {
+        if (useCache) {
+            return lookups.get(partition, key);
+        } else {
+            return lookups.getFlushed(partition, key);
+        }
     }
 }
