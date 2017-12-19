@@ -147,9 +147,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public LongStream values(long pos) {
         log.trace("streaming values from {} at {}", file, pos);
-        if (outDirty.get()) {
-            flush();
-        }
+
         if (pos >= posMem.get()) {
             return LongStream.empty();
         }
@@ -192,9 +190,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);
-        if (outDirty.get()) {
-            flush();
-        }
+
         if (pos >= posMem.get()) {
             return -1;
         }
