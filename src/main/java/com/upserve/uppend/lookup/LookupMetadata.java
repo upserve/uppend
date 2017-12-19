@@ -43,8 +43,10 @@ public class LookupMetadata {
             }
             long pos = 16 + minKeyLength + maxKeyLength;
             int mapSize = 4 * compressedSize;
-            MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_ONLY, pos, mapSize);
-            IntBuffer ibuf = mbuf.asIntBuffer();
+            ByteBuffer bbuf = ByteBuffer.allocate(mapSize);
+            chan.read(bbuf, pos);
+            bbuf.rewind();
+            IntBuffer ibuf = bbuf.asIntBuffer();
             int[] compressedOrdering = new int[compressedSize];
             ibuf.get(compressedOrdering);
             IntegratedIntCompressor iic = new IntegratedIntCompressor();
@@ -123,7 +125,7 @@ public class LookupMetadata {
             int compressedSize = compressedOrdering.length;
 
             int bufSize = 16 + minKey.byteLength() + maxKey.byteLength();
-            ByteBuffer headBuf = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(bufSize).get();
+            ByteBuffer headBuf = ByteBuffer.allocate(bufSize);
             headBuf.putInt(numKeys);
             headBuf.putInt(compressedSize);
             headBuf.putInt(minKey.byteLength());
@@ -134,10 +136,11 @@ public class LookupMetadata {
             chan.write(headBuf, 0);
 
             int mapSize = 4 * compressedSize;
-            MappedByteBuffer mbuf = chan.map(FileChannel.MapMode.READ_WRITE, bufSize, mapSize);
-            IntBuffer ibuf = mbuf.asIntBuffer();
+            ByteBuffer bbuf = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(mapSize).get();
+            IntBuffer ibuf = bbuf.asIntBuffer();
             ibuf.put(compressedOrdering);
-            mbuf.force();
+            bbuf.rewind();
+            chan.write(bbuf, bufSize);
             log.trace("compressed metadata: {}/{}", compressedSize, numKeys);
         }
         Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
