@@ -116,15 +116,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         final long prev = readLong(pos + 8);
         if (prev > 0) {
-            throw new IllegalStateException("append called at non-starting block: pos=" + pos);
+            throw new IllegalStateException("append called at non-starting block: pos=" + pos + " in path: " + file);
         }
         final long last = prev == 0 ? pos : -prev;
         final long size = readLong(last);
         if (size < 0) {
-            throw new IllegalStateException("last block has a next: pos=" + pos);
+            throw new IllegalStateException("last block has a next: pos=" + pos + " in path: " + file);
         }
         if (size > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos);
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos + " in path: " + file);
         }
         if (size == valuesPerBlock) {
             long newPos = allocate();
