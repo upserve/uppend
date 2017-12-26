@@ -37,7 +37,7 @@ public class LookupData implements AutoCloseable, Flushable {
         this.path = path;
         this.metadataPath = metadataPath;
         Path parentPath = path.getParent();
-        if (Files.notExists(parentPath)) {
+        if (!Files.exists(parentPath) /* notExists() returns true erroneously */) {
             try {
                 Files.createDirectories(parentPath);
             } catch (IOException e) {
@@ -122,10 +122,14 @@ public class LookupData implements AutoCloseable, Flushable {
         final int index;
 
         synchronized (memMonitor) {
-            long existingValue = mem.put(key, value);
+            long existingValue = mem.getLong(key);
             if (existingValue != Long.MIN_VALUE) {
                 return existingValue;
             }
+            if (mem.put(key, value) != Long.MIN_VALUE) {
+                throw new IllegalStateException("race while performing conditional put within synchronized block");
+            }
+
             index = memOrder.size();
             if (memOrder.put(key, index) != Integer.MIN_VALUE) {
                 throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
@@ -307,7 +311,7 @@ public class LookupData implements AutoCloseable, Flushable {
                 pos = nextPos;
             }
             if (chan.position() != chan.size()) {
-                log.warn("scan incomplete at pos " + chan.position() + " / " + chan.size());
+                log.warn("init incomplete at pos " + chan.position() + " / " + chan.size());
             }
         }
     }
