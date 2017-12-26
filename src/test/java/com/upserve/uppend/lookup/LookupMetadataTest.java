@@ -13,6 +13,26 @@ import static org.junit.Assert.*;
 
 public class LookupMetadataTest {
     @Test
+    public void testCtorCorruptOrder() throws Exception{
+        Path path = Paths.get("build/test/lookup-metadata-test/testCtorCorruptOrder/meta");
+
+        LookupKey keyA = new LookupKey("a");
+        LookupKey keyB = new LookupKey("b");
+        LookupMetadata metadata = new LookupMetadata(2, keyA, keyB, new int[] {0});
+        Files.createDirectories(path.getParent());
+        metadata.writeTo(path);
+
+        Exception expected = null;
+        try {
+            new LookupMetadata(path);
+        } catch (IllegalStateException e) {
+            expected = e;
+        }
+        assertNotNull(expected);
+        assertTrue(expected.getMessage().contains("expected 2 keys, got 1"));
+    }
+
+    @Test
     public void testSearchMidpointPercentageFunction() {
         assertEquals(48, LookupMetadata.searchMidpointPercentage("aa", "zyzzyva", "middle"));
     }
