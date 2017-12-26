@@ -185,27 +185,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     public Stream<String> keys(String partition) {
         validatePartition(partition);
 
-        Path partitionPath = dir.resolve(partition);
-        if (Files.notExists(partitionPath)) {
-            return Stream.empty();
-        }
-
-        // Also see hashPath method in this class
-        Stream<String> paths = IntStream
-                .range(0, hashFinalByteMask + 1)
-                .mapToObj(i ->  String.format("%02x/data", i));
-
-        for (int i = 1; i < hashBytes; i++) {
-            paths = paths
-                    .flatMap(child -> IntStream
-                            .range(0, 256)
-                            .mapToObj(j -> String.format("%02x/%s", j, child))
-                    );
-        }
-
-        return paths
-                .map(partitionPath::resolve)
-                .filter(Files::exists)
+        return hashPaths(partition)
                 .flatMap(LookupData::keys)
                 .map(LookupKey::string);
     }
@@ -220,6 +200,15 @@ public class LongLookup implements AutoCloseable, Flushable {
                 .stream(files)
                 .filter(File::isDirectory)
                 .map(File::getName);
+    }
+
+    public void scan(String partition, BiConsumer<String, Long> keyValueFunction) {
+        validatePartition(partition);
+
+        hashPaths(partition)
+                .forEach(p -> {
+                    LookupData.scan(p, keyValueFunction);
+                });
     }
 
     @Override
@@ -327,6 +316,30 @@ public class LongLookup implements AutoCloseable, Flushable {
             }
         }
         return dir.resolve(partition).resolve(hashPath);
+    }
+
+    private Stream<Path> hashPaths(String partition) {
+        Path partitionPath = dir.resolve(partition);
+        if (Files.notExists(partitionPath)) {
+            return Stream.empty();
+        }
+
+        // Also see hashPath method in this class
+        Stream<String> paths = IntStream
+                .range(0, hashFinalByteMask + 1)
+                .mapToObj(i ->  String.format("%02x/data", i));
+
+        for (int i = 1; i < hashBytes; i++) {
+            paths = paths
+                    .flatMap(child -> IntStream
+                            .range(0, 256)
+                            .mapToObj(j -> String.format("%02x/%s", j, child))
+                    );
+        }
+
+        return paths
+                .map(partitionPath::resolve)
+                .filter(Files::exists);
     }
 
     private long getUncachedInternal(LookupKey lookupKey, Path hashPath) {

@@ -72,9 +72,13 @@ public class Blobs implements AutoCloseable, Flushable {
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() {
         log.trace("closing {}", file);
-        blobs.close();
+        try {
+            blobs.close();
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to close blobs " + file, e);
+        }
     }
 
     @Override
