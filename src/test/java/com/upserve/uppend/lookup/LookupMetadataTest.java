@@ -1,6 +1,5 @@
 package com.upserve.uppend.lookup;
 
-import com.google.common.collect.Lists;
 import com.google.common.primitives.Ints;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.Test;
@@ -10,7 +9,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 
 public class LookupMetadataTest {
     @Test
@@ -120,5 +119,22 @@ public class LookupMetadataTest {
         for (Integer key : keys) {
             assertEquals(1000 + key, metadata.readData(dataPath, new LookupKey(String.valueOf(key))));
         }
+    }
+
+    @Test
+    public void testToString() throws Exception {
+        Path storePath = Paths.get("build/test/lookup-metadata-test/testMetadataLookup");
+        SafeDeleting.removeDirectory(storePath);
+        Path dataPath = storePath.resolve("data");
+        Path metadataPath = storePath.resolve("meta");
+        LookupData lookupData = new LookupData(dataPath, metadataPath);
+        lookupData.put(new LookupKey("00"), 1000);
+        lookupData.put(new LookupKey("01"), 1001);
+        lookupData.close();
+        LookupMetadata metadata = new LookupMetadata(metadataPath);
+        String toString = metadata.toString();
+        assertTrue(toString.contains("numKeys=2"));
+        assertTrue(toString.contains("minKey=00"));
+        assertTrue(toString.contains("maxKey=01"));
     }
 }

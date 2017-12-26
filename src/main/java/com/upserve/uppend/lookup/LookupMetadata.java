@@ -150,7 +150,7 @@ public class LookupMetadata {
     @Override
     public String toString() {
         return "LookupMetadata{" +
-                ", numKeys=" + numKeys +
+                "numKeys=" + numKeys +
                 ", minKey=" + minKey +
                 ", maxKey=" + maxKey +
                 '}';
