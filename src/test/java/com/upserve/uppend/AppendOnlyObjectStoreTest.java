@@ -98,6 +98,36 @@ public class AppendOnlyObjectStoreTest {
     }
 
     @Test
+    public void testReadFlushed() throws Exception {
+        when(store.readFlushed("partition", "key1"))
+                .thenReturn(Stream.of(SERIALIZED02, SERIALIZED01));
+        assertArrayEquals(
+                Arrays.asList(DESERIALIZED02, DESERIALIZED01).toArray(),
+                instance.readFlushed("partition", "key1").toArray()
+        );
+    }
+
+    @Test
+    public void testReadSequentialFlushed() throws Exception {
+        when(store.readSequentialFlushed("partition", "key1"))
+                .thenReturn(Stream.of(SERIALIZED01, SERIALIZED02));
+        assertArrayEquals(
+                Arrays.asList(DESERIALIZED01, DESERIALIZED02).toArray(),
+                instance.readSequentialFlushed("partition", "key1").toArray()
+        );
+    }
+
+    @Test
+    public void testReadLastFlushed() throws Exception {
+        when(store.readLastFlushed("partition", "key1"))
+                .thenReturn(SERIALIZED02);
+        assertEquals(
+                DESERIALIZED02,
+                instance.readLastFlushed("partition", "key1")
+        );
+    }
+
+    @Test
     public void testKeys() {
         instance.keys("partition");
         verify(store).keys("partition");
