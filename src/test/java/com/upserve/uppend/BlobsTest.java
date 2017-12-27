@@ -1,19 +1,27 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.Blobs;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
+import java.io.IOException;
 import java.nio.file.Paths;
 
 import static org.junit.Assert.assertEquals;
 
 
 public class BlobsTest {
-    final Blobs blobs = new Blobs(Paths.get("build/test/blobs"));
+    private Blobs blobs;
 
     @Before
     public void initialize() {
+        blobs = new Blobs(Paths.get("build/test/blobs"));
         blobs.clear();
+    }
+
+    @After
+    public void uninitialize() throws IOException {
+        blobs.close();
+        SafeDeleting.removeDirectory(Paths.get("build/test/blobs"));
     }
 
     @Test
@@ -37,5 +45,14 @@ public class BlobsTest {
         blobs.clear();
         pos = blobs.append("baz".getBytes());
         assertEquals(0, pos);
+    }
+
+    @Test
+    public void testClose(){
+        assertEquals(0, blobs.append("foo".getBytes()));
+        blobs.close();
+        blobs.close();
+        blobs = new Blobs(Paths.get("build/test/blobs"));
+        assertEquals("foo", new String(blobs.read(0)));
     }
 }
