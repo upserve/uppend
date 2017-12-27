@@ -1,19 +1,26 @@
 package com.upserve.uppend.lookup;
 
+import com.google.common.hash.HashCode;
 import com.upserve.uppend.util.SafeDeleting;
-import org.junit.Test;
+import org.junit.*;
 
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.stream.IntStream;
 
 import static org.junit.Assert.*;
 
 public class LongLookupTest {
+    private final Path path = Paths.get("build/test/long-lookup-test");
+
+    @Before
+    public void init() throws IOException {
+        SafeDeleting.removeDirectory(path);
+    }
+
     @Test
     public void testCtorErrors() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
-
         Exception expected = null;
         try {
             new LongLookup(path, 0, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
@@ -40,9 +47,24 @@ public class LongLookupTest {
     }
 
     @Test
+    public void testHashPath() throws IOException {
+        for (int hashSize : new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536 }) {
+            Path hashPath = path.resolve(String.format("byte-boundary-%d", hashSize));
+            SafeDeleting.removeDirectory(hashPath);
+            try (LongLookup longLookup = new LongLookup(hashPath, hashSize, 1)) {
+                assertEquals(hashSize, IntStream
+                        .range(0, hashSize)
+                        .mapToObj(HashCode::fromInt)
+                        .map(longLookup::hashPath)
+                        .distinct()
+                        .count()
+                );
+            }
+        }
+    }
+
+    @Test
     public void testKeysDepth1() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
         LongLookup longLookup = new LongLookup(path, 1, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         longLookup.put("partition", "b", 1);
         longLookup.put("partition", "c", 1);
@@ -53,8 +75,6 @@ public class LongLookupTest {
 
     @Test
     public void testKeysDepth2() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
         LongLookup longLookup = new LongLookup(path, 257, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         longLookup.put("partition", "b", 1);
         longLookup.put("partition", "c", 1);
@@ -65,8 +85,6 @@ public class LongLookupTest {
 
     @Test
     public void testKeysDepth3() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
         LongLookup longLookup = new LongLookup(path, 65537, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         longLookup.put("partition", "b", 1);
         longLookup.put("partition", "c", 1);
@@ -77,8 +95,6 @@ public class LongLookupTest {
 
     @Test
     public void testPartitions() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
         LongLookup longLookup = new LongLookup(path);
         longLookup.put("b", "b", 1);
         longLookup.put("c", "c", 1);
@@ -89,8 +105,6 @@ public class LongLookupTest {
 
     @Test
     public void testGetFlushed() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
         LongLookup longLookup = new LongLookup(path);
         longLookup.put("a", "b", 1);
         LongLookup longLookup2 = new LongLookup(path);
@@ -104,8 +118,6 @@ public class LongLookupTest {
 
     @Test
     public void testScan() throws Exception {
-        Path path = Paths.get("build/test/lookup-metadata-test/LongLookupTest");
-        SafeDeleting.removeDirectory(path);
         LongLookup longLookup = new LongLookup(path);
         longLookup.put("a", "a1", 1);
         longLookup.put("a", "a2", 2);

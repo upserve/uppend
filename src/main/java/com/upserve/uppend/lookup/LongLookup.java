@@ -71,7 +71,11 @@ public class LongLookup implements AutoCloseable, Flushable {
         } else {
             String hashBinaryString = Integer.toBinaryString(hashSize - 1);
             hashBytes = (hashBinaryString.length() + 7) / 8;
-            hashFinalByteMask = (1 << (hashBinaryString.length() % 8)) - 1;
+            int hashLastByteBits = hashBinaryString.length() % 8;
+            if (hashLastByteBits == 0) {
+                hashLastByteBits = 8;
+            }
+            hashFinalByteMask = (1 << hashLastByteBits) - 1;
             hashFunction = Hashing.murmur3_32();
         }
 
@@ -295,27 +299,28 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     private Path hashPath(String partition, LookupKey key) {
-        String hashPath;
-        if (hashFunction == null) {
-            hashPath = "00";
-        } else {
-            // Also see keys method in this class
-            byte[] hash = hashFunction.hashString(key.string(), Charsets.UTF_8).asBytes();
-            switch (hashBytes) {
-                case 1:
-                    hashPath = String.format("%02x", hashFinalByteMask & (int) hash[0]);
-                    break;
-                case 2:
-                    hashPath = String.format("%02x/%02x", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1]);
-                    break;
-                case 3:
-                    hashPath = String.format("%02x/%02x/%02x", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2]);
-                    break;
-                default:
-                    throw new IllegalStateException("unhandled hashBytes: " + hashBytes);
-            }
-        }
+        String hashPath = hashFunction == null ? "00" : hashPath(hashFunction.hashString(key.string(), Charsets.UTF_8));
         return dir.resolve(partition).resolve(hashPath);
+    }
+
+    String hashPath(HashCode hashCode) {
+        // Also see keys method in this class
+        String hashPath;
+        byte[] hash = hashCode.asBytes();
+        switch (hashBytes) {
+            case 1:
+                hashPath = String.format("%02x", hashFinalByteMask & (int) hash[0]);
+                break;
+            case 2:
+                hashPath = String.format("%02x/%02x", 0xff & (int) hash[0], hashFinalByteMask & (int) hash[1]);
+                break;
+            case 3:
+                hashPath = String.format("%02x/%02x/%02x", 0xff & (int) hash[0], 0xff & (int) hash[1], hashFinalByteMask & (int) hash[2]);
+                break;
+            default:
+                throw new IllegalStateException("unhandled hashBytes: " + hashBytes);
+        }
+        return hashPath;
     }
 
     private Stream<Path> hashPaths(String partition) {
