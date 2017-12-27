@@ -1,9 +1,11 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.util.SafeDeleting;
+import com.upserve.uppend.util.*;
 import org.junit.*;
 
-import java.io.UncheckedIOException;
+import java.io.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
 
 import static org.junit.Assert.*;
@@ -90,6 +92,33 @@ public class BlockedLongsTest {
         }
         int blockSize = 16 + 10 * 8; // mirrors BlockedLongs.blockSize
         v.append(blockSize * 2, 21);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testAppendLastBlockHasANext() throws Exception {
+        BlockedLongs v = new BlockedLongs(path, 10);
+        assertEquals(0, v.allocate());
+        v.append(0, 0);
+        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
+            longBuf.putLong(-1);
+            longBuf.flip();
+            chan.write(longBuf, 0);
+        }
+        v.append(0, 1);
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testAppendTooHighNumValues() throws Exception {
+        BlockedLongs v = new BlockedLongs(path, 10);
+        long pos1 = v.allocate();
+        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
+            longBuf.putLong(20);
+            longBuf.flip();
+            chan.write(longBuf, 8);
+        }
+        v.append(pos1, 0);
     }
 
     @Test
