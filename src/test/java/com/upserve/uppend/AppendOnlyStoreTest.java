@@ -122,6 +122,36 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
+    public void testReadFlushed() throws Exception {
+        store.append("partition", "foo", "bar".getBytes());
+        assertEquals(0, store.readFlushed("partition", "foo").count());
+        store.flush();
+        Optional<byte[]> val = store.readFlushed("partition", "foo").findFirst();
+        assertTrue(val.isPresent());
+        assertEquals("bar", new String(val.get()));
+    }
+
+    @Test
+    public void testReadSequentialFlushed() throws Exception {
+        store.append("partition", "foo", "bar".getBytes());
+        store.append("partition", "foo", "baz".getBytes());
+        assertEquals(0, store.readSequentialFlushed("partition", "foo").count());
+        store.flush();
+        String[] vals = store.readSequentialFlushed("partition", "foo").map(String::new).toArray(String[]::new);
+        assertArrayEquals(new String[] {"bar", "baz"}, vals);
+    }
+
+    @Test
+    public void testReadLastFlushed() throws Exception {
+        store.append("partition", "foo", "bar".getBytes());
+        store.append("partition", "foo", "baz".getBytes());
+        assertEquals(null, store.readLastFlushed("partition", "foo"));
+        store.flush();
+        String val = new String(store.readLastFlushed("partition", "foo"));
+        assertEquals("baz", val);
+    }
+
+    @Test
     public void testMultiPartition() throws Exception {
         store.append("partition", "key", "bar".getBytes());
         store.append("partition_bar", "key", "baz".getBytes());

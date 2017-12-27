@@ -11,7 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -37,7 +37,7 @@ public class LookupData implements AutoCloseable, Flushable {
         this.path = path;
         this.metadataPath = metadataPath;
         Path parentPath = path.getParent();
-        if (Files.notExists(parentPath)) {
+        if (!Files.exists(parentPath) /* notExists() returns true erroneously */) {
             try {
                 Files.createDirectories(parentPath);
             } catch (IOException e) {
@@ -122,10 +122,14 @@ public class LookupData implements AutoCloseable, Flushable {
         final int index;
 
         synchronized (memMonitor) {
-            long existingValue = mem.put(key, value);
+            long existingValue = mem.getLong(key);
             if (existingValue != Long.MIN_VALUE) {
                 return existingValue;
             }
+            if (mem.put(key, value) != Long.MIN_VALUE) {
+                throw new IllegalStateException("race while performing conditional put within synchronized block");
+            }
+
             index = memOrder.size();
             if (memOrder.put(key, index) != Integer.MIN_VALUE) {
                 throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
@@ -307,7 +311,7 @@ public class LookupData implements AutoCloseable, Flushable {
                 pos = nextPos;
             }
             if (chan.position() != chan.size()) {
-                log.warn("scan incomplete at pos " + chan.position() + " / " + chan.size());
+                log.warn("init incomplete at pos " + chan.position() + " / " + chan.size());
             }
         }
     }
@@ -347,6 +351,35 @@ public class LookupData implements AutoCloseable, Flushable {
                 Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
         );
         return StreamSupport.stream(spliter, true).onClose(iter::close);
+    }
+
+    static void scan(Path path, BiConsumer<String, Long> keyValueFunction) {
+        if (Files.notExists(path)) {
+            return;
+        }
+        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
+            try (Blobs keyBlobs = new Blobs(path.resolveSibling("keys"))) {
+                chan.position(0);
+                long pos = 0;
+                long size = chan.size();
+                DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
+                while (pos < size) {
+                    long nextPos = pos + 16;
+                    if (nextPos > size) {
+                        log.warn("scanned past size (" + size + ") of file (" + path + ") at pos " + pos);
+                        break;
+                    }
+                    long keyPos = dis.readLong();
+                    byte[] keyBytes = keyBlobs.read(keyPos);
+                    LookupKey key = new LookupKey(keyBytes);
+                    long val = dis.readLong();
+                    keyValueFunction.accept(key.string(), val);
+                    pos = nextPos;
+                }
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to scan " + path, e);
+        }
     }
 
     private static class KeyIterator implements Iterator<LookupKey>, AutoCloseable {

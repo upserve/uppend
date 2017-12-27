@@ -52,7 +52,7 @@ public class LookupMetadata {
             IntegratedIntCompressor iic = new IntegratedIntCompressor();
             keyStorageOrder = iic.uncompress(compressedOrdering);
             if (keyStorageOrder.length != numKeys) {
-                throw new IllegalStateException("expected " + numKeys + " keys, got " + keyStorageOrder.length);
+                throw new IllegalStateException("expected " + numKeys + " keys, got " + keyStorageOrder.length + " at path: " + path);
             }
         } catch (IOException e) {
             throw new UncheckedIOException("unable to construct metadata from path: " + path, e);
@@ -150,7 +150,7 @@ public class LookupMetadata {
     @Override
     public String toString() {
         return "LookupMetadata{" +
-                ", numKeys=" + numKeys +
+                "numKeys=" + numKeys +
                 ", minKey=" + minKey +
                 ", maxKey=" + maxKey +
                 '}';

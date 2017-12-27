@@ -33,8 +33,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final MappedByteBuffer posBuf;
     private final AtomicLong posMem;
 
-    private final AtomicBoolean outDirty;
-
     public BlockedLongs(Path file, int valuesPerBlock) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
@@ -92,8 +90,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
-
-        outDirty = new AtomicBoolean(false);
     }
 
     /**
@@ -104,7 +100,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public long allocate() {
         log.trace("allocating block of {} bytes in {}", blockSize, file);
         long pos = posMem.getAndAdd(blockSize);
-        outDirty.set(true);
         return pos;
     }
 
@@ -116,15 +111,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         final long prev = readLong(pos + 8);
         if (prev > 0) {
-            throw new IllegalStateException("append called at non-starting block: pos=" + pos);
+            throw new IllegalStateException("append called at non-starting block: pos=" + pos + " in path: " + file);
         }
         final long last = prev == 0 ? pos : -prev;
         final long size = readLong(last);
         if (size < 0) {
-            throw new IllegalStateException("last block has a next: pos=" + pos);
+            throw new IllegalStateException("last block has a next: pos=" + pos + " in path: " + file);
         }
         if (size > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos);
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos + " in path: " + file);
         }
         if (size == valuesPerBlock) {
             long newPos = allocate();
@@ -141,15 +136,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             writeLong(last, size + 1);
         }
 
-        outDirty.set(true);
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
     public LongStream values(long pos) {
         log.trace("streaming values from {} at {}", file, pos);
-        if (outDirty.get()) {
-            flush();
-        }
+
         if (pos >= posMem.get()) {
             return LongStream.empty();
         }
@@ -192,9 +184,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);
-        if (outDirty.get()) {
-            flush();
-        }
+
         if (pos >= posMem.get()) {
             return -1;
         }
@@ -238,7 +228,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             posBuf.putLong(0, 0);
             posMem.set(0);
             Arrays.fill(pages, null);
-            outDirty.set(true);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
         }
@@ -262,7 +251,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
         posBuf.putLong(0, posMem.get());
         posBuf.force();
-        outDirty.set(false);
     }
 
     private ByteBuffer readBlock(long pos) {

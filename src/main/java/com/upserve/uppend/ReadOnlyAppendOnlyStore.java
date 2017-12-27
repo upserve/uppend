@@ -2,6 +2,9 @@ package com.upserve.uppend;
 
 import java.util.stream.Stream;
 
+/**
+ * Reader interface to an append-only store
+ */
 public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
     /**
      * Read byte arrays that have been stored under a given partition and key in

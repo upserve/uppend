@@ -47,7 +47,7 @@ public class AppendOnlyStoreBuilder {
     }
 
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        return new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 1);
+        return new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0);
     }
 
     @Override
