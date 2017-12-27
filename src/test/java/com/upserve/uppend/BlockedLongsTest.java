@@ -116,7 +116,7 @@ public class BlockedLongsTest {
             ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
             longBuf.putLong(20);
             longBuf.flip();
-            chan.write(longBuf, 8);
+            chan.write(longBuf, 0);
         }
         v.append(pos1, 0);
     }
