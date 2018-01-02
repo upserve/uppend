@@ -7,6 +7,8 @@ import org.junit.*;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.junit.Assert.*;
@@ -52,13 +54,12 @@ public class LongLookupTest {
             Path hashPath = path.resolve(String.format("byte-boundary-%d", hashSize));
             SafeDeleting.removeDirectory(hashPath);
             try (LongLookup longLookup = new LongLookup(hashPath, hashSize, 1)) {
-                assertEquals(hashSize, IntStream
-                        .range(0, hashSize)
+                Map<String, Long> hashMap = IntStream
+                        .range(0, 1_048_576)
                         .mapToObj(HashCode::fromInt)
                         .map(longLookup::hashPath)
-                        .distinct()
-                        .count()
-                );
+                        .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+                assertEquals(hashSize, hashMap.size());
             }
         }
     }
