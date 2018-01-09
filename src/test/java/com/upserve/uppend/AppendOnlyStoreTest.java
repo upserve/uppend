@@ -75,6 +75,21 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
+    public void size() {
+        assertEquals(0L, store.size());
+        store.append("partition0", "foo1", "bar".getBytes());
+        assertEquals(1L, store.size());
+        store.append("partition0", "foo1", "bar".getBytes());
+        assertEquals(1L, store.size());
+        store.append("partition1", "foo1", "bar".getBytes());
+        assertEquals(2L, store.size());
+        store.append("partition1", "foo1", "bar".getBytes());
+        assertEquals(2L, store.size());
+        store.append("partition1", "foo2", "bar".getBytes());
+        assertEquals(3L, store.size());
+    }
+
+    @Test
     public void fillTheCache() {
         int keys = LongLookup.DEFAULT_WRITE_CACHE_SIZE * 2;
 

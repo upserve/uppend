@@ -1,6 +1,9 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.Maps;
+
 import java.io.*;
+import java.util.Map;
 import java.util.function.*;
 import java.util.stream.Stream;
 
@@ -153,5 +156,30 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     @Override
     public void flush() throws IOException {
         store.flush();
+    }
+
+    /**
+     * Scan all the keys and values in a partition return a stream of entries
+     * @param partition the name of the partition
+     * @return a Stream of Entries containing the key and a stream of values
+     */
+    public Stream<Map.Entry<String, Stream<T>>> scan(String partition){
+        return store.scan(partition).map(entry ->
+                Maps.immutableEntry(entry.getKey(), entry.getValue().map(deserializer)));
+    }
+
+    /**
+     * The estimated size of the append store including unflushed keys
+     * @return the size
+     */
+    public Long size(){
+        return store.size();
+    }
+
+    /**
+     * Used the purge the write cache and save heap space when it is not currently needed for a particular store
+     */
+    public void purgeWriteCache(){
+        store.purgeWriteCache();
     }
 }
