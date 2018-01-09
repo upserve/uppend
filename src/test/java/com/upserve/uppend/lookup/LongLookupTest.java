@@ -1,5 +1,6 @@
 package com.upserve.uppend.lookup;
 
+import com.google.common.collect.*;
 import com.google.common.hash.HashCode;
 import com.upserve.uppend.util.SafeDeleting;
 import net.bytebuddy.utility.RandomString;
@@ -11,6 +12,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.*;
+
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
@@ -119,9 +121,51 @@ public class LongLookupTest {
         longLookup.close();
     }
 
+    @Test
+    public void testPurgeCache() {
+        LongLookup longLookup = new LongLookup(path);
+        longLookup.put("a", "b", 1);
+        assertEquals(1, longLookup.cacheSize());
+        assertEquals(1L, longLookup.get("a","b"));
+        longLookup.close();
+        assertEquals(0, longLookup.cacheSize());
+        assertEquals(1L, longLookup.get("a","b"));
+        longLookup.put("c", "d", 2);
+        assertEquals(1, longLookup.cacheSize());
+        assertEquals(1L, longLookup.get("a","b"));
+
+        longLookup.close();
+    }
 
     @Test
-    public void testScan() throws Exception {
+    public void testScanStream() throws Exception {
+        LongLookup longLookup = new LongLookup(path);
+        longLookup.put("a", "a1", 1);
+        longLookup.put("a", "a2", 2);
+        longLookup.put("b", "b1", 1);
+        longLookup.put("b", "b2", 2);
+        longLookup.close();
+
+        List<Map.Entry<String, Long>> results;
+        List<Map.Entry<String, Long>> expected;
+
+        longLookup = new LongLookup(path);
+        results = longLookup.scan("a").collect(Collectors.toList());
+        expected =  Arrays.asList(Maps.immutableEntry("a1",1L), Maps.immutableEntry("a2", 2L));
+
+        assertEquals(expected, results);
+
+        results = longLookup.scan("b").collect(Collectors.toList());
+        expected =  Arrays.asList(Maps.immutableEntry("b1",1L), Maps.immutableEntry("b2", 2L));
+        assertEquals(expected, results);
+
+        assertEquals(0, longLookup.scan("c").count());
+
+        longLookup.close();
+    }
+
+    @Test
+    public void testScanBiFunction() throws Exception {
         LongLookup longLookup = new LongLookup(path);
         longLookup.put("a", "a1", 1);
         longLookup.put("a", "a2", 2);

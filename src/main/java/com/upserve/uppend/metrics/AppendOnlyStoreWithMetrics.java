@@ -3,6 +3,7 @@ package com.upserve.uppend.metrics;
 import com.codahale.metrics.*;
 import com.upserve.uppend.AppendOnlyStore;
 
+import java.util.Map;
 import java.util.stream.Stream;
 
 public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
@@ -13,6 +14,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String PARTITIONS_TIMER_METRIC_NAME = "partitionsTimer";
     public static final String CLEAR_TIMER_METRIC_NAME = "clearTimer";
     public static final String CLOSE_TIMER_METRIC_NAME = "closeTimer";
+    public static final String SIZE_TIMER_METRIC_NAME = "sizeTimer";
+    public static final String PURGE_TIMER_METRIC_NAME = "purgeTimer";
 
     public static final String WRITE_BYTES_METER_METRIC_NAME = "writeBytesMeter";
     public static final String READ_BYTES_METER_METRIC_NAME = "readBytesMeter";
@@ -27,6 +30,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Timer partitionsTimer;
     private final Timer clearTimer;
     private final Timer closeTimer;
+    private final Timer sizeTimer;
+    private final Timer purgeTimer;
 
     private final Meter writeBytesMeter;
     private final Meter readBytesMeter;
@@ -42,6 +47,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         partitionsTimer = metrics.timer(PARTITIONS_TIMER_METRIC_NAME);
         clearTimer = metrics.timer(CLEAR_TIMER_METRIC_NAME);
         closeTimer = metrics.timer(CLOSE_TIMER_METRIC_NAME);
+        sizeTimer = metrics.timer(SIZE_TIMER_METRIC_NAME);
+        purgeTimer = metrics.timer(PURGE_TIMER_METRIC_NAME);
 
         writeBytesMeter = metrics.meter(WRITE_BYTES_METER_METRIC_NAME);
         readBytesMeter = metrics.meter(READ_BYTES_METER_METRIC_NAME);
@@ -67,6 +74,17 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         } finally {
             context.stop();
         }
+    }
+
+    @Override
+    public void purgeWriteCache() {
+        final Timer.Context context = purgeTimer.time();
+        try {
+            store.purgeWriteCache();
+        } finally {
+            context.stop();
+        }
+
     }
 
     @Override
@@ -137,6 +155,27 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         }
     }
 
+
+    @Override
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition){
+        final Timer.Context context = readTimer.time();
+        try {
+            return store
+                    .scan(partition);
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public long size() {
+        final Timer.Context context = sizeTimer.time();
+        try {
+            return store.size();
+        } finally {
+            context.stop();
+        }
+    }
 
     @Override
     public Stream<String> keys(String partition) {
