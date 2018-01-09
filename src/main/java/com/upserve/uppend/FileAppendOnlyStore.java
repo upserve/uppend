@@ -1,10 +1,12 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.Maps;
 import com.upserve.uppend.lookup.LongLookup;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.stream.*;
 
 public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
@@ -38,6 +40,13 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     }
 
     @Override
+    public void purgeWriteCache() {
+        lookups.close();
+        blocks.flush();
+        blobs.flush();
+    }
+
+    @Override
     public Stream<byte[]> read(String partition, String key) {
         log.trace("reading in partition {} with key {}", partition, key);
         return blockValues(partition, key, true)
@@ -59,6 +68,23 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
             return null;
         }
         return blobs.read(pos);
+    }
+
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition){
+        return lookups.scan(partition)
+                .map(entry ->
+                        Maps.immutableEntry(
+                                entry.getKey(),
+                                blocks.values(entry.getValue())
+                                        .parallel()
+                                        .mapToObj(blobs::read)
+                        )
+                );
+    }
+
+    @Override
+    public long size() {
+        return partitions().parallel().flatMapToLong(lookups::size).sum();
     }
 
     @Override

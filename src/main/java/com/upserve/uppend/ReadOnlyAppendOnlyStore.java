@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -28,7 +29,6 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      */
     Stream<byte[]> readSequential(String partition, String key);
 
-
     /**
      * Read the last byte array that was stored under a given partition and key
      *
@@ -54,4 +54,18 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      * @return a stream of string partition
      */
     Stream<String> partitions();
+
+    /**
+     * Scan the given partition returning a stream of the contents including the key
+     * @param partition the partition to scan
+     * @return a stream of entries containing the key and the bytes
+     */
+    Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition);
+
+    /**
+     * The approximate number of keys in the data store. Keys that have been written but not yet flushed are counted.
+     *
+     * @return the number of keys
+     */
+    long size();
 }

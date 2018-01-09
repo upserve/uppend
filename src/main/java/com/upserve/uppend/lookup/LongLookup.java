@@ -159,6 +159,21 @@ public class LongLookup implements AutoCloseable, Flushable {
         return getUncachedInternal(lookupKey, hashPath);
     }
 
+    /**
+     * Scan the long lookups for a given partition streaming the key and long
+     * @param partition the partition name to scan
+     * @return a Stream of entries containing key and long
+     */
+    public Stream<Map.Entry<String, Long>> scan(String partition) {
+        validatePartition(partition);
+
+        return hashPaths(partition).flatMap(LookupData::scan);
+    }
+
+    public int cacheSize(){
+        return writeCache.size();
+    }
+
     public long put(String partition, String key, long value) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
@@ -188,7 +203,6 @@ public class LongLookup implements AutoCloseable, Flushable {
 
     public Stream<String> keys(String partition) {
         validatePartition(partition);
-
         return hashPaths(partition)
                 .flatMap(LookupData::keys)
                 .map(LookupKey::string);
@@ -204,6 +218,12 @@ public class LongLookup implements AutoCloseable, Flushable {
                 .stream(files)
                 .filter(File::isDirectory)
                 .map(File::getName);
+    }
+
+    public LongStream size(String partition){
+        validatePartition(partition);
+        return hashPaths(partition)
+                .mapToLong(LookupData::size);
     }
 
     public void scan(String partition, BiConsumer<String, Long> keyValueFunction) {
@@ -324,6 +344,8 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     private Stream<Path> hashPaths(String partition) {
+        validatePartition(partition);
+
         Path partitionPath = dir.resolve(partition);
         if (Files.notExists(partitionPath)) {
             return Stream.empty();
@@ -357,7 +379,6 @@ public class LongLookup implements AutoCloseable, Flushable {
         LookupMetadata metadata = new LookupMetadata(metaPath);
         return metadata.readData(hashPath.resolve("data"), lookupKey);
     }
-
 
     private static void validatePartition(String partition) {
         if (partition == null) {
