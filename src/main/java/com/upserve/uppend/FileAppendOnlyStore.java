@@ -14,11 +14,11 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     private static final int NUM_BLOBS_PER_BLOCK = 127;
 
-    private final LongLookup lookups;
-    private final BlockedLongs blocks;
-    private final Blobs blobs;
+    protected final LongLookup lookups;
+    protected final BlockedLongs blocks;
+    protected final Blobs blobs;
 
-    FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize) {
+    protected FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize) {
         super(dir, flushDelaySeconds, doLock);
 
         lookups = new LongLookup(

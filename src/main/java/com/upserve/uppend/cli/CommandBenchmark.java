@@ -33,6 +33,9 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-n", "--count"}, description = "Count")
     int count = 1_000_000;
 
+    @Option(names = {"-b", "--buffered"}, description = "Use Buffered AppendStore")
+    int buffered = 0;
+
     @Option(names = {"-h", "--hash-size"}, description = "Hash size")
     int hashSize = LongLookup.DEFAULT_HASH_SIZE;
 
@@ -48,7 +51,7 @@ public class CommandBenchmark implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
-        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize, flushDelay);
+        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize, flushDelay, buffered);
         benchmark.run();
         return null;
     }
