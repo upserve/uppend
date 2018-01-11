@@ -318,7 +318,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
     }
 
-    private Path hashPath(String partition, LookupKey key) {
+    public Path hashPath(String partition, LookupKey key) {
         String hashPath = hashFunction == null ? "00" : hashPath(hashFunction.hashString(key.string(), Charsets.UTF_8));
         return dir.resolve(partition).resolve(hashPath);
     }
