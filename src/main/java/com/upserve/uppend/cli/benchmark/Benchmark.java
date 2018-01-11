@@ -30,7 +30,7 @@ public class Benchmark {
 
     private volatile boolean isDone = false;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds, int buffered) {
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
@@ -46,6 +46,7 @@ public class Benchmark {
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
+                .withBufferedAppend(buffered)
                 .withMetrics(metrics)
                 .build();
 
