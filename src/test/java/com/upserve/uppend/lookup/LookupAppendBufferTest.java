@@ -111,4 +111,40 @@ public class LookupAppendBufferTest {
         }
         assertNotNull("Should have failed to write to a closed buffered appender",expected);
     }
+
+
+    @Test
+    public void testClear(){
+        instance.bufferedAppend("partition1", "key", 15);
+        assertEquals(1, instance.bufferCount());
+
+        instance.flush();
+        long lookup;
+        lookup = longLookup.get("partition1","key");
+        assertArrayEquals(new long[]{15}, blockedLongs.values(lookup).toArray());
+
+        instance.clearLock();
+        Exception expected = null;
+        try {
+            instance.bufferedAppend("partition1", "key", 15);
+        }catch (RuntimeException e) {
+            expected = e;
+        }
+        assertNotNull("Should have failed to write to a closed buffered appender", expected);
+
+        blockedLongs.clear();
+        longLookup.clear();
+        instance.unlock();
+
+        assertEquals(-1, longLookup.get("partition1","key"));
+
+        instance.bufferedAppend("partition1", "key", 16);
+        assertEquals(1, instance.bufferCount());
+
+        instance.flush();
+        lookup = longLookup.get("partition1","key");
+        assertArrayEquals(new long[]{16}, blockedLongs.values(lookup).toArray());
+
+
+    }
 }
