@@ -188,4 +188,13 @@ public class LookupAppendBuffer {
             tasks.add(threadPool.submit(() -> flushEntry(path, entryList)));
         }
     }
+
+    public void clearLock() {
+        closed.set(true);
+        flush();
+    }
+
+    public void unlock() {
+        closed.set(false);
+    }
 }
