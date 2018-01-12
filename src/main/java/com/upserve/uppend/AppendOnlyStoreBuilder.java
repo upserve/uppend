@@ -15,7 +15,7 @@ public class AppendOnlyStoreBuilder {
     private int flushDelaySeconds = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
     private MetricRegistry metrics;
 
-    private int maxBufferSize = 0;
+    private int suggestedBufferSize = 0;
     private ExecutorService executorService = null;
 
     public AppendOnlyStoreBuilder withDir(Path dir) {
@@ -28,13 +28,13 @@ public class AppendOnlyStoreBuilder {
         return this;
     }
 
-    public AppendOnlyStoreBuilder withBufferedAppend(int maxBufferSize){
-        this.maxBufferSize = maxBufferSize;
+    public AppendOnlyStoreBuilder withBufferedAppend(int suggestedBufferSize){
+        this.suggestedBufferSize = suggestedBufferSize;
         return this;
     }
 
     public AppendOnlyStoreBuilder withBufferedAppend(int maxBufferSize, ExecutorService executorService){
-        this.maxBufferSize = maxBufferSize;
+        this.suggestedBufferSize = maxBufferSize;
         this.executorService = executorService;
         return this;
     }
@@ -56,9 +56,9 @@ public class AppendOnlyStoreBuilder {
 
     public AppendOnlyStore build() {
         AppendOnlyStore store;
-        if (maxBufferSize > 0) {
+        if (suggestedBufferSize > 0) {
             // Add log message about ignored parameters
-            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, maxBufferSize, Optional.ofNullable(executorService));
+            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, Optional.ofNullable(executorService));
         } else {
             store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize);
         }
@@ -81,7 +81,7 @@ public class AppendOnlyStoreBuilder {
                 ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +
                 ", flushDelaySeconds=" + flushDelaySeconds +
                 ", metrics=" + metrics +
-                ", bufferedAppend=" + maxBufferSize +
+                ", bufferedAppendSize=" + suggestedBufferSize +
                 '}';
     }
 }

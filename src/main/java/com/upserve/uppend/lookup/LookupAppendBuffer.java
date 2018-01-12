@@ -22,6 +22,7 @@ public class LookupAppendBuffer {
     private static final int MIN_BUFFER_SIZE = 20;
 
     private final int maxSize;
+    private final int minSize;
     private final LongLookup longLookup;
     private final BlockedLongs blockedLongs;
     private final ConcurrentHashMap<Path, List<Map.Entry<LookupKey, Long>>> appendBuffer;
@@ -32,14 +33,15 @@ public class LookupAppendBuffer {
     private final ConcurrentLinkedQueue<Future> tasks = Queues.newConcurrentLinkedQueue();
     AtomicBoolean closed = new AtomicBoolean(false);
 
-    public LookupAppendBuffer(LongLookup longLookup, BlockedLongs blockedLongs, int bufferMax, Optional<ExecutorService> threadPool) {
+    public LookupAppendBuffer(LongLookup longLookup, BlockedLongs blockedLongs, int bufferMax, int buffRange, Optional<ExecutorService> threadPool) {
         if (bufferMax < MIN_BUFFER_SIZE)
             throw new IllegalArgumentException(String.format("Invalid buffer size %s is less than %s", bufferMax, MIN_BUFFER_SIZE));
         this.longLookup = longLookup;
         this.blockedLongs = blockedLongs;
         this.appendBuffer = new ConcurrentHashMap<>();
         this.lockedHashPaths = new ConcurrentHashMap<>();
-        this.maxSize = bufferMax;
+        this.minSize = bufferMax;
+        this.maxSize = bufferMax + buffRange +1;
         this.threadPool = threadPool.orElse(Executors.newFixedThreadPool(4));
         this.myThreadPool = !threadPool.isPresent();
 
@@ -61,14 +63,14 @@ public class LookupAppendBuffer {
         // ConcurrentHashMap guarantees atomic, blocking exactly once execution of the compute method.
         appendBuffer.compute(longLookup.hashPath(partition, lookupKey), (Path pathKey, List<Map.Entry<LookupKey, Long>> entryList) -> {
             if (entryList == null) {
-                entryList = new ArrayList<>(maxSize + 1);
+                entryList = new ArrayList<>(maxSize);
             }
 
             if (closed.get()) throw new RuntimeException("Closed for business");
 
             entryList.add(Maps.immutableEntry(lookupKey, blobPos));
 
-            if (entryList.size() >= maxSize) {
+            if (entryList.size() >= ThreadLocalRandom.current().nextInt(minSize, maxSize)) {
                 List<Map.Entry<LookupKey, Long>> finalEntryList = new ArrayList<>(entryList);
                 entryList.clear();
                 tasks.add(threadPool.submit(() -> flushEntry(pathKey, finalEntryList)));
@@ -162,7 +164,7 @@ public class LookupAppendBuffer {
 
     private void flushEntry(Path path, List<Map.Entry<LookupKey, Long>> entryList) {
 
-        AtomicBoolean locked = lockedHashPaths.computeIfAbsent(path, (pathKey) -> new AtomicBoolean(false));
+        AtomicBoolean locked = lockedHashPaths.computeIfAbsent(path, pathKey -> new AtomicBoolean(false));
 
         if (locked.compareAndSet(false, true)) {
             try {
