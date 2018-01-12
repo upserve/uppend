@@ -7,12 +7,10 @@ import org.junit.*;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.Optional;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.*;
 
 public class LookupAppendBufferTest {
     private final Path path = Paths.get("build/test/long-lookup-test");
@@ -66,12 +64,22 @@ public class LookupAppendBufferTest {
 
     @Test
     public void fixedSizeFlush() throws ExecutionException, InterruptedException {
-        IntStream.range(0, 24).forEach(val -> instance.bufferedAppend("partition3", "key", val));
+        // Test a hot key flushing many times
+        IntStream.range(0, 24*50)
+                .forEach(val -> instance.bufferedAppend("partition3", "key", val));
 
-        instance.getTasks().peek().get();
+        instance.getTasks().iterator().forEachRemaining(future -> {
+            try {
+                future.get();
+            } catch (InterruptedException e) {
+                fail("Buffered write was interrupted");
+            } catch (ExecutionException e) {
+                fail("Buffered write cause an execution exception");
+            }
+        });
 
         long lookup = longLookup.get("partition3","key");
-        assertEquals(24, blockedLongs.values(lookup).count());
+        assertEquals(24*50, blockedLongs.values(lookup).count());
     }
 
     @Test
