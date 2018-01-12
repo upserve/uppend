@@ -47,7 +47,8 @@ public class BufferedAppendOnlyStore extends FileAppendOnlyStore {
 
     @Override
     public void clear(){
-        lookupAppendBuffer.flush();
+        lookupAppendBuffer.clearLock();
         super.clear();
+        lookupAppendBuffer.unlock();
     }
 }
