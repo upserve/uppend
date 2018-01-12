@@ -26,7 +26,7 @@ public class LookupAppendBufferTest {
         longLookup = new LongLookup(path);
         blockedLongs = new BlockedLongs(path.resolve("blocks"), 128);
 
-        instance = new LookupAppendBuffer(longLookup, blockedLongs, 24, Optional.empty());
+        instance = new LookupAppendBuffer(longLookup, blockedLongs, 24, 0, Optional.empty());
     }
 
     @After
