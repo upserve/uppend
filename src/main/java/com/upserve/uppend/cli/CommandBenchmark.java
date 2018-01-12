@@ -33,7 +33,7 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-n", "--count"}, description = "Count")
     int count = 1_000_000;
 
-    @Option(names = {"-b", "--buffered"}, description = "Use Buffered AppendStore")
+    @Option(names = {"-b", "--buffered"}, description = "Use BufferedAppendOnlyStore with this size")
     int buffered = 0;
 
     @Option(names = {"-h", "--hash-size"}, description = "Hash size")
