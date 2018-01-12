@@ -25,6 +25,7 @@ public class LookupAppendBuffer {
     private final LongLookup longLookup;
     private final BlockedLongs blockedLongs;
     private final ConcurrentHashMap<Path, List<Map.Entry<LookupKey, Long>>> appendBuffer;
+    private final ConcurrentHashMap<Path, AtomicBoolean> lockedHashPaths;
     private final ExecutorService threadPool;
     private final boolean myThreadPool;
 
@@ -32,13 +33,15 @@ public class LookupAppendBuffer {
     AtomicBoolean closed = new AtomicBoolean(false);
 
     public LookupAppendBuffer(LongLookup longLookup, BlockedLongs blockedLongs, int bufferMax, Optional<ExecutorService> threadPool) {
-        if (bufferMax < MIN_BUFFER_SIZE) throw new IllegalArgumentException(String.format("Invalid buffer size %s is less than %s", bufferMax, MIN_BUFFER_SIZE));
+        if (bufferMax < MIN_BUFFER_SIZE)
+            throw new IllegalArgumentException(String.format("Invalid buffer size %s is less than %s", bufferMax, MIN_BUFFER_SIZE));
         this.longLookup = longLookup;
         this.blockedLongs = blockedLongs;
         this.appendBuffer = new ConcurrentHashMap<>();
+        this.lockedHashPaths = new ConcurrentHashMap<>();
         this.maxSize = bufferMax;
         this.threadPool = threadPool.orElse(Executors.newFixedThreadPool(4));
-        this.myThreadPool = ! threadPool.isPresent();
+        this.myThreadPool = !threadPool.isPresent();
 
         this.threadPool.submit(() -> cleanupTask());
     }
@@ -49,8 +52,8 @@ public class LookupAppendBuffer {
      * exceeds the bufferSize then submit a task to flush that entry.
      *
      * @param partition the append store partition
-     * @param key the append store key
-     * @param blobPos the position of the bytes in the blob file
+     * @param key       the append store key
+     * @param blobPos   the position of the bytes in the blob file
      */
     public void bufferedAppend(String partition, String key, long blobPos) {
         LookupKey lookupKey = new LookupKey(key);
@@ -80,11 +83,11 @@ public class LookupAppendBuffer {
      *
      * @return the number of entries in the buffer Map.
      */
-    public int bufferCount(){
+    public int bufferCount() {
         return appendBuffer.size();
     }
 
-    protected ConcurrentLinkedQueue<Future> getTasks(){
+    protected ConcurrentLinkedQueue<Future> getTasks() {
         return tasks;
     }
 
@@ -110,7 +113,7 @@ public class LookupAppendBuffer {
 
         try {
             Thread.sleep(500);
-            if (! closed.get()) threadPool.submit(this::cleanupTask);
+            if (!closed.get()) threadPool.submit(this::cleanupTask);
         } catch (InterruptedException e) {
             log.error("cleanup sleep interrupted", e);
         }
@@ -158,17 +161,29 @@ public class LookupAppendBuffer {
     }
 
     private void flushEntry(Path path, List<Map.Entry<LookupKey, Long>> entryList) {
-        LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"));
 
-        entryList.forEach(entry -> {
-            long blockPos = lookupData.putIfNotExists(entry.getKey(), blockedLongs::allocate);
-            blockedLongs.append(blockPos, entry.getValue());
-        });
+        AtomicBoolean locked = lockedHashPaths.computeIfAbsent(path, (pathKey) -> new AtomicBoolean(false));
 
-        try {
-            lookupData.close();
-        } catch (IOException e) {
-            log.error("Could not close lookup buffer for {}", path);
+        if (locked.compareAndSet(false, true)) {
+            try {
+                LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"));
+
+                entryList.forEach(entry -> {
+                    long blockPos = lookupData.putIfNotExists(entry.getKey(), blockedLongs::allocate);
+                    blockedLongs.append(blockPos, entry.getValue());
+                });
+
+                try {
+                    lookupData.close();
+                } catch (IOException e) {
+                    log.error("Could not close lookup buffer for {}", path);
+                }
+            } finally {
+                locked.set(false);
+            }
+        } else {
+            // Resubmit the job for someone else to try
+            tasks.add(threadPool.submit(() -> flushEntry(path, entryList)));
         }
     }
 }
