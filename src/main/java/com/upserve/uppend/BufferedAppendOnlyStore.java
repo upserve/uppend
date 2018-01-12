@@ -34,6 +34,12 @@ public class BufferedAppendOnlyStore extends FileAppendOnlyStore {
     }
 
     @Override
+    public void purgeWriteCache() {
+        lookupAppendBuffer.flush();
+        super.purgeWriteCache();
+    }
+
+    @Override
     protected void flushInternal() {
         lookupAppendBuffer.flush();
         super.flushInternal();
