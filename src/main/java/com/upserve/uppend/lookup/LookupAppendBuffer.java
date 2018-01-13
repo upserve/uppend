@@ -132,7 +132,7 @@ public class LookupAppendBuffer {
         // Ensure that all the tasks currently in the queue finish before returning
         tasks.iterator().forEachRemaining(f -> {
             try {
-                f.get(500, TimeUnit.MILLISECONDS);
+                f.get(30_000, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 log.error("Buffered Append task interrupted", e);
             } catch (ExecutionException e) {
@@ -150,7 +150,7 @@ public class LookupAppendBuffer {
         if (myThreadPool) {
             threadPool.shutdown();
             try {
-                boolean result = threadPool.awaitTermination(4000, TimeUnit.MILLISECONDS);
+                boolean result = threadPool.awaitTermination(20_000, TimeUnit.MILLISECONDS);
                 if (result) {
                     log.debug("flushed the buffer and closed the thread pool!");
                 } else {
