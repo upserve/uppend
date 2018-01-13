@@ -40,7 +40,8 @@ public class LongLookup implements AutoCloseable, Flushable {
     private final int hashFinalByteMask;
     private final HashFunction hashFunction;
     private final LinkedHashMap<Path, LookupData> writeCache;
-    private final Object writeCacheDataCloseMonitor = new Object();
+
+    private final ConcurrentHashMap<Path, Object> lockedPaths = new ConcurrentHashMap<>();
 
     public LongLookup(Path dir) {
         this(dir, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
@@ -89,7 +90,7 @@ public class LongLookup implements AutoCloseable, Flushable {
                         Path path = eldest.getKey();
                         log.trace("cache removing {}", path);
                         try {
-                            synchronized (writeCacheDataCloseMonitor) {
+                            synchronized (lockedPaths.computeIfAbsent(path, k -> new Object())) {
                                 eldest.getValue().close();
                             }
                         } catch (IOException e) {
@@ -163,7 +164,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        synchronized (writeCacheDataCloseMonitor) {
+        synchronized (lockedPaths.computeIfAbsent(hashPath, k -> new Object())) {
             return loadFromCacheForWrite(hashPath).put(lookupKey, value);
         }
     }
@@ -172,7 +173,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        synchronized (writeCacheDataCloseMonitor) {
+        synchronized (lockedPaths.computeIfAbsent(hashPath, k -> new Object())) {
             return loadFromCacheForWrite(hashPath).putIfNotExists(lookupKey, allocateLongFunc);
         }
     }
@@ -181,7 +182,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        synchronized (writeCacheDataCloseMonitor) {
+        synchronized (lockedPaths.computeIfAbsent(hashPath, k -> new Object())) {
             return loadFromCacheForWrite(hashPath).increment(lookupKey, delta);
         }
     }
@@ -222,19 +223,21 @@ public class LongLookup implements AutoCloseable, Flushable {
                 if (log.isTraceEnabled()) {
                     log.trace("closing {} (~{} entries)", dir, writeCache.size());
                 }
-                synchronized (writeCacheDataCloseMonitor) {
-                    writeCache.forEach((path, data) -> {
-                        log.trace("cache removing {}", path);
-                        try {
-                            data.close();
-                        } catch (IOException e) {
-                            log.error("unable to close " + path, e);
-                            throw new UncheckedIOException("unable to close " + path, e);
-                        }
+                writeCache.forEach((path, data) -> {
+                            synchronized (lockedPaths.computeIfAbsent(path, k -> new Object())) {
 
-                    });
-                    writeCache.clear();
-                }
+                                log.trace("cache removing {}", path);
+                                try {
+                                    data.close();
+                                } catch (IOException e) {
+                                    log.error("unable to close " + path, e);
+                                    throw new UncheckedIOException("unable to close " + path, e);
+                                }
+
+                            }
+                        }
+                );
+                writeCache.clear();
             }
         }
         log.trace("closed {}", dir);
@@ -254,16 +257,16 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
         ArrayList<Future> futures = new ArrayList<>();
         cacheCopy.forEach((path, data) ->
-            futures.add(AutoFlusher.flushExecPool.submit(() -> {
-                try {
-                    log.trace("cache flushing {}", path);
-                    data.flush();
-                    log.trace("cache flushed {}", path);
-                } catch (Exception e) {
-                    log.error("unable to flush " + path, e);
-                }
-            }
-        )));
+                futures.add(AutoFlusher.flushExecPool.submit(() -> {
+                            try {
+                                log.trace("cache flushing {}", path);
+                                data.flush();
+                                log.trace("cache flushed {}", path);
+                            } catch (Exception e) {
+                                log.error("unable to flush " + path, e);
+                            }
+                        }
+                )));
         Futures.getAll(futures);
         log.trace("flushed {}", dir);
     }
@@ -293,7 +296,7 @@ public class LongLookup implements AutoCloseable, Flushable {
                 return new LookupData(
                         hashPath.resolve("data"),
                         hashPath.resolve("meta")
-                    );
+                );
             });
         }
     }
@@ -332,7 +335,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         // Also see hashPath method in this class
         Stream<String> paths = IntStream
                 .range(0, hashFinalByteMask + 1)
-                .mapToObj(i ->  String.format("%02x/data", i));
+                .mapToObj(i -> String.format("%02x/data", i));
 
         for (int i = 1; i < hashBytes; i++) {
             paths = paths
