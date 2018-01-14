@@ -26,6 +26,10 @@ public class ConcurrentCache {
         this.cacheSize = cacheSize;
     }
 
+    public void clear() {
+        this.cache.clear();
+    }
+
     private static class CacheEntry{
         protected final AtomicLong lastTouched;
         protected final AtomicBoolean tombStone;
