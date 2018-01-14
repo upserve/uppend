@@ -220,7 +220,7 @@ public class LongLookup implements AutoCloseable, Flushable {
                 }
 
             });
-            //writeCache.clear();
+            writeCache.clear();
         }
         log.trace("closed {}", dir);
     }
