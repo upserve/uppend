@@ -101,7 +101,7 @@ public class Benchmark {
     }
 
     public static byte[] bytes(long integer) {
-        int length =(int) (integer % 65536);
+        int length =(int) (integer % 1024);
         byte[] bytes = new byte[length];
         Arrays.fill(bytes, (byte) 0);
         return bytes;
