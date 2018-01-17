@@ -135,9 +135,10 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     protected void flushInternal() {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
-        lookups.flush();
-        blocks.flush();
-        blobs.flush();
+        // Check non null because the super class is registered in the autoflusher before the constructor finishes
+        if (lookups != null) lookups.flush();
+        if (blobs != null) blocks.flush();
+        if (blobs != null) blobs.flush();
     }
 
     @Override
