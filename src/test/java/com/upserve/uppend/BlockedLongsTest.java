@@ -9,8 +9,8 @@ import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.Supplier;
-import java.util.stream.LongStream;
+import java.util.function.*;
+import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
