@@ -7,6 +7,10 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.*;
+import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
@@ -26,6 +30,65 @@ public class BlockedLongsTest {
         new BlockedLongs(path, 10);
         new BlockedLongs(path, 100);
         new BlockedLongs(path, 1000);
+    }
+
+    @Test
+    public void blockedLongBeating() throws Exception {
+        int VALS_PER_BLOCK = 2;
+        int TEST_POSITIONS = 10_000;
+        long TEST_APPENDS = 100_000;
+        ConcurrentHashMap<Long, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+        Supplier<Long> valueSupplier = () -> ThreadLocalRandom.current().nextLong(0, 1_000_000);
+        BlockedLongs block;
+        LongStream positions;
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS*2).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS*3).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS*4).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        assertEquals( TEST_APPENDS * 4, testData.values().stream().mapToLong(List::size).sum());
+    }
+
+    public void blockBeating(BlockedLongs block, Supplier<Long> valueSupplier, LongStream positions, ConcurrentHashMap<Long, ArrayList<Long>> testData){
+        positions.forEach(pos -> {
+            Long value = valueSupplier.get();
+
+            if (testData.containsKey(pos)){
+                testData.get(pos).add(value);
+                block.append(pos, value);
+            } else {
+                long newPos = block.allocate();
+                testData.put(newPos, new ArrayList<>());
+                testData.get(newPos).add(value);
+                block.append(newPos, value);
+            }
+
+            if ((pos % 10_000) == 0){
+                block.flush();
+            }
+        });
+
+        testData.entrySet().parallelStream().forEach(entry -> {
+            assertArrayEquals(
+                    entry.getValue().stream().sorted().mapToLong(value -> value).toArray(),
+                    block.values(entry.getKey()).sorted().toArray());
+        });
     }
 
     @Test(expected = UncheckedIOException.class)
