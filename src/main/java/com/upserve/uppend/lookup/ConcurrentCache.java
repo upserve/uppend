@@ -20,8 +20,6 @@ public class ConcurrentCache {
     private final ConcurrentHashMap<Path, CacheEntry> cache;
     private final int cacheSize;
 
-    private final AtomicBoolean sizeExceeded = new AtomicBoolean();
-
     public ConcurrentCache(int cacheSize, float loadFactor) {
         this.cache = new ConcurrentHashMap<>(cacheSize, loadFactor);
         this.cacheSize = cacheSize;
@@ -81,8 +79,6 @@ public class ConcurrentCache {
                 return cacheEntry;
             }
         });
-
-        sizeExceeded.set(cache.size() > cacheSize);
         return result.get();
     }
 
@@ -115,22 +111,30 @@ public class ConcurrentCache {
      * submit job to reap an expired cache exactly once
      */
     public void reapExpired() {
-        if (sizeExceeded.get()) {
-            expireStream(cache
-                    .entrySet()
-                    .stream()
-                    .sorted(Comparator.comparing(entry -> entry.getValue().lastTouched.get()))
-                    .skip(cacheSize)
-            );
-        }
-
         try {
-            Thread.sleep(50);
-        } catch (InterruptedException e) {
-            log.error("Reaper sleep interrupted");
-        }
+            if (cache.size() > cacheSize) {
+                log.info("Reaping {} write cache entries", cache.size() - cacheSize);
+                expireStream(cache
+                        .entrySet()
+                        .stream()
+                        .sorted(Comparator.comparing(entry -> entry.getValue().lastTouched.get()))
+                        .skip(cacheSize)
+                        .filter(entry -> {
+                            log.info("expiring {}", entry.getValue().lastTouched.get());
+                            return true;
+                        })
+                );
+            }
 
-        AutoFlusher.flushExecPool.submit(this::reapExpired);
+        } finally {
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                log.error("Reaper sleep interrupted");
+            }
+
+            AutoFlusher.flushExecPool.submit(this::reapExpired);
+        }
     }
 
     public void expireStream(Stream<Map.Entry<Path, CacheEntry>> stream) {
