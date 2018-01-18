@@ -11,7 +11,6 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -210,17 +209,7 @@ public class LongLookup implements AutoCloseable, Flushable {
             if (log.isTraceEnabled()) {
                 log.trace("closing {} (~{} entries)", dir, writeCache.size());
             }
-            writeCache.forEach((path, data) -> {
-                log.trace("cache removing {}", path);
-                try {
-                    data.close();
-                } catch (IOException e) {
-                    log.error("unable to close " + path, e);
-                    throw new UncheckedIOException("unable to close " + path, e);
-                }
-
-            });
-            writeCache.clear();
+            writeCache.purge();
         }
         log.trace("closed {}", dir);
     }
@@ -234,19 +223,7 @@ public class LongLookup implements AutoCloseable, Flushable {
             log.trace("flushing {}", dir);
         }
 
-        ArrayList<Future> futures = new ArrayList<>();
-        writeCache.forEach((path, data) ->
-                futures.add(AutoFlusher.flushExecPool.submit(() -> {
-                            try {
-                                log.trace("cache flushing {}", path);
-                                data.flush();
-                                log.trace("cache flushed {}", path);
-                            } catch (Exception e) {
-                                log.error("unable to flush " + path, e);
-                            }
-                        }
-                )));
-        Futures.getAll(futures);
+        writeCache.flush();
         log.trace("flushed {}", dir);
     }
 
