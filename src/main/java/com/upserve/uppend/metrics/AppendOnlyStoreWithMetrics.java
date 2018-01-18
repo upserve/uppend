@@ -1,7 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
-import com.upserve.uppend.AppendOnlyStore;
+import com.upserve.uppend.*;
 
 import java.util.Map;
 import java.util.stream.Stream;
@@ -216,4 +216,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
             context.stop();
         }
     }
+
+    @Override
+    public AppendStoreStats cacheStats(){
+        return store.cacheStats();
+    }
+
 }

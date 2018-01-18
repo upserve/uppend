@@ -20,6 +20,8 @@ public class ConcurrentCache {
     private final ConcurrentHashMap<Path, CacheEntry> cache;
     private final int cacheSize;
 
+    private final AtomicInteger taskCount = new AtomicInteger();
+
     public ConcurrentCache(int cacheSize, float loadFactor) {
         this.cache = new ConcurrentHashMap<>(cacheSize, loadFactor);
         this.cacheSize = cacheSize;
@@ -33,7 +35,8 @@ public class ConcurrentCache {
 
     public void flush() {
         ArrayList<Future> futures = new ArrayList<>();
-        cache.forEach((path, entry) ->
+        cache.forEach((path, entry) -> {
+                taskCount.addAndGet(1);
                 futures.add(AutoFlusher.flushExecPool.submit(() -> {
                             try {
                                 log.trace("cache flushing {}", path);
@@ -41,11 +44,13 @@ public class ConcurrentCache {
                                 log.trace("cache flushed {}", path);
                             } catch (Exception e) {
                                 log.error("unable to flush " + path, e);
+                            } finally {
+                                taskCount.addAndGet(-1);
                             }
                         }
-                )));
+                ));
+        });
         Futures.getAll(futures);
-
     }
 
     private static class CacheEntry {
@@ -107,22 +112,26 @@ public class ConcurrentCache {
         return cache.size();
     }
 
+    public long totalKeys() {
+        return cache.entrySet().stream().mapToLong(entry -> entry.getValue().lookupData.get().size()).sum();
+    }
+
+    public int taskCount(){
+        return taskCount.get();
+    }
+
     /**
      * submit job to reap an expired cache exactly once
      */
     public void reapExpired() {
         try {
             if (cache.size() > cacheSize) {
-                log.info("Reaping {} write cache entries", cache.size() - cacheSize);
+                log.trace("Reaping {} write cache entries", cache.size() - cacheSize);
                 expireStream(cache
                         .entrySet()
                         .stream()
                         .sorted(Comparator.comparing(entry -> entry.getValue().lastTouched.get()))
                         .skip(cacheSize)
-                        .filter(entry -> {
-                            log.info("expiring {}", entry.getValue().lastTouched.get());
-                            return true;
-                        })
                 );
             }
 
@@ -142,12 +151,12 @@ public class ConcurrentCache {
 
         stream.forEach(cacheEntry -> {
             if (cacheEntry.getValue().tombStone.compareAndSet(false, true)) {
+                taskCount.addAndGet(1);
                 futures.add(AutoFlusher.flushExecPool.submit(expire(cacheEntry.getKey())));
             }
         });
         Futures.getAll(futures);
     }
-
 
     public Runnable expire(Path path) {
         return () -> {
@@ -159,6 +168,8 @@ public class ConcurrentCache {
                     log.error("Could not close LookupData for path {}", path);
                 } catch (Exception e) {
                     log.error("Unexpected exception while closing {}", path);
+                } finally {
+                    taskCount.addAndGet(-1);
                 }
 
                 return null;

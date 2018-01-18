@@ -105,6 +105,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
+    public long size() {
+        return posMem.get();
+    }
+
     /**
      * Allocate a new block of longs
      *

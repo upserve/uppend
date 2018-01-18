@@ -71,4 +71,10 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Flushable {
      * Remove all keys and values from the store.
      */
     void clear();
+
+    /**
+     * Provide some insight into the resource used by the store
+     * @return a string describing the resources used
+     */
+    AppendStoreStats cacheStats();
 }

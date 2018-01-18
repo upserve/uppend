@@ -182,4 +182,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     public void purgeWriteCache(){
         store.purgeWriteCache();
     }
+
+    public AppendStoreStats cacheStats(){
+        return store.cacheStats();
+    }
+
 }

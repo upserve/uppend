@@ -145,8 +145,17 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     public int cacheSize(){
-        return writeCache.size();
+        return (writeCache == null) ? 0 : writeCache.size();
     }
+
+    public long cacheEntries() {
+        return (writeCache == null) ? 0 : writeCache.totalKeys();
+    }
+
+    public long writeCacheTasks(){
+        return writeCache.taskCount();
+    }
+
 
     public long put(String partition, String key, long value) {
         validatePartition(partition);

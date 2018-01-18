@@ -47,6 +47,11 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     }
 
     @Override
+    public AppendStoreStats cacheStats(){
+        return new AppendStoreStats(blobs.size(), blocks.size(), lookups.cacheSize(), lookups.cacheEntries(), lookups.writeCacheTasks(), 0, 0, 0);
+    }
+
+    @Override
     public Stream<byte[]> read(String partition, String key) {
         log.trace("reading in partition {} with key {}", partition, key);
         return blockValues(partition, key, true)

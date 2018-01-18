@@ -1,7 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
-import com.upserve.uppend.CounterStore;
+import com.upserve.uppend.*;
 
 import java.util.stream.Stream;
 
@@ -100,6 +100,11 @@ public class CounterStoreWithMetrics implements CounterStore {
         } finally {
             context.stop();
         }
+    }
+
+    @Override
+    public AppendStoreStats cacheStats() {
+        return store.cacheStats();
     }
 
     @Override
