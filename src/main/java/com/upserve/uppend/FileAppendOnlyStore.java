@@ -144,6 +144,11 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     protected void closeInternal() {
         try {
+            blobs.close();
+        } catch (Exception e) {
+            log.error("unable to close blobs", e);
+        }
+        try {
             lookups.close();
         } catch (Exception e) {
             log.error("unable to close lookups", e);
@@ -153,11 +158,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         } catch (Exception e) {
             log.error("unable to close blocks", e);
         }
-        try {
-            blobs.close();
-        } catch (Exception e) {
-            log.error("unable to close blobs", e);
-        }
+
     }
 
     private LongStream blockValues(String partition, String key, boolean useCache) {
