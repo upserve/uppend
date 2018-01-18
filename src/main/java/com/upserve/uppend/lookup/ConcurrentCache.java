@@ -21,12 +21,15 @@ public class ConcurrentCache {
     private final int cacheSize;
 
     private final AtomicInteger taskCount = new AtomicInteger();
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
+    private AtomicReference<Future> reaperTask = new AtomicReference<>();
 
     public ConcurrentCache(int cacheSize, float loadFactor) {
         this.cache = new ConcurrentHashMap<>(cacheSize, loadFactor);
         this.cacheSize = cacheSize;
 
-        AutoFlusher.flushExecPool.submit(this::reapExpired);
+        reaperTask.set(AutoFlusher.flushExecPool.submit(this::reapExpired));
     }
 
     public void clear() {
@@ -101,6 +104,11 @@ public class ConcurrentCache {
         expireStream(cache.entrySet().stream());
     }
 
+    public void close(){
+        closed.set(true);
+        reaperTask.get().cancel(true);
+        purge();
+    }
 
     public void forEach(BiConsumer<Path, LookupData> biConsumer) {
         cache.forEach((path, cacheEntry) -> {
@@ -125,7 +133,7 @@ public class ConcurrentCache {
      */
     public void reapExpired() {
         try {
-            if (cache.size() > cacheSize) {
+            if (cache.size() > cacheSize * 1.5) {
                 log.trace("Reaping {} write cache entries", cache.size() - cacheSize);
                 expireStream(cache
                         .entrySet()
@@ -137,12 +145,16 @@ public class ConcurrentCache {
 
         } finally {
             try {
-                Thread.sleep(50);
+                Thread.sleep(1000);
             } catch (InterruptedException e) {
-                log.error("Reaper sleep interrupted");
+                if (closed.get()){
+                    log.debug("interrupted by close");
+                } else {
+                    log.error("Reaper sleep interrupted outside close");
+                }
             }
 
-            AutoFlusher.flushExecPool.submit(this::reapExpired);
+            if(!closed.get()) reaperTask.set(AutoFlusher.flushExecPool.submit(this::reapExpired));
         }
     }
 
