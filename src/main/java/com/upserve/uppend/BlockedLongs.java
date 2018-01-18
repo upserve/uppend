@@ -40,6 +40,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicLong posMem;
 
     private final AtomicInteger currentPage;
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public BlockedLongs(Path file, int valuesPerBlock) {
         if (file == null) {
@@ -104,11 +105,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
     }
-
-    public long size() {
-        return posMem.get();
-    }
-
+    
     /**
      * Allocate a new block of longs
      *
@@ -279,6 +276,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void close() throws Exception {
         log.trace("closing {}", file);
+        closed.set(true);
         IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
             flush();
@@ -292,10 +290,18 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void flush() {
         log.trace("flushing {}", file);
-        posBuf.force();
-        for (MappedByteBuffer page : pages) {
-            if (page != null) {
-                page.force();
+        try {
+            posBuf.force();
+            for (MappedByteBuffer page : pages) {
+                if (page != null) {
+                    page.force();
+                }
+            }
+        } catch (Exception e) {
+            if (closed.get()){
+                log.debug("Called flush on closed block store {}", file, e);
+            } else {
+                throw e;
             }
         }
     }

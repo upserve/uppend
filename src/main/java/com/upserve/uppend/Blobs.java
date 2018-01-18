@@ -8,7 +8,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.*;
 
 public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -17,6 +17,8 @@ public class Blobs implements AutoCloseable, Flushable {
 
     private final FileChannel blobs;
     private final AtomicLong blobPosition;
+
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     public Blobs(Path file) {
         this.file = file;
@@ -78,6 +80,7 @@ public class Blobs implements AutoCloseable, Flushable {
     @Override
     public void close() {
         log.trace("closing {}", file);
+        closed.set(true);
         try {
             blobs.close();
         } catch (IOException e) {
@@ -90,7 +93,11 @@ public class Blobs implements AutoCloseable, Flushable {
         try {
             blobs.force(true);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to flush: " + file, e);
+            if (closed.get()) {
+                log.debug("Unable to flush closed blobs {}", file, e);
+            } else {
+                throw new UncheckedIOException("unable to flush: " + file, e);
+            }
         }
     }
 
