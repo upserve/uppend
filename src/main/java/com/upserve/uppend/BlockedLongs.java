@@ -260,9 +260,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             if (numRead == -1) {
                 return null;
             }
-            if (numRead != blockSize) {
-                throw new RuntimeException("read bad block size from " + file + " at pos " + pos + ": got " + numRead + ", expected " + blockSize);
-            }
         } catch (Exception e) {
             throw new RuntimeException("unable to read block at pos " + pos + ": " + file, e);
         }
