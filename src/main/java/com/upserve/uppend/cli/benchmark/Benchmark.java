@@ -46,7 +46,7 @@ public class Benchmark {
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
-                .withBufferedAppend(buffered)
+                .withBufferedAppend(buffered, AutoFlusher.flushExecPool)
                 .withMetrics(metrics)
                 .build();
 
@@ -116,6 +116,7 @@ public class Benchmark {
 
         Thread watcher = new Thread(() -> {
             Runtime runtime = Runtime.getRuntime();
+            int i = 0;
             while (!isDone) {
                 try {
                     Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
@@ -138,6 +139,12 @@ public class Benchmark {
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
 
                     log.info(String.format("Read: %7.2fmb/s %6dr/s; Write %7.2fmb/s %6da/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond,  writeRate, appendsPerSecond, free, total));
+
+                    i++;
+                    if ((i % 10) == 0) {
+                        log.info(testInstance.cacheStats().toString());
+                    }
+
                 } catch (InterruptedException e) {
                     log.info("Interrupted - Stopping...");
                     break;
@@ -161,6 +168,8 @@ public class Benchmark {
         } catch (Exception e) {
             throw new RuntimeException("error closing test uppend store", e);
         }
+
+        AutoFlusher.flushExecPool.shutdown();
 
         log.info("Benchmark is All Done!");
         System.out.println("[benchmark is done]"); // used in CliTest

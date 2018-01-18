@@ -32,6 +32,7 @@ public class LookupAppendBuffer {
 
     private final ConcurrentLinkedQueue<Future> tasks = Queues.newConcurrentLinkedQueue();
     AtomicBoolean closed = new AtomicBoolean(false);
+    AtomicBoolean shutdownTask = new AtomicBoolean(false);
 
     public LookupAppendBuffer(LongLookup longLookup, BlockedLongs blockedLongs, int bufferMax, int buffRange, Optional<ExecutorService> threadPool) {
         if (bufferMax < MIN_BUFFER_SIZE)
@@ -89,35 +90,50 @@ public class LookupAppendBuffer {
         return appendBuffer.size();
     }
 
+    public long bufferEntries() {
+        return appendBuffer.entrySet().stream().mapToLong(entry -> entry.getValue().size()).sum();
+    }
+
+    /**
+     * For occasional inspection of how busy the flusher is.
+     * Getting the size of the linked queue is O(n)
+     * @return the size of the task queue
+     */
+    public int taskCount() {
+        return tasks.size();
+    }
+
     protected ConcurrentLinkedQueue<Future> getTasks() {
         return tasks;
     }
 
     private void cleanupTask() {
-        AtomicLong counter = new AtomicLong();
-        Iterator<Future> iter = tasks.iterator();
-        iter.forEachRemaining(future -> {
-            if (future.isDone()) {
-                try {
-                    future.get();
-                } catch (InterruptedException e) {
-                    log.error("Buffered Append task interrupted", e);
-                } catch (ExecutionException e) {
-                    log.error("Buffered Append exception", e);
-                } finally {
-                    iter.remove();
-                    counter.addAndGet(1);
-                }
-            }
-        });
-
-        log.debug("Reaped {} successful buffer flush tasks", counter.get());
-
         try {
-            Thread.sleep(500);
-            if (!closed.get()) threadPool.submit(this::cleanupTask);
-        } catch (InterruptedException e) {
-            log.error("cleanup sleep interrupted", e);
+            AtomicLong counter = new AtomicLong();
+            Iterator<Future> iter = tasks.iterator();
+            iter.forEachRemaining(future -> {
+                if (future.isDone()) {
+                    try {
+                        future.get();
+                    } catch (InterruptedException e) {
+                        log.error("Buffered Append task interrupted", e);
+                    } catch (ExecutionException e) {
+                        log.error("Buffered Append exception", e);
+                    } finally {
+                        iter.remove();
+                        counter.addAndGet(1);
+                    }
+                }
+            });
+
+            log.debug("Reaped {} successful buffer flush tasks", counter.get());
+        } finally {
+            try {
+                Thread.sleep(500);
+                if (!shutdownTask.get()) threadPool.submit(this::cleanupTask);
+            } catch (InterruptedException e) {
+                log.error("cleanup sleep interrupted", e);
+            }
         }
     }
 
@@ -145,6 +161,7 @@ public class LookupAppendBuffer {
 
     public void close() {
         if (closed.getAndSet(true)) return;
+        shutdownTask.set(true);
 
         flush();
         if (myThreadPool) {

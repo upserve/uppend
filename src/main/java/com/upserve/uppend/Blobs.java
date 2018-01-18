@@ -52,6 +52,10 @@ public class Blobs implements AutoCloseable, Flushable {
         return pos;
     }
 
+    public long size(){
+        return blobPosition.get();
+    }
+
     public byte[] read(long pos) {
         log.trace("reading from {} @ {}", file, pos);
         int size = readInt(pos);

@@ -79,6 +79,20 @@ public class LookupData implements AutoCloseable, Flushable {
     }
 
     /**
+     * number of keys in this Lookup Data
+     * @return
+     */
+    public long size() {
+        try {
+            return chan.size() / 16;
+        } catch (IOException e) {
+            // This means the object has been close and its size for most purposes is now 0
+            log.trace("Could not get channel size", e);
+            return 0;
+        }
+    }
+
+    /**
      * Set the value associated with the given key and return the prior value
      *
      * @param key the key whose value to set

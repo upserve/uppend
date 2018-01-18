@@ -34,6 +34,11 @@ public class BufferedAppendOnlyStore extends FileAppendOnlyStore {
     }
 
     @Override
+    public AppendStoreStats cacheStats(){
+        return new AppendStoreStats(blobs.size(), blocks.size(), 0, 0, 0, lookupAppendBuffer.bufferCount(), lookupAppendBuffer.bufferEntries(), lookupAppendBuffer.taskCount());
+    }
+
+    @Override
     public void purgeWriteCache() {
         lookupAppendBuffer.flush();
         super.purgeWriteCache();
