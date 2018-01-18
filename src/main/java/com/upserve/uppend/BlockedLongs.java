@@ -33,6 +33,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final MappedByteBuffer posBuf;
     private final AtomicLong posMem;
 
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+
     public BlockedLongs(Path file, int valuesPerBlock) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
@@ -241,6 +243,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public synchronized void close() throws Exception {
         log.trace("closing {}", file);
         flush();
+        closed.set(true);
         blocks.close();
         blocksPos.close();
     }
@@ -248,13 +251,21 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public synchronized void flush() {
         log.trace("flushing {}", file);
-        for (MappedByteBuffer page : pages) {
-            if (page != null) {
-                page.force();
+        try {
+            for (MappedByteBuffer page : pages) {
+                if (page != null) {
+                    page.force();
+                }
+            }
+            posBuf.putLong(0, posMem.get());
+            posBuf.force();
+        } catch (Exception e) {
+            if (closed.get()){
+                log.debug("Called flush on closed block store {}", file, e);
+            } else {
+                throw e;
             }
         }
-        posBuf.putLong(0, posMem.get());
-        posBuf.force();
     }
 
     private ByteBuffer readBlock(long pos) {
