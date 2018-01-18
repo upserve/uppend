@@ -1,11 +1,13 @@
 package com.upserve.uppend;
 
+import com.google.common.primitives.Longs;
 import com.upserve.uppend.lookup.LongLookup;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.*;
 
@@ -102,6 +104,38 @@ public class AppendOnlyStoreTest {
                     assertArrayEquals("uuid result failed to check out: " + uuid, bytes, uuid.getBytes());
                 });
     }
+
+    @Test
+    public void testWriteReadSequential() throws Exception {
+        ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+
+        new Random()
+                .longs(5000, 0, 1_000_000)
+                .forEach(val -> {
+                    String key = String.valueOf(val);
+
+                    testData.compute(key, (k, list) -> {
+                        if (list == null) {
+                            list = new ArrayList<>();
+                        }
+                        list.add(val);
+
+                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
+
+                        try {
+                            assertArrayEquals(
+                                    list.stream().mapToLong(v -> v).toArray(),
+                                    store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
+                            );
+                        } catch (RuntimeException e){
+                            store.read("_" + key.substring(0, 1), key);
+                        }
+                        return list;
+                    });
+
+                });
+    }
+
 
     @Test
     public void testReadStream() throws Exception {
