@@ -80,7 +80,7 @@ public class LookupData implements AutoCloseable, Flushable {
 
     /**
      * number of keys in this Lookup Data
-     * @return
+     * @return the number of keys
      */
     public long size() {
         try {
