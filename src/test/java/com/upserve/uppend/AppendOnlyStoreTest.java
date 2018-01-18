@@ -1,11 +1,15 @@
 package com.upserve.uppend;
 
+import com.google.common.primitives.Longs;
 import com.upserve.uppend.lookup.LongLookup;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
@@ -117,6 +121,54 @@ public class AppendOnlyStoreTest {
                     assertArrayEquals("uuid result failed to check out: " + uuid, bytes, uuid.getBytes());
                 });
     }
+
+    @Test
+    public void testAppendWhilePurging() throws Exception {
+
+        ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+
+        Thread flusherThread = new Thread(() -> {
+            while (true){
+                store.purgeWriteCache();
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        });
+        //flusherThread.start();
+
+        new Random()
+                .longs(50000, 0 , 1_000_000)
+                .parallel()
+                .forEach(val -> {
+                    String key = String.valueOf(val);
+
+            testData.compute(key, (k, list) -> {
+                if (list == null){
+                    list = new ArrayList<>();
+                }
+                list.add(val);
+
+                store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
+
+                assertArrayEquals(
+                        list.stream().mapToLong(v -> v).toArray(),
+                        store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
+                );
+
+                return list;
+            });
+
+        });
+
+        Thread.sleep(100);
+
+        flusherThread.interrupt();
+        flusherThread.join();
+    }
+
 
     @Test
     public void testReadStream() throws Exception {
