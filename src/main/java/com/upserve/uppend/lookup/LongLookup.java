@@ -218,7 +218,7 @@ public class LongLookup implements AutoCloseable, Flushable {
             if (log.isTraceEnabled()) {
                 log.trace("closing {} (~{} entries)", dir, writeCache.size());
             }
-            writeCache.purge();
+            writeCache.close();
         }
         log.trace("closed {}", dir);
     }
