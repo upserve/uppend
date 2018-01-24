@@ -2,6 +2,7 @@ package com.upserve.uppend.lookup;
 
 import com.google.common.collect.*;
 import com.upserve.uppend.BlockedLongs;
+import com.upserve.uppend.util.Futures;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -209,6 +210,7 @@ public class LookupAppendBuffer {
     public void clearLock() {
         closed.set(true);
         flush();
+        Futures.getAll(tasks);
     }
 
     public void unlock() {
