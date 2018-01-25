@@ -161,6 +161,8 @@ public class Benchmark {
         writerThread.join();
         readerThread.join();
 
+        testInstance.purgeWriteCache();
+
         watcher.join(1500);
 
         try {
