@@ -3,10 +3,7 @@ package com.upserve.uppend.lookup;
 import java.nio.charset.StandardCharsets;
 
 public class LookupKey implements Comparable<LookupKey> {
-    private byte[] bytes;
-    private int byteLength = -1;
-    private String string;
-    private int stringLength = -1;
+    private final byte[] bytes;
 
     public LookupKey(byte[] bytesValue) {
         if (bytesValue == null) {
@@ -19,35 +16,19 @@ public class LookupKey implements Comparable<LookupKey> {
         if (stringValue == null) {
             throw new NullPointerException("null string given");
         }
-        string = stringValue;
+        bytes = stringValue.getBytes(StandardCharsets.UTF_8);
     }
 
     public String string() {
-        if (string == null) {
-            string = new String(bytes, StandardCharsets.UTF_8);
-        }
-        return string;
-    }
-
-    public int stringLength() {
-        if (stringLength == -1) {
-            stringLength = string().length();
-        }
-        return stringLength;
+        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     public byte[] bytes() {
-        if (bytes == null) {
-            bytes = string.getBytes(StandardCharsets.UTF_8);
-        }
         return bytes;
     }
 
     public int byteLength() {
-        if (byteLength == -1) {
-            byteLength = bytes().length;
-        }
-        return byteLength;
+        return bytes.length;
     }
 
     @Override
