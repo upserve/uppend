@@ -114,16 +114,8 @@ public class LookupAppendBuffer {
             Iterator<Future> iter = tasks.iterator();
             iter.forEachRemaining(future -> {
                 if (future.isDone()) {
-                    try {
-                        future.get();
-                    } catch (InterruptedException e) {
-                        log.error("Buffered Append task interrupted", e);
-                    } catch (ExecutionException e) {
-                        log.error("Buffered Append exception", e);
-                    } finally {
-                        iter.remove();
-                        counter.addAndGet(1);
-                    }
+                    iter.remove();
+                    counter.addAndGet(1);
                 }
             });
 
@@ -185,24 +177,23 @@ public class LookupAppendBuffer {
         AtomicBoolean locked = lockedHashPaths.computeIfAbsent(path, pathKey -> new AtomicBoolean(false));
 
         if (locked.compareAndSet(false, true)) {
-            try {
-                LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"));
+            try (LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"))) {
+
 
                 entryList.forEach(entry -> {
                     long blockPos = lookupData.putIfNotExists(entry.getKey(), blockedLongs::allocate);
                     blockedLongs.append(blockPos, entry.getValue());
                 });
 
-                try {
-                    lookupData.close();
-                } catch (IOException e) {
-                    log.error("Could not close lookup buffer for {}", path);
-                }
+
+            } catch (IOException e) {
+                log.error("Could not close lookupData: {}", path);
             } finally {
                 locked.set(false);
             }
         } else {
             // Resubmit the job for someone else to try
+            log.debug("Path {} was locked", path);
             tasks.add(threadPool.submit(() -> flushEntry(path, entryList)));
         }
     }
