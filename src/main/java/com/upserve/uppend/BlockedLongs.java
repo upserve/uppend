@@ -20,7 +20,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     // Use a large prime
     private static final int LOCK_SIZE = 10007;
-    private final Striped<Lock> stripedLocks = Striped.lock(LOCK_SIZE);
+    private final Striped<Lock> stripedLocks;
 
     private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
     private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
@@ -39,7 +39,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final MappedByteBuffer posBuf;
     private final AtomicLong posMem;
 
-    private final AtomicInteger currentPage = new AtomicInteger();
+    private final AtomicInteger currentPage;
 
     public BlockedLongs(Path file, int valuesPerBlock) {
         if (file == null) {
@@ -73,6 +73,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to init blocks file: " + file, e);
         }
 
+        stripedLocks = Striped.lock(LOCK_SIZE);
+
         pages = new MappedByteBuffer[MAX_PAGES];
 
         bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
@@ -95,6 +97,9 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 throw new IllegalStateException("pos (" + pos + ") > size of " + file + " (" + blocks.size() + "): " + posFile);
             }
             posMem = new AtomicLong(pos);
+
+            ensurePage(0);
+            currentPage = new AtomicInteger(0);
 
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
@@ -168,39 +173,35 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         // size | -next
         // prev | -last
-        Lock lock = stripedLocks.get(pos);
-        try{
-            lock.lock();
 
-            long size = buf.getLong();
-            buf.getLong();
 
-            if (size < 0) {
-                long nextPos = -size;
-                long[] values = new long[valuesPerBlock];
-                for (int i = 0; i < valuesPerBlock; i++) {
-                    values[i] = buf.getLong();
-                }
-                return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
-            } else if (size > valuesPerBlock) {
-                throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
-            } else if (size == 0) {
-                return LongStream.empty();
-            } else {
-                int numValues = (int) size;
-                long[] values = new long[numValues];
-                for (int i = 0; i < numValues; i++) {
-                    values[i] = buf.getLong();
-                }
-                if (log.isTraceEnabled()) {
-                    String valuesStr = Arrays.toString(values);
-                    log.trace("got values from {} at {}: {}", file, pos, valuesStr);
-                }
-                return Arrays.stream(values);
+        long size = buf.getLong();
+        buf.getLong();
+
+        if (size < 0) {
+            long nextPos = -size;
+            long[] values = new long[valuesPerBlock];
+            for (int i = 0; i < valuesPerBlock; i++) {
+                values[i] = buf.getLong();
             }
-        } finally {
-            lock.unlock();
+            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
+        } else if (size > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
+        } else if (size == 0) {
+            return LongStream.empty();
+        } else {
+            int numValues = (int) size;
+            long[] values = new long[numValues];
+            for (int i = 0; i < numValues; i++) {
+                values[i] = buf.getLong();
+            }
+            if (log.isTraceEnabled()) {
+                String valuesStr = Arrays.toString(values);
+                log.trace("got values from {} at {}: {}", file, pos, valuesStr);
+            }
+            return Arrays.stream(values);
         }
+
     }
 
     public long lastValue(long pos) {
@@ -250,6 +251,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             posMem.set(0);
             Arrays.fill(pages, null);
             currentPage.set(0);
+            ensurePage(0);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
         }
