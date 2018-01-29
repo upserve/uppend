@@ -260,10 +260,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void close() throws Exception {
         log.trace("closing {}", file);
-        // acquire all locks
+        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         flush();
         blocks.close();
         blocksPos.close();
+        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
     }
 
     @Override
