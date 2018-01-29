@@ -31,7 +31,7 @@ public class AppendOnlyStoreTest {
     @After
     public void cleanUp() {
         try {
-            store.close();
+            if (store!=null) store.close();
         } catch (Exception e){
             throw new AssertionError("Should not raise: {}", e);
         }
