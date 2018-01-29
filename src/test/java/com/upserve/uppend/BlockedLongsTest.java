@@ -7,6 +7,10 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+import java.util.stream.LongStream;
 
 import static org.junit.Assert.*;
 
@@ -75,10 +79,10 @@ public class BlockedLongsTest {
         for (long i = 100; i < 120; i++) {
             v.append(pos2, i);
         }
-        assertArrayEquals(new long[] {
+        assertArrayEquals(new long[]{
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
         }, v.values(pos1).toArray());
-        assertArrayEquals(new long[] {
+        assertArrayEquals(new long[]{
                 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119
         }, v.values(pos2).toArray());
     }
@@ -139,4 +143,70 @@ public class BlockedLongsTest {
         block.close();
         block.close();
     }
+
+    @Test
+    public void blockedLongBeating() throws Exception {
+        int VALS_PER_BLOCK = 3;
+        int TEST_POSITIONS = 20_000;
+        long TEST_APPENDS = 200_000;
+        ConcurrentHashMap<Long, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+        Supplier<Long> valueSupplier = () -> ThreadLocalRandom.current().nextLong(0, 1_000_000);
+        BlockedLongs block;
+        LongStream positions;
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS * 2).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS * 3).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS * 4).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        assertEquals(TEST_APPENDS * 4, testData.values().stream().mapToLong(List::size).sum());
+    }
+
+
+    public void blockBeating(BlockedLongs block, Supplier<Long> valueSupplier, LongStream positions, ConcurrentHashMap<Long, ArrayList<Long>> testData) {
+        positions.forEach(pos -> {
+            long value = valueSupplier.get();
+
+            if (testData.containsKey(pos)) {
+                testData.get(pos).add(value);
+                block.append(pos, value);
+
+            } else {
+                long newPos = block.allocate();
+                testData.put(newPos, new ArrayList<>());
+                testData.get(newPos).add(value);
+                block.append(newPos, value);
+
+                assertEquals(value, block.lastValue(newPos));
+            }
+
+            if ((pos % 10_000) == 0) {
+                block.flush();
+            }
+        });
+        block.flush();
+
+        testData.entrySet().parallelStream().forEach(entry -> {
+            assertArrayEquals(
+                    entry.getValue().stream().sorted().mapToLong(value -> value).toArray(),
+                    block.values(entry.getKey()).sorted().toArray());
+        });
+    }
+
+
 }
