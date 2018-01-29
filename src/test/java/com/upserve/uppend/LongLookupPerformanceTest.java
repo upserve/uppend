@@ -20,7 +20,7 @@ public class LongLookupPerformanceTest {
         SafeDeleting.removeTempPath(lookupDir);
 
         LongLookup lookup;
-        lookup = new LongLookup(lookupDir);
+        lookup = new LongLookup(lookupDir, 32, 32);
         long lastReportTime = System.currentTimeMillis();
         log.info("init: starting");
         for(int i = 0; i < INITIAL_KEYS; ++i) {

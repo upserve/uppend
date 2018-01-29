@@ -12,13 +12,13 @@ import java.util.stream.*;
 public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final int NUM_BLOBS_PER_BLOCK = 127;
+    public static final int NUM_BLOBS_PER_BLOCK = 127;
 
     protected final LongLookup lookups;
     protected final BlockedLongs blocks;
     protected final Blobs blobs;
 
-    protected FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize) {
+    protected FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize, int blobsPerBlock) {
         super(dir, flushDelaySeconds, doLock);
 
         lookups = new LongLookup(
@@ -26,7 +26,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );
-        blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
+        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock);
         blobs = new Blobs(dir.resolve("blobs"));
     }
 

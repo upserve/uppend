@@ -170,9 +170,7 @@ public class Benchmark {
         } catch (Exception e) {
             throw new RuntimeException("error closing test uppend store", e);
         }
-
-        AutoFlusher.flushExecPool.shutdown();
-
+        
         log.info("Benchmark is All Done!");
         System.out.println("[benchmark is done]"); // used in CliTest
         isDone = true;
