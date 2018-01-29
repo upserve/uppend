@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.google.common.util.concurrent.Striped;
 import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
@@ -10,6 +11,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.Lock;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -17,7 +19,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final int LOCK_SIZE = 1024;
-    private final Object[] posLocks = IntStream.range(0, LOCK_SIZE).mapToObj(i -> new Object()).toArray();
+    private final Striped<Lock> stripedLocks = Striped.lock(LOCK_SIZE);
 
     private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
     private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
@@ -119,21 +121,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         return pos;
     }
 
-    /**
-     * For a given starting block position get an object to synchronize on using the modulo of the position
-     * @param pos the position of a starting block
-     * @return an Object on which we can lock
-     */
-    private Object getLockObjectFor(long pos){
-        return posLocks[(int) (pos % LOCK_SIZE)];
-    }
     public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
 
         // size | -next
         // prev | -last
 
-        synchronized (getLockObjectFor(pos)) {
+        Lock lock = stripedLocks.get(pos);
+        try{
+            lock.lock();
 
             final long prev = readLong(pos + 8);
             if (prev > 0) {
@@ -161,6 +157,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 writeLong(last + 16 + 8 * size, val);
                 writeLong(last, size + 1);
             }
+        } finally {
+            lock.unlock();
         }
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
@@ -179,7 +177,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         // size | -next
         // prev | -last
-        synchronized (getLockObjectFor(pos)) {
+        Lock lock = stripedLocks.get(pos);
+        try{
+            lock.lock();
+
             long size = buf.getLong();
             buf.getLong();
 
@@ -206,6 +207,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 }
                 return Arrays.stream(values);
             }
+        } finally {
+            lock.unlock();
         }
     }
 
