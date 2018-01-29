@@ -182,14 +182,17 @@ public class BlockedLongsTest {
         positions.forEach(pos -> {
             long value = valueSupplier.get();
 
-            if (testData.containsKey(pos)) {
-                testData.get(pos).add(value);
-                block.append(pos, value);
+            List<Long> exists = testData.computeIfPresent(pos, (posKey, list) -> {
+                list.add(value);
+                block.append(posKey, value);
+                return list;
+            });
 
-            } else {
+            if (exists == null){
                 long newPos = block.allocate();
-                testData.put(newPos, new ArrayList<>());
-                testData.get(newPos).add(value);
+                ArrayList<Long> values = new ArrayList<>();
+                values.add(value);
+                testData.put(newPos, values);
                 block.append(newPos, value);
 
                 assertEquals(value, block.lastValue(newPos));
