@@ -21,8 +21,8 @@ public class BufferedAppendOnlyStore extends FileAppendOnlyStore {
 
     private final LookupAppendBuffer lookupAppendBuffer;
 
-    BufferedAppendOnlyStore(Path dir, boolean doLock, int longLookupHashSize, int bufferSize, Optional<ExecutorService> executorService) {
-        super(dir, 0, doLock, longLookupHashSize, 0);
+    BufferedAppendOnlyStore(Path dir, boolean doLock, int longLookupHashSize, int bufferSize, int blobsPerBlock, Optional<ExecutorService> executorService) {
+        super(dir, 0, doLock, longLookupHashSize, 0, blobsPerBlock);
         lookupAppendBuffer = new LookupAppendBuffer(lookups, blocks, bufferSize, bufferSize/5, executorService);
     }
 

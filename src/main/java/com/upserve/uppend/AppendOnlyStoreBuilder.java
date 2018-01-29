@@ -13,6 +13,8 @@ public class AppendOnlyStoreBuilder {
     private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
     private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
     private int flushDelaySeconds = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
+    private int blobsPerBlock = FileAppendOnlyStore.NUM_BLOBS_PER_BLOCK;
+
     private MetricRegistry metrics;
 
     private int suggestedBufferSize = 0;
@@ -30,6 +32,11 @@ public class AppendOnlyStoreBuilder {
 
     public AppendOnlyStoreBuilder withBufferedAppend(int suggestedBufferSize){
         this.suggestedBufferSize = suggestedBufferSize;
+        return this;
+    }
+
+    public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock){
+        this.blobsPerBlock = blobsPerBlock;
         return this;
     }
 
@@ -58,9 +65,9 @@ public class AppendOnlyStoreBuilder {
         AppendOnlyStore store;
         if (suggestedBufferSize > 0) {
             // Add log message about ignored parameters
-            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, Optional.ofNullable(executorService));
+            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, blobsPerBlock, Optional.ofNullable(executorService));
         } else {
-            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize);
+            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, blobsPerBlock, longLookupWriteCacheSize);
         }
 
         if (metrics != null) {
@@ -70,7 +77,7 @@ public class AppendOnlyStoreBuilder {
     }
 
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        return new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0);
+        return new FileAppendOnlyStore(dir, -1, false, longLookupHashSize,  0, blobsPerBlock);
     }
 
     @Override

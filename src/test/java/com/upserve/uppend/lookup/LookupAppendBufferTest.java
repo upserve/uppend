@@ -23,8 +23,8 @@ public class LookupAppendBufferTest {
     public void init() throws IOException {
         SafeDeleting.removeDirectory(path);
 
-        longLookup = new LongLookup(path);
-        blockedLongs = new BlockedLongs(path.resolve("blocks"), 128);
+        longLookup = new LongLookup(path, 32, 0);
+        blockedLongs = new BlockedLongs(path.resolve("blocks"), 127);
 
         instance = new LookupAppendBuffer(longLookup, blockedLongs, 24, 0, Optional.empty());
     }
@@ -144,7 +144,5 @@ public class LookupAppendBufferTest {
         instance.flush();
         lookup = longLookup.get("partition1","key");
         assertArrayEquals(new long[]{16}, blockedLongs.values(lookup).toArray());
-
-
     }
 }
