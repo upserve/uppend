@@ -311,10 +311,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new RuntimeException("page index exceeded max int: " + pageIndexLong);
         }
         int pageIndex = (int) pageIndexLong;
-        if (pages[pageIndex] == null){
-            log.warn("Page was not preloaded!");
-        }
-
+        
         MappedByteBuffer page = ensurePage(pageIndex);
         preloadPage(pageIndex + 1);
         return page;
