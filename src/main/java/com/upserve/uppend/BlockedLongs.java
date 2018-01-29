@@ -120,12 +120,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     }
 
     /**
-     * For a given starting block position get an object to synchronize on using the modulo of the position
+     * For a given starting block position get an object to synchronize on using the modulo of the block number
      * @param pos the position of a starting block
      * @return an Object on which we can lock
      */
     private Object getLockObjectFor(long pos){
-        return posLocks[(int) (pos % LOCK_SIZE)];
+        return posLocks[(int) ((pos/blockSize) % LOCK_SIZE)];
     }
     public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
