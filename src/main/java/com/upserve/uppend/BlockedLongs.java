@@ -42,6 +42,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicInteger currentPage;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
+    private final AtomicInteger allocCount = new AtomicInteger();
+    private final AtomicInteger allocExtended = new AtomicInteger();
+    private final AtomicInteger mapsLoaded = new AtomicInteger();
+    private final AtomicLong appends = new AtomicLong();
+
+
     public BlockedLongs(Path file, int valuesPerBlock) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
@@ -105,7 +111,28 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
     }
-    
+
+    public long chanSize() {
+        try {
+            return blocks.size();
+        } catch (IOException e) {
+            log.warn("Size failed for block file: ", file, e);
+        }
+        return -1L;
+    }
+
+    public String stats() {
+        return new StringBuilder()
+                .append("PosMem: ").append(posMem.get())
+                .append("; Chan: ").append(chanSize())
+                .append("; Allocates: ").append(allocCount.get())
+                .append("; Extended: ").append(allocExtended.get())
+                .append("; Append: ").append(appends.get())
+                .append("; Maps: ").append(mapsLoaded.get())
+                .append("; nMaps").append(Arrays.stream(pages).filter(Objects::nonNull).count())
+                .toString();
+    }
+
     /**
      * Allocate a new block of longs
      *
@@ -113,6 +140,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      */
     public long allocate() {
         log.trace("allocating block of {} bytes in {}", blockSize, file);
+        allocCount.getAndAdd(1);
         long pos = posMem.getAndAdd(blockSize);
         posBuf.putLong(0, posMem.get());
         return pos;
@@ -155,6 +183,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             }
             if (size == valuesPerBlock) {
                 long newPos = allocate();
+                allocExtended.getAndAdd(1);
                 // write new value in new block
                 writeLong(newPos, 1);
                 writeLong(newPos + 8, last);
@@ -354,6 +383,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private MappedByteBuffer ensurePage(int pageIndex) {
         MappedByteBuffer page = pages[pageIndex];
         if (page == null) {
+            mapsLoaded.getAndAdd(1);
             synchronized (pages) {
                 page = pages[pageIndex];
                 if (page == null) {

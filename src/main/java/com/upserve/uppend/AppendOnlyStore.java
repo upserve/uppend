@@ -77,4 +77,6 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Flushable {
      * @return a string describing the resources used
      */
     AppendStoreStats cacheStats();
+
+    String blockStats();
 }

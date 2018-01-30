@@ -222,4 +222,9 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         return store.cacheStats();
     }
 
+    @Override
+    public String blockStats() {
+        return store.blockStats();
+    }
+
 }

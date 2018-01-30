@@ -4,6 +4,7 @@ import com.google.common.collect.Maps;
 import com.upserve.uppend.lookup.LongLookup;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 import java.util.Map;
@@ -49,6 +50,11 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public AppendStoreStats cacheStats(){
         return new AppendStoreStats(blobs.size(), blocks.size(), lookups.cacheSize(), lookups.cacheEntries(), lookups.writeCacheTasks(), 0, 0, 0);
+    }
+
+    @Override
+    public String blockStats() {
+        return blocks.stats();
     }
 
     @Override

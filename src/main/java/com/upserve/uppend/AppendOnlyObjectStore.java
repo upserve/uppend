@@ -187,4 +187,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
         return store.cacheStats();
     }
 
+    public String blockStats(){
+        return store.blockStats();
+    }
+
 }

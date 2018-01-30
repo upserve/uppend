@@ -5,6 +5,7 @@ import com.codahale.metrics.Timer;
 import com.upserve.uppend.*;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
@@ -143,6 +144,9 @@ public class Benchmark {
                     i++;
                     if ((i % 10) == 0) {
                         log.info(testInstance.cacheStats().toString());
+
+                        log.info(testInstance.blockStats());
+
                     }
 
                 } catch (InterruptedException e) {
