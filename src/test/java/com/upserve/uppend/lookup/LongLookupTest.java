@@ -2,12 +2,16 @@ package com.upserve.uppend.lookup;
 
 import com.google.common.hash.HashCode;
 import com.upserve.uppend.util.SafeDeleting;
+import net.bytebuddy.utility.RandomString;
 import org.junit.*;
 
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
-import java.util.stream.IntStream;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.*;
+import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
@@ -138,6 +142,38 @@ public class LongLookupTest {
 
         longLookup.scan("c", (k, v) -> { throw new IllegalStateException("should not have been called"); });
 
+        longLookup.close();
+    }
+
+    @Test
+    public void testPutIfNotExisting() {
+        long putCount = 500_000L;
+        int hashSize = 32;
+        int writeCacheSize = 900;
+        // Actual number of hashPaths will be hashSize * 36 -> 1152
+        int entropy = 3; // number of alpha numeric characters to use as entropy
+
+        LongLookup longLookup = new LongLookup(path, hashSize, writeCacheSize);
+
+        AtomicInteger counter = new AtomicInteger();
+        LongSupplier supplier = () -> {
+            counter.getAndAdd(1);
+            return ThreadLocalRandom.current().nextLong();
+        };
+
+        Map<String, Long> result = IntStream.range(0, (int) putCount)
+                .parallel()
+                .mapToObj(i -> RandomString.make(entropy).toLowerCase())
+                .peek(s -> longLookup.putIfNotExists(s.substring(0,1), s, supplier))
+                .collect(
+                        Collectors.groupingByConcurrent(Function.identity(),
+                                Collectors.counting())
+                );
+
+        // The size of the map should equal the number of time the supplier was called by the put operation
+        assertEquals(result.size(), counter.get());
+        // The sum of the counts for each key should equal the number of time put was called
+        assertEquals(putCount, result.values().stream().mapToLong(val -> val).sum());
         longLookup.close();
     }
 }
