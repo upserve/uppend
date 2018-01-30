@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.google.common.util.concurrent.Striped;
 import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
@@ -10,11 +11,16 @@ import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.Lock;
 import java.util.function.*;
 import java.util.stream.*;
 
 public class BlockedLongs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    // Use a large prime
+    private static final int LOCK_SIZE = 10007;
+    private final Striped<Lock> stripedLocks;
 
     private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
     private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
@@ -32,6 +38,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final FileChannel blocksPos;
     private final MappedByteBuffer posBuf;
     private final AtomicLong posMem;
+
+    private final AtomicInteger currentPage;
 
     public BlockedLongs(Path file, int valuesPerBlock) {
         if (file == null) {
@@ -65,6 +73,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to init blocks file: " + file, e);
         }
 
+        stripedLocks = Striped.lock(LOCK_SIZE);
+
         pages = new MappedByteBuffer[MAX_PAGES];
 
         bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
@@ -87,6 +97,9 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 throw new IllegalStateException("pos (" + pos + ") > size of " + file + " (" + blocks.size() + "): " + posFile);
             }
             posMem = new AtomicLong(pos);
+
+            ensurePage(0);
+            currentPage = new AtomicInteger(0);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
@@ -103,39 +116,53 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         return pos;
     }
 
-    public synchronized void append(final long pos, final long val) {
+    /**
+     * Return the current number of bytes which have been allocated for blocks
+     *
+     * @return the number of bytes
+     */
+    public long size() {
+        return posMem.get();
+    }
+
+    public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
 
         // size | -next
         // prev | -last
 
-        final long prev = readLong(pos + 8);
-        if (prev > 0) {
-            throw new IllegalStateException("append called at non-starting block: pos=" + pos + " in path: " + file);
+        Lock lock = stripedLocks.getAt((int) (pos % LOCK_SIZE));
+        lock.lock();
+        try {
+            final long prev = readLong(pos + 8);
+            if (prev > 0) {
+                throw new IllegalStateException("append called at non-starting block: pos=" + pos + " in path: " + file);
+            }
+            final long last = prev == 0 ? pos : -prev;
+            final long size = readLong(last);
+            if (size < 0) {
+                throw new IllegalStateException("last block has a next: pos=" + pos + " in path: " + file);
+            }
+            if (size > valuesPerBlock) {
+                throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos + " in path: " + file);
+            }
+            if (size == valuesPerBlock) {
+                long newPos = allocate();
+                // write new value in new block
+                writeLong(newPos, 1);
+                writeLong(newPos + 8, last);
+                writeLong(newPos + 16, val);
+                // link to last->next
+                writeLong(last, -newPos);
+                // link to first->last
+                writeLong(pos + 8, -newPos);
+            } else {
+                writeLong(last + 16 + 8 * size, val);
+                writeLong(last, size + 1);
+            }
+        } finally {
+            lock.unlock();
         }
-        final long last = prev == 0 ? pos : -prev;
-        final long size = readLong(last);
-        if (size < 0) {
-            throw new IllegalStateException("last block has a next: pos=" + pos + " in path: " + file);
-        }
-        if (size > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos + " in path: " + file);
-        }
-        if (size == valuesPerBlock) {
-            long newPos = allocate();
-            // write new value in new block
-            writeLong(newPos, 1);
-            writeLong(newPos + 8, last);
-            writeLong(newPos + 16, val);
-            // link to last->next
-            writeLong(last, -newPos);
-            // link to first->last
-            writeLong(pos + 8, -newPos);
-        } else {
-            writeLong(last + 16 + 8 * size, val);
-            writeLong(last, size + 1);
-        }
-
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
@@ -221,28 +248,38 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         return value;
     }
 
-    public synchronized void clear() {
+    public void clear() {
         log.debug("clearing {}", file);
+        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
             blocks.truncate(0);
             posBuf.putLong(0, 0);
             posMem.set(0);
             Arrays.fill(pages, null);
+            currentPage.set(0);
+            ensurePage(0);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
+        } finally {
+            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
         }
     }
 
     @Override
-    public synchronized void close() throws Exception {
+    public void close() throws Exception {
         log.trace("closing {}", file);
-        flush();
-        blocks.close();
-        blocksPos.close();
+        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
+        try {
+            flush();
+            blocks.close();
+            blocksPos.close();
+        } finally {
+            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
+        }
     }
 
     @Override
-    public synchronized void flush() {
+    public void flush() {
         log.trace("flushing {}", file);
         for (MappedByteBuffer page : pages) {
             if (page != null) {
@@ -285,15 +322,37 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new RuntimeException("page index exceeded max int: " + pageIndexLong);
         }
         int pageIndex = (int) pageIndexLong;
+
+        MappedByteBuffer page = ensurePage(pageIndex);
+        preloadPage(pageIndex + 1);
+        return page;
+    }
+
+    private void preloadPage(int pageIndex) {
+        if (pageIndex < MAX_PAGES && pages[pageIndex] == null) {
+            // preload page
+            int prev = currentPage.getAndUpdate(current -> current < pageIndex ? pageIndex : current);
+            if (prev < pageIndex) {
+                ensurePage(pageIndex);
+            }
+        }
+    }
+
+    private MappedByteBuffer ensurePage(int pageIndex) {
         MappedByteBuffer page = pages[pageIndex];
         if (page == null) {
-            long pageStart = (long) pageIndex * PAGE_SIZE;
-            try {
-                page = blocks.map(FileChannel.MapMode.READ_WRITE, pageStart, PAGE_SIZE);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to map page at pos " + pos + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
+            synchronized (pages) {
+                page = pages[pageIndex];
+                if (page == null) {
+                    long pageStart = (long) pageIndex * PAGE_SIZE;
+                    try {
+                        page = blocks.map(FileChannel.MapMode.READ_WRITE, pageStart, PAGE_SIZE);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
+                    }
+                    pages[pageIndex] = page;
+                }
             }
-            pages[pageIndex] = page;
         }
         return page;
     }

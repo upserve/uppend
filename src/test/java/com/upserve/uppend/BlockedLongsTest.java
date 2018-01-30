@@ -7,6 +7,10 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Supplier;
+import java.util.stream.LongStream;
 
 import static org.junit.Assert.*;
 
@@ -138,5 +142,75 @@ public class BlockedLongsTest {
         block.flush();
         block.close();
         block.close();
+    }
+
+    @Test
+    public void blockedLongBeating() throws Exception {
+        int VALS_PER_BLOCK = 3;
+        int TEST_POSITIONS = 20_000;
+        long TEST_APPENDS = 200_000;
+        ConcurrentHashMap<Long, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+        Supplier<Long> valueSupplier = () -> ThreadLocalRandom.current().nextLong(0, 1_000_000);
+        BlockedLongs block;
+        LongStream positions;
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS * 2).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS * 3).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        positions = new Random().longs(0, TEST_POSITIONS * 4).limit(TEST_APPENDS).parallel();
+        blockBeating(block, valueSupplier, positions, testData);
+        block.close();
+
+        assertEquals(TEST_APPENDS * 4, testData.values().stream().mapToLong(List::size).sum());
+
+        long expectedBlocks = testData.values().stream().mapToLong(vals -> (vals.size() + VALS_PER_BLOCK - 1) / VALS_PER_BLOCK).sum();
+        long actualBlocks = block.size() / (16 + VALS_PER_BLOCK * 8);
+        assertEquals(expectedBlocks, actualBlocks);
+    }
+
+    private void blockBeating(BlockedLongs block, Supplier<Long> valueSupplier, LongStream positions, ConcurrentHashMap<Long, ArrayList<Long>> testData) {
+        positions.forEach(pos -> {
+            long value = valueSupplier.get();
+
+            List<Long> exists = testData.computeIfPresent(pos, (posKey, list) -> {
+                list.add(value);
+                block.append(posKey, value);
+                return list;
+            });
+
+            if (exists == null) {
+                long newPos = block.allocate();
+                ArrayList<Long> values = new ArrayList<>();
+                values.add(value);
+                testData.put(newPos, values);
+                block.append(newPos, value);
+
+                assertEquals(value, block.lastValue(newPos));
+            }
+
+            if ((pos % 10_000) == 0) {
+                block.flush();
+            }
+        });
+        block.flush();
+
+        testData.entrySet().parallelStream().forEach(entry -> {
+            assertArrayEquals(
+                    entry.getValue().stream().sorted().mapToLong(value -> value).toArray(),
+                    block.values(entry.getKey()).sorted().toArray());
+        });
     }
 }
