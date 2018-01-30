@@ -24,7 +24,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
     private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
-    
+
     private final Path file;
 
     private final int valuesPerBlock;
@@ -100,7 +100,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
             ensurePage(0);
             currentPage = new AtomicInteger(0);
-
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
@@ -119,7 +118,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     /**
      * Return the current number of bytes which have been allocated for blocks
-     * @return tehe number of bytes
+     *
+     * @return the number of bytes
      */
     public long size() {
         return posMem.get();
@@ -132,9 +132,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         // prev | -last
 
         Lock lock = stripedLocks.getAt((int) (pos % LOCK_SIZE));
-        try{
-            lock.lock();
-
+        lock.lock();
+        try {
             final long prev = readLong(pos + 8);
             if (prev > 0) {
                 throw new IllegalStateException("append called at non-starting block: pos=" + pos + " in path: " + file);
@@ -182,7 +181,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         // size | -next
         // prev | -last
 
-
         long size = buf.getLong();
         buf.getLong();
 
@@ -209,7 +207,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             }
             return Arrays.stream(values);
         }
-
     }
 
     public long lastValue(long pos) {
@@ -253,6 +250,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public void clear() {
         log.debug("clearing {}", file);
+        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
             blocks.truncate(0);
             posBuf.putLong(0, 0);
@@ -262,6 +260,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             ensurePage(0);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
+        } finally {
+            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
         }
     }
 
@@ -269,10 +269,13 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void close() throws Exception {
         log.trace("closing {}", file);
         IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
-        flush();
-        blocks.close();
-        blocksPos.close();
-        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
+        try {
+            flush();
+            blocks.close();
+            blocksPos.close();
+        } finally {
+            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
+        }
     }
 
     @Override
@@ -319,12 +322,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new RuntimeException("page index exceeded max int: " + pageIndexLong);
         }
         int pageIndex = (int) pageIndexLong;
-        
+
         MappedByteBuffer page = ensurePage(pageIndex);
         preloadPage(pageIndex + 1);
         return page;
     }
-
 
     private void preloadPage(int pageIndex) {
         if (pageIndex < MAX_PAGES && pages[pageIndex] == null) {

@@ -79,10 +79,10 @@ public class BlockedLongsTest {
         for (long i = 100; i < 120; i++) {
             v.append(pos2, i);
         }
-        assertArrayEquals(new long[]{
+        assertArrayEquals(new long[] {
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
         }, v.values(pos1).toArray());
-        assertArrayEquals(new long[]{
+        assertArrayEquals(new long[] {
                 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119
         }, v.values(pos2).toArray());
     }
@@ -176,13 +176,12 @@ public class BlockedLongsTest {
 
         assertEquals(TEST_APPENDS * 4, testData.values().stream().mapToLong(List::size).sum());
 
-        long expectedBlocks = testData.values().stream().mapToLong(vals -> (vals.size() + VALS_PER_BLOCK -1) / VALS_PER_BLOCK ).sum();
-        long actualBlocks = block.size()/(16 + VALS_PER_BLOCK * 8);
+        long expectedBlocks = testData.values().stream().mapToLong(vals -> (vals.size() + VALS_PER_BLOCK - 1) / VALS_PER_BLOCK).sum();
+        long actualBlocks = block.size() / (16 + VALS_PER_BLOCK * 8);
         assertEquals(expectedBlocks, actualBlocks);
     }
 
-
-    public void blockBeating(BlockedLongs block, Supplier<Long> valueSupplier, LongStream positions, ConcurrentHashMap<Long, ArrayList<Long>> testData) {
+    private void blockBeating(BlockedLongs block, Supplier<Long> valueSupplier, LongStream positions, ConcurrentHashMap<Long, ArrayList<Long>> testData) {
         positions.forEach(pos -> {
             long value = valueSupplier.get();
 
@@ -192,7 +191,7 @@ public class BlockedLongsTest {
                 return list;
             });
 
-            if (exists == null){
+            if (exists == null) {
                 long newPos = block.allocate();
                 ArrayList<Long> values = new ArrayList<>();
                 values.add(value);
@@ -214,6 +213,4 @@ public class BlockedLongsTest {
                     block.values(entry.getKey()).sorted().toArray());
         });
     }
-
-
 }
