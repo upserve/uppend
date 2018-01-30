@@ -67,7 +67,7 @@ public class AppendOnlyStoreBuilder {
             // Add log message about ignored parameters
             store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, blobsPerBlock, Optional.ofNullable(executorService));
         } else {
-            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, blobsPerBlock, longLookupWriteCacheSize);
+            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize, blobsPerBlock);
         }
 
         if (metrics != null) {
