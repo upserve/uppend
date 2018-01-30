@@ -117,6 +117,14 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         return pos;
     }
 
+    /**
+     * Return the current number of bytes which have been allocated for blocks
+     * @return tehe number of bytes
+     */
+    public long size() {
+        return posMem.get();
+    }
+
     public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
 

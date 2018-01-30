@@ -175,6 +175,10 @@ public class BlockedLongsTest {
         block.close();
 
         assertEquals(TEST_APPENDS * 4, testData.values().stream().mapToLong(List::size).sum());
+
+        long expectedBlocks = testData.values().stream().mapToLong(vals -> (vals.size() + VALS_PER_BLOCK -1) / VALS_PER_BLOCK ).sum();
+        long actualBlocks = block.size()/(16 + VALS_PER_BLOCK * 8);
+        assertEquals(expectedBlocks, actualBlocks);
     }
 
 
