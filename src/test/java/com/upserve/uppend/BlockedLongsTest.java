@@ -79,10 +79,10 @@ public class BlockedLongsTest {
         for (long i = 100; i < 120; i++) {
             v.append(pos2, i);
         }
-        assertArrayEquals(new long[] {
+        assertArrayEquals(new long[]{
                 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
         }, v.values(pos1).toArray());
-        assertArrayEquals(new long[] {
+        assertArrayEquals(new long[]{
                 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119
         }, v.values(pos2).toArray());
     }
@@ -96,20 +96,6 @@ public class BlockedLongsTest {
         }
         int blockSize = 16 + 10 * 8; // mirrors BlockedLongs.blockSize
         v.append(blockSize * 2, 21);
-    }
-
-    @Test(expected = IllegalStateException.class)
-    public void testAppendLastBlockHasANext() throws Exception {
-        BlockedLongs v = new BlockedLongs(path, 10);
-        assertEquals(0, v.allocate());
-        v.append(0, 0);
-        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
-            ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
-            longBuf.putLong(-1);
-            longBuf.flip();
-            chan.write(longBuf, 0);
-        }
-        v.append(0, 1);
     }
 
     @Test(expected = IllegalStateException.class)
@@ -212,5 +198,33 @@ public class BlockedLongsTest {
                     entry.getValue().stream().sorted().mapToLong(value -> value).toArray(),
                     block.values(entry.getKey()).sorted().toArray());
         });
+    }
+
+    @Test
+    public void testReadRepair() {
+        BlockedLongs block = new BlockedLongs(path, 3);
+        long pos = block.allocate();
+        block.append(pos, 1L);
+        block.append(pos, 1L);
+        block.append(pos, 1L);
+
+        // Create a block
+        long newPos = block.allocate();
+        block.writeLong(newPos, 1);
+        block.writeLong(newPos + 8, pos);
+        block.writeLong(newPos + 16, 2L);
+
+        // Block at newPos is currently unrecoverable
+        assertArrayEquals(new long[]{1L, 1L, 1L}, block.values(pos).toArray());
+
+        // Add the link pos->newPos
+        block.writeLong(pos, -newPos);
+        // Iterating the links will return all the values
+        assertArrayEquals(new long[]{1L, 1L, 1L, 2L}, block.values(pos).toArray());
+        assertEquals(2L, block.lastValue(pos));
+
+        // the tail pointer from first to last is still missing but the value is recoverable
+        block.append(pos, 3L);
+        assertArrayEquals(new long[]{1L, 1L, 1L, 2L, 3L}, block.values(pos).toArray());
     }
 }
