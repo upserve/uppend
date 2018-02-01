@@ -1,6 +1,6 @@
 package com.upserve.uppend.lookup;
 
-import com.google.common.collect.Maps;
+import com.google.common.collect.*;
 import com.upserve.uppend.AutoFlusher;
 import com.upserve.uppend.util.Futures;
 import org.slf4j.Logger;
@@ -23,13 +23,13 @@ public class ConcurrentCache {
     private final AtomicInteger taskCount = new AtomicInteger();
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private AtomicReference<Future> reaperTask = new AtomicReference<>();
+    private final java.util.Timer cacheReaperTimer= new java.util.Timer();
 
     public ConcurrentCache(int cacheSize, float loadFactor) {
-        this.cache = new ConcurrentHashMap<>(cacheSize, loadFactor);
+        this.cache = new ConcurrentHashMap<>();
         this.cacheSize = cacheSize;
 
-        reaperTask.set(AutoFlusher.flushExecPool.submit(this::reapExpired));
+        cacheReaperTimer.schedule(reaperTaskTimer(), 5000, 5000);
     }
 
     public void clear() {
@@ -70,7 +70,6 @@ public class ConcurrentCache {
         protected CacheEntry(LookupData lookupData) {
             this(new AtomicLong(System.nanoTime()), new AtomicBoolean(false), lookupData);
         }
-
     }
 
     public <T> T compute(Path path, Function<LookupData, T> function) {
@@ -106,7 +105,7 @@ public class ConcurrentCache {
 
     public void close(){
         closed.set(true);
-        reaperTask.get().cancel(true);
+        cacheReaperTimer.cancel();
         purge();
     }
 
@@ -128,34 +127,24 @@ public class ConcurrentCache {
         return taskCount.get();
     }
 
-    /**
-     * submit job to reap an expired cache exactly once
-     */
-    public void reapExpired() {
-        try {
-            if (cache.size() > cacheSize * 1.5) {
-                log.trace("Reaping {} write cache entries", cache.size() - cacheSize);
-                expireStream(cache
-                        .entrySet()
-                        .stream()
-                        .sorted(Comparator.comparing(entry -> entry.getValue().lastTouched.get()))
-                        .skip(cacheSize)
-                );
-            }
 
-        } finally {
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                if (closed.get()){
-                    log.debug("interrupted by close");
-                } else {
-                    log.error("Reaper sleep interrupted outside close");
+    private TimerTask reaperTaskTimer() {
+        return new TimerTask() {
+            @Override
+            public void run() {
+                if (cache.size() > cacheSize * 1.5) {
+                    log.debug("Reaping {} write cache entries", cache.size() - cacheSize);
+                    expireStream(cache
+                            .entrySet()
+                            .stream()
+                            .map(entry -> Maps.immutableEntry(entry.getValue().lastTouched.get(), entry))
+                            .sorted(Comparator.comparing(Map.Entry::getKey))
+                            .skip(cacheSize)
+                            .map(Map.Entry::getValue)
+                    );
                 }
             }
-
-            if(!closed.get()) reaperTask.set(AutoFlusher.flushExecPool.submit(this::reapExpired));
-        }
+        };
     }
 
     public void expireStream(Stream<Map.Entry<Path, CacheEntry>> stream) {
