@@ -1,8 +1,8 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.*;
+import com.google.common.util.concurrent.Striped;
 import com.upserve.uppend.BlockedLongs;
-import com.upserve.uppend.util.Futures;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -11,6 +11,8 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.Lock;
+import java.util.stream.Collectors;
 
 /**
  * A buffered Lookup Writer for memory efficient writes to random hashPaths in the append only store.
@@ -27,27 +29,28 @@ public class LookupAppendBuffer {
     private final LongLookup longLookup;
     private final BlockedLongs blockedLongs;
     private final ConcurrentHashMap<Path, List<Map.Entry<LookupKey, Long>>> appendBuffer;
-    private final ConcurrentHashMap<Path, AtomicBoolean> lockedHashPaths;
+
+    private final Striped<Lock> pathLock;
+
     private final ExecutorService threadPool;
     private final boolean myThreadPool;
 
-    private final ConcurrentLinkedQueue<Future> tasks = Queues.newConcurrentLinkedQueue();
-    AtomicBoolean closed = new AtomicBoolean(false);
-    AtomicBoolean shutdownTask = new AtomicBoolean(false);
+    private final AtomicInteger taskCount = new AtomicInteger();
+    private AtomicBoolean closed = new AtomicBoolean(false);
 
     public LookupAppendBuffer(LongLookup longLookup, BlockedLongs blockedLongs, int bufferMax, int buffRange, Optional<ExecutorService> threadPool) {
         if (bufferMax < MIN_BUFFER_SIZE)
             throw new IllegalArgumentException(String.format("Invalid buffer size %s is less than %s", bufferMax, MIN_BUFFER_SIZE));
         this.longLookup = longLookup;
         this.blockedLongs = blockedLongs;
-        this.appendBuffer = new ConcurrentHashMap<>();
-        this.lockedHashPaths = new ConcurrentHashMap<>();
+        this.appendBuffer = new ConcurrentHashMap<>(); // How to set initial Capacity, load and concurrency? It has a huge performance impact
+
+        this.pathLock = Striped.lock(10007);
+
         this.minSize = bufferMax;
-        this.maxSize = bufferMax + buffRange +1;
+        this.maxSize = bufferMax + buffRange + 1;
         this.threadPool = threadPool.orElse(Executors.newFixedThreadPool(4));
         this.myThreadPool = !threadPool.isPresent();
-
-        this.threadPool.submit(() -> cleanupTask());
     }
 
 
@@ -75,7 +78,8 @@ public class LookupAppendBuffer {
             if (entryList.size() >= ThreadLocalRandom.current().nextInt(minSize, maxSize)) {
                 List<Map.Entry<LookupKey, Long>> finalEntryList = new ArrayList<>(entryList);
                 entryList.clear();
-                tasks.add(threadPool.submit(() -> flushEntry(pathKey, finalEntryList)));
+                threadPool.submit(() -> flushEntry(pathKey, finalEntryList));
+                taskCount.getAndAdd(1);
             }
             return entryList;
         });
@@ -97,65 +101,47 @@ public class LookupAppendBuffer {
 
     /**
      * For occasional inspection of how busy the flusher is.
-     * Getting the size of the linked queue is O(n)
+     *
      * @return the size of the task queue
      */
     public int taskCount() {
-        return tasks.size();
+        return taskCount.get();
     }
-
-    protected ConcurrentLinkedQueue<Future> getTasks() {
-        return tasks;
-    }
-
-    private void cleanupTask() {
-        try {
-            AtomicLong counter = new AtomicLong();
-            Iterator<Future> iter = tasks.iterator();
-            iter.forEachRemaining(future -> {
-                if (future.isDone()) {
-                    iter.remove();
-                    counter.addAndGet(1);
-                }
-            });
-
-            log.debug("Reaped {} successful buffer flush tasks", counter.get());
-        } finally {
-            try {
-                Thread.sleep(500);
-                if (!shutdownTask.get()) threadPool.submit(this::cleanupTask);
-            } catch (InterruptedException e) {
-                log.error("cleanup sleep interrupted", e);
-            }
-        }
-    }
-
 
     public void flush() {
-        appendBuffer.forEach((path, entryList) -> {
-            List<Map.Entry<LookupKey, Long>> finalEntryList = new ArrayList<>(entryList);
-            entryList.clear();
-            tasks.add(threadPool.submit(() -> flushEntry(path, finalEntryList)));
-        });
+        List<Future> tasks = appendBuffer
+                .keySet()
+                .stream()
+                .parallel()
+                .map(path -> {
+                    final Future[] future = new Future[1];
+                    appendBuffer.compute(path, (keyPath, entryList) -> {
+                        if (entryList.isEmpty()) return entryList;
+                        List<Map.Entry<LookupKey, Long>> finalEntryList = new ArrayList<>(entryList);
+                        entryList.clear();
+                        future[0] = threadPool.submit(() -> flushEntry(path, finalEntryList));
+                        taskCount.addAndGet(1);
+                        return entryList;
+                    });
+                    return future[0];
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
 
         // Ensure that all the tasks currently in the queue finish before returning
-        tasks.iterator().forEachRemaining(f -> {
+        tasks.forEach(f -> {
             try {
-                f.get(30_000, TimeUnit.MILLISECONDS);
+                f.get();
             } catch (InterruptedException e) {
                 log.error("Buffered Append task interrupted", e);
             } catch (ExecutionException e) {
                 log.error("Buffered Append exception", e);
-            } catch (TimeoutException e) {
-                log.error("Buffered Append task timed out in flush", e);
             }
         });
     }
 
     public void close() {
         if (closed.getAndSet(true)) return;
-        shutdownTask.set(true);
-
         flush();
         if (myThreadPool) {
             threadPool.shutdown();
@@ -173,35 +159,26 @@ public class LookupAppendBuffer {
     }
 
     private void flushEntry(Path path, List<Map.Entry<LookupKey, Long>> entryList) {
+        Lock lock = pathLock.get(path);
+        lock.lock();
 
-        AtomicBoolean locked = lockedHashPaths.computeIfAbsent(path, pathKey -> new AtomicBoolean(false));
-
-        if (locked.compareAndSet(false, true)) {
-            try (LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"))) {
-
-
-                entryList.forEach(entry -> {
-                    long blockPos = lookupData.putIfNotExists(entry.getKey(), blockedLongs::allocate);
-                    blockedLongs.append(blockPos, entry.getValue());
-                });
-
-
-            } catch (IOException e) {
-                log.error("Could not close lookupData: {}", path);
-            } finally {
-                locked.set(false);
-            }
-        } else {
-            // Resubmit the job for someone else to try
-            log.debug("Path {} was locked", path);
-            tasks.add(threadPool.submit(() -> flushEntry(path, entryList)));
+        try (LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"))) {
+            entryList.forEach(entry -> {
+                long blockPos = lookupData.putIfNotExists(entry.getKey(), blockedLongs::allocate);
+                blockedLongs.append(blockPos, entry.getValue());
+            });
+            taskCount.getAndAdd(-1);
+        } catch (IOException e) {
+            log.error("Could not close lookupData: {}", path);
+        } finally {
+            lock.unlock();
         }
+
     }
 
     public void clearLock() {
         closed.set(true);
         flush();
-        Futures.getAll(tasks);
     }
 
     public void unlock() {

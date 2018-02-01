@@ -68,15 +68,9 @@ public class LookupAppendBufferTest {
         IntStream.range(0, 24*50)
                 .forEach(val -> instance.bufferedAppend("partition3", "key", val));
 
-        instance.getTasks().iterator().forEachRemaining(future -> {
-            try {
-                future.get();
-            } catch (InterruptedException e) {
-                fail("Buffered write was interrupted");
-            } catch (ExecutionException e) {
-                fail("Buffered write cause an execution exception");
-            }
-        });
+        while (instance.taskCount() > 0) {
+            Thread.sleep(10);
+        }
 
         long lookup = longLookup.get("partition3","key");
         assertEquals(24*50, blockedLongs.values(lookup).count());
