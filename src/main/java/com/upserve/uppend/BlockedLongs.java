@@ -113,6 +113,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public long allocate() {
         log.trace("allocating block of {} bytes in {}", blockSize, file);
         long pos = posMem.getAndAdd(blockSize);
+        posBuf.putLong(0, posMem.get());
         return pos;
     }
 
@@ -138,11 +139,16 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             if (prev > 0) {
                 throw new IllegalStateException("append called at non-starting block: pos=" + pos + " in path: " + file);
             }
-            final long last = prev == 0 ? pos : -prev;
-            final long size = readLong(last);
+            long last = prev == 0 ? pos : -prev;
+            long size = readLong(last);
             if (size < 0) {
-                throw new IllegalStateException("last block has a next: pos=" + pos + " in path: " + file);
+                log.debug("Read repair for last block with a next: pos=" + pos + " in path: " + file);
+                // The the new position was set and this block is full, but is not updated yet
+                last = -size;
+                size = readLong(last);
+                writeLong(pos + 8, -last);
             }
+
             if (size > valuesPerBlock) {
                 throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos + " in path: " + file);
             }
@@ -237,8 +243,9 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return -1;
         }
         if (size < 0) {
-            log.warn("racing with writer while reading last, using last value of previously last block (at " + last + "): pos=" + pos);
-            size = valuesPerBlock;
+            log.debug("Read recovery for last block (at " + last + "): pos=" + pos);
+            last = -size;
+            size = readLong(last);
         }
         if (size > valuesPerBlock) {
             throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size + ": pos=" + pos);
@@ -281,13 +288,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void flush() {
         log.trace("flushing {}", file);
+        posBuf.force();
         for (MappedByteBuffer page : pages) {
             if (page != null) {
                 page.force();
             }
         }
-        posBuf.putLong(0, posMem.get());
-        posBuf.force();
     }
 
     private ByteBuffer readBlock(long pos) {
@@ -311,7 +317,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         return page(pos).getLong(pagePos);
     }
 
-    private void writeLong(long pos, long val) {
+    protected void writeLong(long pos, long val) {
         int pagePos = (int) (pos % (long) PAGE_SIZE);
         page(pos).putLong(pagePos, val);
     }
