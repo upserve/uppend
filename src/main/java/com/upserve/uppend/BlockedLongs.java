@@ -161,6 +161,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         // size | -next
         // prev | -last
 
+        appends.addAndGet(1);
         Lock lock = stripedLocks.getAt((int) (pos % LOCK_SIZE));
         lock.lock();
         try {
