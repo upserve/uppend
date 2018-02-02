@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.ImmutableMap;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 import org.slf4j.Logger;
@@ -8,6 +9,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -30,10 +32,10 @@ public class CounterStoreTest {
     }
 
     @After
-    public void cleanUp(){
+    public void cleanUp() {
         try {
             store.close();
-        } catch (Exception e){
+        } catch (Exception e) {
             throw new AssertionError("Should not raise: {}", e);
         }
     }
@@ -65,7 +67,7 @@ public class CounterStoreTest {
     }
 
 
-        @Test
+    @Test
     public void testWriteCloseReadRepeat() throws Exception {
         store.set("partition", "foo", 5);
         store.increment("partition", "foo");
@@ -110,7 +112,30 @@ public class CounterStoreTest {
         store.increment("partition$three", "three", 3);
         store.increment("partition-four", "four", 4);
         store.increment("_2016-01-02", "five", 5);
-        assertArrayEquals(new String[] { "_2016-01-02", "partition$three", "partition-four",  "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two"}, store.partitions().sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testScan() {
+        store.increment("partition_one", "one", 1);
+        store.increment("partition_one", "two", 1);
+        store.increment("partition_one", "three", 1);
+        store.increment("partition_one", "one", 1);
+        store.increment("partition_two", "one", 1);
+
+        Map<String, Long> result = store
+                .scan("partition_one")
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        Map.Entry::getValue
+                ));
+        Map<String, Long> expected = ImmutableMap.of(
+                "one", 2L,
+                "two", 1L,
+                "three", 1L
+        );
+
+        assertEquals(expected, result);
     }
 
     @Test
@@ -129,7 +154,7 @@ public class CounterStoreTest {
 
         store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
 
-        assertArrayEquals(new String[] { "2017-11-30" }, store.partitions().toArray(String[]::new));
+        assertArrayEquals(new String[]{"2017-11-30"}, store.partitions().toArray(String[]::new));
         assertEquals(5, store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
         assertEquals(1, store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
         assertEquals(1, store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));

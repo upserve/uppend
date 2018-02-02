@@ -1,11 +1,14 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.ImmutableMap;
 import com.upserve.uppend.lookup.LongLookup;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -235,6 +238,35 @@ public class AppendOnlyStoreTest {
         store.append("partition-four", "four", "bap".getBytes());
         store.append("_2016-01-02", "five", "bap".getBytes());
         assertArrayEquals(new String[] { "_2016-01-02", "partition$three", "partition-four",  "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testScan() throws Exception {
+        store.append("partition_one", "one", "bar".getBytes());
+        store.append("partition_one", "two", "baz".getBytes());
+        store.append("partition_one", "three", "bop".getBytes());
+        store.append("partition_one", "one", "bap".getBytes());
+        store.append("partition_two", "five", "bap".getBytes());
+
+        Map<String, List<String>> result = store
+                .scan("partition_one")
+                .collect(Collectors
+                        .toMap(
+                                Map.Entry::getKey,
+                                entry -> entry
+                                        .getValue()
+                                        .map(bytes -> new String(bytes, StandardCharsets.UTF_8))
+                                        .collect(Collectors.toList())
+                        )
+                );
+
+        Map<String, List<String>> expected = ImmutableMap.of(
+                "one", Arrays.asList("bar", "bap"),
+                "two", Collections.singletonList("baz"),
+                "three", Collections.singletonList("bop")
+        );
+
+        assertEquals(expected, result);
     }
 
     @Test

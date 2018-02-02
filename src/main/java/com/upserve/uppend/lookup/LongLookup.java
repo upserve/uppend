@@ -215,6 +215,16 @@ public class LongLookup implements AutoCloseable, Flushable {
                 });
     }
 
+    /**
+     * Scan the long lookups for a given partition streaming the key and long
+     * @param partition the partition name to scan
+     * @return a Stream of entries containing key and long
+     */
+    public Stream<Map.Entry<String, Long>> scan(String partition) {
+        validatePartition(partition);
+        return hashPaths(partition).flatMap(LookupData::scan);
+    }
+
     @Override
     public void close() {
         if (writeCache != null) {

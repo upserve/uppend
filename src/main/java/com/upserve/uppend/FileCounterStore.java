@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public class FileCounterStore extends FileStore implements CounterStore {
@@ -50,6 +51,11 @@ public class FileCounterStore extends FileStore implements CounterStore {
     public Stream<String> partitions() {
         log.trace("getting partitions");
         return lookup.partitions();
+    }
+
+    @Override
+    public Stream<Map.Entry<String, Long>> scan(String partition) {
+        return lookup.scan(partition);
     }
 
     @Override
