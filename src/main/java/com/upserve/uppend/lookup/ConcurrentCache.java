@@ -23,7 +23,7 @@ public class ConcurrentCache {
     private final AtomicInteger taskCount = new AtomicInteger();
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private final java.util.Timer cacheReaperTimer= new java.util.Timer();
+    private final java.util.Timer cacheReaperTimer = new java.util.Timer();
 
     public ConcurrentCache(int cacheSize, float loadFactor) {
         this.cache = new ConcurrentHashMap<>();
@@ -39,6 +39,7 @@ public class ConcurrentCache {
     public void flush() {
         ArrayList<Future> futures = new ArrayList<>();
         cache.forEach((path, entry) -> {
+            if (entry.lookupData.get().isDirty()) {
                 taskCount.addAndGet(1);
                 futures.add(AutoFlusher.flushExecPool.submit(() -> {
                             try {
@@ -52,6 +53,7 @@ public class ConcurrentCache {
                             }
                         }
                 ));
+            }
         });
         Futures.getAll(futures);
     }
@@ -103,7 +105,7 @@ public class ConcurrentCache {
         expireStream(cache.entrySet().stream());
     }
 
-    public void close(){
+    public void close() {
         closed.set(true);
         cacheReaperTimer.cancel();
         purge();
@@ -123,7 +125,7 @@ public class ConcurrentCache {
         return cache.entrySet().stream().mapToLong(entry -> entry.getValue().lookupData.get().size()).sum();
     }
 
-    public int taskCount(){
+    public int taskCount() {
         return taskCount.get();
     }
 

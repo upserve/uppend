@@ -30,6 +30,8 @@ public class LookupData implements AutoCloseable, Flushable {
     private Object2LongSortedMap<LookupKey> mem;
     private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
 
+    private final AtomicBoolean isDirty = new AtomicBoolean(false);
+
     private final Blobs keyBlobs;
 
     public LookupData(Path path, Path metadataPath) {
@@ -76,6 +78,10 @@ public class LookupData implements AutoCloseable, Flushable {
         synchronized (memMonitor) {
             return mem.getLong(key);
         }
+    }
+
+    public boolean isDirty() {
+        return isDirty.get();
     }
 
     /**
@@ -228,6 +234,7 @@ public class LookupData implements AutoCloseable, Flushable {
             buf.putLong(value);
             buf.flip();
             chan.write(buf, index * 16);
+            isDirty.set(true);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to write key: " + key, e);
         }
@@ -268,6 +275,8 @@ public class LookupData implements AutoCloseable, Flushable {
 
     @Override
     public void flush() throws IOException {
+        if (!isDirty.getAndSet(false)) return;
+
         synchronized (chan) {
             if (isClosed.get()) {
                 log.debug("ignoring flush of closed lookup data at {}", path);
