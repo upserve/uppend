@@ -32,6 +32,14 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     }
 
     /**
+     * Getter for the underlying byte store
+     * @return the AppendOnlyStore
+     */
+    public AppendOnlyStore getStore() {
+        return store;
+    }
+
+    /**
      * Append an object under a given key
      *
      * @param partition the partition to store under
