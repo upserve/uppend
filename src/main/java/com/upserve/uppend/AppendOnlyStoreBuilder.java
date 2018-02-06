@@ -77,7 +77,11 @@ public class AppendOnlyStoreBuilder {
     }
 
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        return new FileAppendOnlyStore(dir, -1, false, longLookupHashSize,  0, blobsPerBlock);
+        AppendOnlyStore store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize,  0, blobsPerBlock);
+        if (metrics != null) {
+            store = new AppendOnlyStoreWithMetrics(store, metrics);
+        }
+        return store;
     }
 
     @Override

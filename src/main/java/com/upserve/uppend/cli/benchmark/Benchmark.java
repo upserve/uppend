@@ -28,6 +28,7 @@ public class Benchmark {
 
     private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
+    private final ReadOnlyAppendOnlyStore testReadOnlyInstance;
 
     private volatile boolean isDone = false;
 
@@ -43,29 +44,36 @@ public class Benchmark {
 
         metrics = new MetricRegistry();
 
-        testInstance = Uppend.store(path)
+        AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
                 .withBufferedAppend(buffered, AutoFlusher.flushExecPool)
-                .withMetrics(metrics)
-                .build();
+                .withMetrics(metrics);
+
 
         range = (long) maxPartitions * (long) maxKeys * 199;
 
         switch (mode) {
             case readwrite:
+                testInstance = builder.build();
+                testReadOnlyInstance = testInstance;
                 writer = simpleWriter();
                 reader = simpleReader();
                 sleep = 31;
+
                 break;
 
             case read:
+                testReadOnlyInstance = builder.buildReadOnly();
+                testInstance = null;
                 writer = BenchmarkWriter.noop();
                 reader = simpleReader();
                 break;
 
             case write:
+                testInstance = builder.build();
+                testReadOnlyInstance = testInstance;
                 writer = simpleWriter();
                 reader = BenchmarkReader.noop();
                 break;
@@ -88,7 +96,7 @@ public class Benchmark {
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
                 random.longs(count, 0, range).parallel(),
-                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
+                longInt -> testReadOnlyInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
                             .mapToInt(theseBytes -> theseBytes.length)
                             .sum()
         );
@@ -141,12 +149,13 @@ public class Benchmark {
 
                     log.info(String.format("Read: %7.2fmb/s %6dr/s; Write %7.2fmb/s %6da/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond,  writeRate, appendsPerSecond, free, total));
 
-                    i++;
-                    if ((i % 10) == 0) {
-                        log.info(testInstance.cacheStats().toString());
+                    if (testInstance != null) {
+                        i++;
+                        if ((i % 10) == 0) {
+                            log.info(testInstance.cacheStats().toString());
 
-                        log.info(testInstance.blockStats());
-
+                            log.info(testInstance.blockStats());
+                        }
                     }
 
                 } catch (InterruptedException e) {

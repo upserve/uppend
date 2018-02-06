@@ -316,8 +316,19 @@ public class LongLookup implements AutoCloseable, Flushable {
             return -1;
         }
 
-        LookupMetadata metadata = new LookupMetadata(metaPath);
-        return metadata.readData(hashPath.resolve("data"), lookupKey);
+        int cnt = 0;
+        UncheckedIOException error = null;
+        while (cnt < 5){
+            try {
+                return new LookupMetadata(metaPath).readData(hashPath.resolve("data"), lookupKey);
+            } catch (UncheckedIOException e) {
+                error = e;
+            }
+            cnt++;
+        }
+        log.error("Lookup MetaData race on multiple retries!", error);
+        
+        return -1;
     }
 
     private static void validatePartition(String partition) {
