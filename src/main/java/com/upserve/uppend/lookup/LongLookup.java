@@ -317,11 +317,11 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
 
         int cnt = 0;
-        UncheckedIOException error = null;
+        Exception error = null;
         while (cnt < 5){
             try {
                 return new LookupMetadata(metaPath).readData(hashPath.resolve("data"), lookupKey);
-            } catch (UncheckedIOException e) {
+            } catch (UncheckedIOException | IllegalStateException e) {
                 error = e;
             }
             cnt++;
