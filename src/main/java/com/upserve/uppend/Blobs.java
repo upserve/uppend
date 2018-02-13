@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.google.common.primitives.Bytes;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
@@ -45,8 +46,8 @@ public class Blobs implements AutoCloseable, Flushable {
         try {
             ByteBuffer intBuf = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
             intBuf.putInt(bytes.length).flip();
-            blobs.write(intBuf, pos);
-            blobs.write(ByteBuffer.wrap(bytes), pos + 4);
+
+            blobs.write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), pos);
         } catch (IOException e) {
             throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);
         }
