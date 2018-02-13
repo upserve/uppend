@@ -23,7 +23,7 @@ public class AutoFlusher {
 
     static {
         ThreadGroup threadGroup = new ThreadGroup("auto-flush");
-        threadGroup.setDaemon(true);
+        threadGroup.setDaemon(false);
         AtomicInteger threadNumber = new AtomicInteger();
         threadFactory = r -> {
             Thread t = new Thread(threadGroup, r, "auto-flush-" + threadNumber.incrementAndGet());
