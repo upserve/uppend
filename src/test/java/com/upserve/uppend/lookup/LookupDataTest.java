@@ -56,7 +56,7 @@ public class LookupDataTest {
         expected = null;
         try {
             new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
-        } catch (BufferUnderflowException e) {
+        } catch (ArrayIndexOutOfBoundsException e) {
             expected = e;
         }
         assertNotNull(expected);
