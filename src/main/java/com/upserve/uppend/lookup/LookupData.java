@@ -394,88 +394,55 @@ public class LookupData implements AutoCloseable, Flushable {
         return StreamSupport.stream(spliter, true).onClose(iter::close);
     }
 
-    static Stream<Map.Entry<String, Long>> scan(Path path) {
+    static Stream<Map.Entry<String, Long>> stream(Path path) {
         if (Files.notExists(path)) {
             return Stream.empty();
         }
-        KeyLongIterator iter;
+
+        long size;
         try {
-            iter = new KeyLongIterator(path);
+            size = Files.size(path);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
-        }
-        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
-                iter,
-                iter.getNumKeys(),
-                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
-        );
-        return StreamSupport.stream(spliter, true).onClose(iter::close);
-
-    }
-
-    private static class KeyLongIterator implements Iterator<Map.Entry<String, Long>>, AutoCloseable {
-        private final Path path;
-        private final Path keysPath;
-        private final FileChannel chan;
-
-        private final Blobs keyBlobs;
-        private final int numKeys;
-        private int keyIndex = 0;
-        private final DataInputStream dis;
-
-        KeyLongIterator(Path path) throws IOException {
-            this.path = path;
-            chan = FileChannel.open(path, StandardOpenOption.READ);
-            chan.position(0);
-            keysPath = path.resolveSibling("keys");
-            keyBlobs = new Blobs(keysPath);
-            numKeys = (int) chan.size() / 16;
-            dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
+            throw new UncheckedIOException("unable to get size " + path, e);
         }
 
-        int getNumKeys() {
-            return numKeys;
+        Path keysPath = path.resolveSibling("keys");
+
+        int numEntries = (int) (size / 16);
+        long expectedSize = numEntries * 16;
+        if (size != expectedSize) {
+            log.warn("unexpected size for " + path + ": expected " + expectedSize + ", got " + size);
         }
 
-        @Override
-        public boolean hasNext() {
-            return keyIndex < numKeys;
-        }
-
-        @Override
-        public Map.Entry<String, Long> next() {
-            try {
-                long keyPos = dis.readLong();
-                byte[] keyBytes = keyBlobs.read(keyPos);
-                LookupKey key = new LookupKey(keyBytes);
-                long val = dis.readLong();
-                keyIndex++;
-                return Maps.immutableEntry(key.string(), val);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to read at key index " + keyIndex + " from " + path, e);
-            }
-        }
-
-        @Override
-        public void close() {
-            try {
-                chan.close();
-            } catch (IOException e) {
-                log.error("trouble closing: " + path, e);
-            }
-            keyBlobs.close();
-        }
-    }
-
-    static Long size(Path path){
-        if (Files.notExists(path)) {
-            return 0L;
-        }
-        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
-            return chan.size() / 16;
+        byte[] allKeysBytes;
+        try {
+            allKeysBytes = Files.readAllBytes(keysPath);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to get size of " + path, e);
+            throw new UncheckedIOException("unable to read keys fully at " + keysPath, e);
         }
+        byte[] allChanBytes;
+        try {
+            allChanBytes = Files.readAllBytes(path);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to read fully at " + path, e);
+        }
+
+        LongBuffer lbuf = ByteBuffer.wrap(allChanBytes).asLongBuffer();
+
+        return IntStream.range(0, numEntries).parallel().mapToObj(i -> {
+            int keyPosAndSizeIndex = i * 2;
+            int valIndex = keyPosAndSizeIndex + 1;
+            long keyPosAndSize = lbuf.get(keyPosAndSizeIndex);
+            int keyPos = (int) (keyPosAndSize >> 32);
+            int keySize = (int) keyPosAndSize;
+            byte[] keyBytes = new byte[keySize];
+            System.arraycopy(allKeysBytes, keyPos, keyBytes, 0, keySize);
+            LookupKey key = new LookupKey(keyBytes);
+            long val = lbuf.get(valIndex);
+
+            return Maps.immutableEntry(key.string(), val);
+        });
+
     }
 
     static void scan(Path path, BiConsumer<String, Long> keyValueFunction) {
@@ -526,6 +493,8 @@ public class LookupData implements AutoCloseable, Flushable {
             keyValueFunction.accept(key.string(), val);
         });
     }
+
+
 
     private static class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
         private final Path path;
@@ -578,6 +547,19 @@ public class LookupData implements AutoCloseable, Flushable {
             }
         }
     }
+
+
+    static Long size(Path path) {
+        if (Files.notExists(path)) {
+            return 0L;
+        }
+        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
+            return chan.size() / 16;
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to get size of " + path, e);
+        }
+    }
+
 
     static int numEntries(FileChannel chan) throws IOException {
         return (int) (chan.size() / 16);

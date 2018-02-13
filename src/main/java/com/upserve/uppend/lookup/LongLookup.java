@@ -141,7 +141,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     public Stream<Map.Entry<String, Long>> scan(String partition) {
         validatePartition(partition);
 
-        return hashPaths(partition).flatMap(LookupData::scan);
+        return hashPaths(partition).flatMap(LookupData::stream);
     }
 
     public int cacheSize(){
