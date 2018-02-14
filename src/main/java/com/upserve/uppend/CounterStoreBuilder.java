@@ -42,8 +42,14 @@ public class CounterStoreBuilder {
         return this;
     }
 
-    public CounterStore build() {
-        CounterStore store = new FileCounterStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize);
+    public CounterStore build(boolean readOnly) {
+        CounterStore store;
+
+        if (readOnly) {
+            store =new FileCounterStore(dir, -1, false, longLookupHashSize, 0);
+        } else {
+            store =new FileCounterStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize);
+        }
         if (metrics != null) {
             store = new CounterStoreWithMetrics(store, metrics);
         }
@@ -51,7 +57,7 @@ public class CounterStoreBuilder {
     }
 
     public ReadOnlyCounterStore buildReadOnly() {
-        return new FileCounterStore(dir, -1, false, longLookupHashSize, 1);
+        return new FileCounterStore(dir, -1, false, longLookupHashSize, 0);
     }
 
     @Override

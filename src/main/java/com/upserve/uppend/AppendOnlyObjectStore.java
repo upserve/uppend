@@ -16,7 +16,7 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     private final AppendOnlyStore store;
     private final Function<T, byte[]> serializer;
     private final Function<byte[], T> deserializer;
-
+    private final boolean readOnly;
     /**
      * Constructs new instance, wrapping the underlying {@code AppendOnlyStore},
      * and using the supplied serialization/deserialization functions.
@@ -26,9 +26,22 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * @param deserializer the deserialization function
      */
     public AppendOnlyObjectStore(AppendOnlyStore store, Function<T, byte[]> serializer, Function<byte[], T> deserializer) {
+        this(store, serializer, deserializer, false);
+    }
+
+    /**
+     * Constructs new instance, wrapping the underlying {@code AppendOnlyStore},
+     * and using the supplied serialization/deserialization functions.
+     *
+     * @param store the append-only store to keep the serialized byte arrays
+     * @param serializer the serialization function
+     * @param deserializer the deserialization function
+     */
+    public AppendOnlyObjectStore(AppendOnlyStore store, Function<T, byte[]> serializer, Function<byte[], T> deserializer, boolean readOnly) {
         this.store = store;
         this.serializer = serializer;
         this.deserializer = deserializer;
+        this.readOnly = readOnly;
     }
 
     /**
@@ -48,6 +61,7 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * @param value the value to append
      */
     public void append(String partition, String key, T value) {
+        if (readOnly) throw new RuntimeException("Can not append to a read only store!");
         store.append(partition, key, serializer.apply(value));
     }
 
@@ -153,6 +167,7 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Remove all keys and values from the store.
      */
     public void clear() {
+        if (readOnly) throw new RuntimeException("This store is read only!");
         store.clear();
     }
 
@@ -163,6 +178,7 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
 
     @Override
     public void flush() throws IOException {
+        if (readOnly) throw new RuntimeException("This store is read only!");
         store.flush();
     }
 
@@ -188,6 +204,7 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Used the purge the write cache and save heap space when it is not currently needed for a particular store
      */
     public void purgeWriteCache(){
+        if (readOnly) throw new RuntimeException("This store is read only!");
         store.purgeWriteCache();
     }
 

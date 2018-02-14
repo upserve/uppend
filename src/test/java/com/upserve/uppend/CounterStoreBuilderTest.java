@@ -14,7 +14,7 @@ public class CounterStoreBuilderTest {
         Path path = Paths.get("build/tmp/test/counter-store-builder");
         SafeDeleting.removeDirectory(path);
         MetricRegistry metrics = new MetricRegistry();
-        CounterStore store = Uppend.counterStore(path).withMetrics(metrics).build();
+        CounterStore store = Uppend.counterStore(path).withMetrics(metrics).build(false);
         store.flush();
         assertEquals(1, metrics.getTimers().get("flush").getCount());
     }
