@@ -61,9 +61,12 @@ public class AppendOnlyStoreBuilder {
         return this;
     }
 
-    public AppendOnlyStore build() {
+    public AppendOnlyStore build(boolean readOnly) {
         AppendOnlyStore store;
-        if (suggestedBufferSize > 0) {
+
+        if (readOnly) {
+            store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0, blobsPerBlock);
+        } else if (suggestedBufferSize > 0) {
             // Add log message about ignored parameters
             store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, blobsPerBlock, Optional.ofNullable(executorService));
         } else {

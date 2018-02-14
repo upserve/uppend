@@ -56,7 +56,7 @@ public class Benchmark {
 
         switch (mode) {
             case readwrite:
-                testInstance = builder.build();
+                testInstance = builder.build(false);
                 testReadOnlyInstance = testInstance;
                 writer = simpleWriter();
                 reader = simpleReader();
@@ -72,7 +72,7 @@ public class Benchmark {
                 break;
 
             case write:
-                testInstance = builder.build();
+                testInstance = builder.build(false);
                 testReadOnlyInstance = testInstance;
                 writer = simpleWriter();
                 reader = BenchmarkReader.noop();
