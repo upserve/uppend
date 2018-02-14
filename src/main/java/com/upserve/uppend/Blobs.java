@@ -9,6 +9,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.*;
 
 public class Blobs implements AutoCloseable, Flushable {
@@ -16,7 +17,9 @@ public class Blobs implements AutoCloseable, Flushable {
 
     private final Path file;
 
-    private final FileChannel blobs;
+    private static final long stripes = 64;
+    private final ConcurrentHashMap<Integer, FileChannel> blobChannels;
+
     private final AtomicLong blobPosition;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -32,8 +35,12 @@ public class Blobs implements AutoCloseable, Flushable {
         }
 
         try {
-            blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            blobPosition = new AtomicLong(blobs.size());
+
+            blobChannels = new ConcurrentHashMap<>();
+
+            blobChannels.put(0, FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
+
+            blobPosition = new AtomicLong(blobChannels.get(0).size());
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blob file: " + file, e);
         }
@@ -43,14 +50,30 @@ public class Blobs implements AutoCloseable, Flushable {
         int writeSize = bytes.length + 4;
         final long pos;
         pos = blobPosition.getAndAdd(writeSize);
-        try {
-            ByteBuffer intBuf = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
-            intBuf.putInt(bytes.length).flip();
 
-            blobs.write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), pos);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);
-        }
+        ByteBuffer intBuf = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
+        intBuf.putInt(bytes.length).flip();
+
+        int stripe = (int) (pos % stripes);
+
+        blobChannels.compute(stripe, (key, blobs) -> {
+            if (blobs == null) {
+                try {
+                    blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Failed to open: " + file, e);
+                }
+            }
+
+            try {
+                blobs.write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), pos);
+            } catch (IOException e) {
+                throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);                }
+
+            return blobs;
+
+        });
+
         log.trace("appended {} bytes to {} at pos {}", bytes.length, file, pos);
         return pos;
     }
@@ -71,7 +94,7 @@ public class Blobs implements AutoCloseable, Flushable {
     public void clear() {
         log.trace("clearing {}", file);
         try {
-            blobs.truncate(0);
+            blobChannels.get(0).truncate(0);
             blobPosition.set(0);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
@@ -82,24 +105,30 @@ public class Blobs implements AutoCloseable, Flushable {
     public void close() {
         log.trace("closing {}", file);
         closed.set(true);
-        try {
-            blobs.close();
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to close blobs " + file, e);
-        }
+        blobChannels.values().stream().forEach(blobs -> {
+            try {
+                blobs.close();
+            } catch (IOException e) {
+                throw new UncheckedIOException("unable to close blobs " + file, e);
+            }
+        });
+
     }
 
     @Override
     public void flush() {
-        try {
-            blobs.force(true);
-        } catch (IOException e) {
-            if (closed.get()) {
-                log.debug("Unable to flush closed blobs {}", file, e);
-            } else {
-                throw new UncheckedIOException("unable to flush: " + file, e);
+
+        blobChannels.values().stream().forEach(blobs -> {
+            try {
+                blobs.force(true);
+            } catch (IOException e) {
+                if (closed.get()) {
+                    log.debug("Unable to flush closed blobs {}", file, e);
+                } else {
+                    throw new UncheckedIOException("unable to flush: " + file, e);
+                }
             }
-        }
+        });
     }
 
     private int readInt(long pos) {
@@ -115,11 +144,28 @@ public class Blobs implements AutoCloseable, Flushable {
 
     private void read(long pos, ByteBuffer buf) {
         int len = buf.remaining();
-        try {
-            blobs.read(buf, pos);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos + " in " + file, e);
-        }
+
+        int stripe = (int) (pos % stripes);
+
+
+        blobChannels.compute(stripe, (key, blobs) -> {
+            if (blobs == null) {
+                try {
+                    blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Failed to open: " + file, e);
+                }
+            }
+
+            try {
+                blobs.read(buf, pos);
+            } catch (IOException e) {
+                throw new UncheckedIOException("Reading " + pos + ": " + file, e);
+            }
+
+            return blobs;
+
+        });
     }
 
     public static byte[] read(FileChannel chan, long pos) {
