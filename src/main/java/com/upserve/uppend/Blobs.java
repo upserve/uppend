@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
-import com.google.common.primitives.Bytes;
+import com.google.common.collect.Maps;
+import com.google.common.primitives.*;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
@@ -9,16 +10,20 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.*;
+import java.util.stream.IntStream;
 
 public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final Path file;
 
-    private static final long stripes = 64;
-    private final ConcurrentHashMap<Integer, FileChannel> blobChannels;
+    private static final int lengthGuess = 1024;
+
+    private static final int stripes = 32;
+    private final ConcurrentHashMap<Integer, Map.Entry<AtomicLong, FileChannel>> blobChannels;
 
     private final AtomicLong blobPosition;
 
@@ -34,16 +39,20 @@ public class Blobs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
-        try {
 
-            blobChannels = new ConcurrentHashMap<>();
+        blobChannels = new ConcurrentHashMap<>();
 
-            blobChannels.put(0, FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE));
+        blobPosition = new AtomicLong(IntStream.range(0, stripes).mapToLong(val -> {
+            try {
+                FileChannel chan = FileChannel.open(file.resolveSibling("blobs." + String.valueOf(val)), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+                blobChannels.put(val, Maps.immutableEntry(new AtomicLong(chan.size()), chan));
+                return chan.size();
+            } catch (IOException e) {
+                throw new UncheckedIOException("unable to init blob file: " + file, e);
+            }
 
-            blobPosition = new AtomicLong(blobChannels.get(0).size());
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to init blob file: " + file, e);
-        }
+        }).sum());
+
     }
 
     public long append(byte[] bytes) {
@@ -56,58 +65,71 @@ public class Blobs implements AutoCloseable, Flushable {
 
         int stripe = (int) (pos % stripes);
 
-        blobChannels.compute(stripe, (key, blobs) -> {
-            if (blobs == null) {
-                try {
-                    blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                } catch (IOException e) {
-                    throw new UncheckedIOException("Failed to open: " + file, e);
-                }
-            }
+        final long stripePos;
 
-            try {
-                blobs.write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), pos);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);                }
+        try {
+            Map.Entry<AtomicLong, FileChannel> entry = blobChannels.get(stripe);
 
-            return blobs;
+            stripePos = entry.getKey().getAndAdd(writeSize);
 
-        });
+            entry.getValue().write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), stripePos);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);
+        }
+        // If stripe pos is > 256**7 this will be bad - but that is a big number...
+        byte[] bytePos = Longs.toByteArray(stripePos);
+        bytePos[0] = (byte) stripe;
 
         log.trace("appended {} bytes to {} at pos {}", bytes.length, file, pos);
-        return pos;
+        return Longs.fromByteArray(bytePos);
     }
 
-    public long size(){
+    public long size() {
         return blobPosition.get();
     }
 
     public byte[] read(long pos) {
         log.trace("reading from {} @ {}", file, pos);
-        int size = readInt(pos);
-        byte[] buf = new byte[size];
-        read(pos + 4, buf);
+        byte[] buf = new byte[lengthGuess + 4];
+        read(pos, buf);
+
+        int size = Ints.fromBytes(buf[0],buf[1],buf[2], buf[3]);
+
+        final byte[] result;
+        if (size < lengthGuess){
+            result = Arrays.copyOfRange(buf, 4, size + 4);
+        } else {
+
+            buf = new byte[size + 4];
+            read(pos, buf);
+
+            result = Arrays.copyOfRange(buf, 4, size + 4);
+        }
+
         log.trace("read {} bytes from {} @ {}", size, file, pos);
-        return buf;
+        return result;
     }
 
     public void clear() {
         log.trace("clearing {}", file);
-        try {
-            blobChannels.get(0).truncate(0);
-            blobPosition.set(0);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to clear", e);
-        }
+        blobChannels.values().forEach(entry -> {
+            try {
+                entry.getValue().truncate(0);
+                entry.getKey().set(0);
+            } catch (IOException e) {
+                throw new UncheckedIOException("unable to clear", e);
+            }
+        });
+        blobPosition.set(0);
     }
 
     @Override
     public void close() {
         log.trace("closing {}", file);
         closed.set(true);
-        blobChannels.values().stream().forEach(blobs -> {
+        blobChannels.values().forEach(entry -> {
             try {
-                blobs.close();
+                entry.getValue().close();
             } catch (IOException e) {
                 throw new UncheckedIOException("unable to close blobs " + file, e);
             }
@@ -118,9 +140,9 @@ public class Blobs implements AutoCloseable, Flushable {
     @Override
     public void flush() {
 
-        blobChannels.values().stream().forEach(blobs -> {
+        blobChannels.values().forEach(entry -> {
             try {
-                blobs.force(true);
+                entry.getValue().force(true);
             } catch (IOException e) {
                 if (closed.get()) {
                     log.debug("Unable to flush closed blobs {}", file, e);
@@ -131,13 +153,6 @@ public class Blobs implements AutoCloseable, Flushable {
         });
     }
 
-    private int readInt(long pos) {
-        ByteBuffer intBuffer = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
-        read(pos, intBuffer);
-        intBuffer.flip();
-        return intBuffer.getInt();
-    }
-
     private void read(long pos, byte[] buf) {
         read(pos, ByteBuffer.wrap(buf));
     }
@@ -145,27 +160,22 @@ public class Blobs implements AutoCloseable, Flushable {
     private void read(long pos, ByteBuffer buf) {
         int len = buf.remaining();
 
-        int stripe = (int) (pos % stripes);
+        byte[] longBytes = Longs.toByteArray(pos);
+        int stripe = longBytes[0];
+
+        longBytes[0] = 0;
+
+        long stripePos = Longs.fromByteArray(longBytes);
 
 
-        blobChannels.compute(stripe, (key, blobs) -> {
-            if (blobs == null) {
-                try {
-                    blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                } catch (IOException e) {
-                    throw new UncheckedIOException("Failed to open: " + file, e);
-                }
-            }
+        try {
+            Map.Entry<AtomicLong, FileChannel> entry = blobChannels.get(stripe);
 
-            try {
-                blobs.read(buf, pos);
-            } catch (IOException e) {
-                throw new UncheckedIOException("Reading " + pos + ": " + file, e);
-            }
+            entry.getValue().read(buf, stripePos);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Reading " + pos + ": " + file, e);
+        }
 
-            return blobs;
-
-        });
     }
 
     public static byte[] read(FileChannel chan, long pos) {

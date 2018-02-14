@@ -32,10 +32,10 @@ public class BlobsTest {
         long pos = blobs.append("foo".getBytes());
         assertEquals(0, pos);
         pos = blobs.append("bar".getBytes());
-        assertEquals(7, pos);
+        assertEquals(504403158265495552L, pos);
         byte[] bytes = blobs.read(0);
         assertEquals("foo", new String(bytes));
-        bytes = blobs.read(7);
+        bytes = blobs.read(504403158265495552L);
         assertEquals("bar", new String(bytes));
     }
 
@@ -44,7 +44,7 @@ public class BlobsTest {
         long pos = blobs.append("foo".getBytes());
         assertEquals(0, pos);
         pos = blobs.append("bar".getBytes());
-        assertEquals(7, pos);
+        assertEquals(504403158265495552L, pos);
         blobs.clear();
         pos = blobs.append("baz".getBytes());
         assertEquals(0, pos);
