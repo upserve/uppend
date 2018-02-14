@@ -23,6 +23,8 @@ public class Blobs implements AutoCloseable, Flushable {
     private static final int lengthGuess = 1024;
 
     private static final int stripes = 32;
+
+    // Replace with an array
     private final ConcurrentHashMap<Integer, Map.Entry<AtomicLong, FileChannel>> blobChannels;
 
     private final AtomicLong blobPosition;
@@ -79,6 +81,7 @@ public class Blobs implements AutoCloseable, Flushable {
         // If stripe pos is > 256**7 this will be bad - but that is a big number...
         byte[] bytePos = Longs.toByteArray(stripePos);
         bytePos[0] = (byte) stripe;
+        // put log_2(size) rounded up in the second byte to include an estimated size to read
 
         log.trace("appended {} bytes to {} at pos {}", bytes.length, file, pos);
         return Longs.fromByteArray(bytePos);
