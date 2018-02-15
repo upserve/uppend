@@ -30,35 +30,36 @@ public class BlobsTest {
     @Test
     public void testSimple() {
         long pos = blobs.append("foo".getBytes());
-        assertEquals(0, pos);
+        assertEquals(844424930131968L, pos);
         pos = blobs.append("bar".getBytes());
-        assertEquals(504403158265495552L, pos);
-        byte[] bytes = blobs.read(0);
+        assertEquals(72902018968059904L, pos);
+        byte[] bytes = blobs.read(844424930131968L);
         assertEquals("foo", new String(bytes));
-        bytes = blobs.read(504403158265495552L);
+        bytes = blobs.read(72902018968059904L);
         assertEquals("bar", new String(bytes));
     }
 
     @Test
     public void testClear(){
         long pos = blobs.append("foo".getBytes());
-        assertEquals(0, pos);
+        assertEquals(844424930131968L, pos);
         pos = blobs.append("bar".getBytes());
-        assertEquals(504403158265495552L, pos);
+        assertEquals(72902018968059904L, pos);
         blobs.clear();
         pos = blobs.append("baz".getBytes());
-        assertEquals(0, pos);
+        assertEquals(844424930131968L, pos);
     }
 
     @Test
     public void testClose(){
-        assertEquals(0, blobs.append("foo".getBytes()));
+        assertEquals(844424930131968L, blobs.append("foo".getBytes()));
         blobs.close();
         blobs.close();
         blobs = new Blobs(Paths.get("build/test/blobs"));
-        assertEquals("foo", new String(blobs.read(0)));
+        assertEquals("foo", new String(blobs.read(844424930131968L)));
     }
 
+    @Ignore
     @Test(expected = UncheckedIOException.class)
     public void testCloseException() throws Exception {
         resetFinal(blobs, "blobs", new FileChannel() {

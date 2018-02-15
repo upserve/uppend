@@ -1,6 +1,5 @@
 package com.upserve.uppend;
 
-import com.google.common.collect.Maps;
 import com.google.common.primitives.*;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
@@ -11,196 +10,173 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.*;
-import java.util.stream.IntStream;
 
 public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final Path file;
+    private final Path dir;
 
-    private static final int lengthGuess = 1024;
-
-    private static final int stripes = 32;
+    private static final int STRIPES = 32;
+    private static final int STRIPE_MASK = STRIPES - 1;
+    private static final long MAX_POSITION = 256L * 256L * 256L * 256L * 256L * 256L; // 6 Bytes allows 256TB per stripe file
 
     // Replace with an array
-    private final ConcurrentHashMap<Integer, Map.Entry<AtomicLong, FileChannel>> blobChannels;
-
-    private final AtomicLong blobPosition;
+    private final FileChannel[] blobChannels;
+    private final AtomicLong[] blobFilePositions;
+    private final AtomicInteger nextStripe;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    public Blobs(Path file) {
-        this.file = file;
+    public Blobs(Path blobDir) {
+        this.dir = blobDir;
 
-        Path dir = file.getParent();
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
+        blobChannels = new FileChannel[STRIPES];
+        blobFilePositions = new AtomicLong[STRIPES];
 
-        blobChannels = new ConcurrentHashMap<>();
+        nextStripe = new AtomicInteger();
 
-        blobPosition = new AtomicLong(IntStream.range(0, stripes).mapToLong(val -> {
+        for (int i = 0; i < STRIPES; i++) {
+            Path file = dir.resolve("blobs." + String.valueOf(i));
             try {
-                FileChannel chan = FileChannel.open(file.resolveSibling("blobs." + String.valueOf(val)), StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                blobChannels.put(val, Maps.immutableEntry(new AtomicLong(chan.size()), chan));
-                return chan.size();
+                FileChannel chan = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+                blobFilePositions[i] = new AtomicLong(chan.size());
+                blobChannels[i] = chan;
             } catch (IOException e) {
-                throw new UncheckedIOException("unable to init blob file: " + file, e);
+                throw new UncheckedIOException("unable to init or get size of blob file: " + file, e);
             }
+        }
 
-        }).sum());
+    }
 
+    private byte log2Ceiling(int val) {
+        if (val < 1) return 0;
+        double scaledVal = Math.ceil(Math.log(val) / Math.log(2));
+        return (byte) scaledVal;
+    }
+
+    private int intPowTwo(byte bval) {
+        double ceilingVal = Math.min(Integer.MAX_VALUE, Math.pow(2, byteToUnsignedInt(bval)));
+        return (int) ceilingVal;
+    }
+
+    private int byteToUnsignedInt(byte bval){
+        int val = 0;
+        val |= bval & 0xFF;
+        return val;
+    }
+
+    private int getNextStripe() {
+        return nextStripe.getAndIncrement() & STRIPE_MASK;
     }
 
     public long append(byte[] bytes) {
         int writeSize = bytes.length + 4;
-        final long pos;
-        pos = blobPosition.getAndAdd(writeSize);
-
         ByteBuffer intBuf = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
         intBuf.putInt(bytes.length).flip();
 
-        int stripe = (int) (pos % stripes);
+        final int stripe = getNextStripe();
 
-        final long stripePos;
+        final long stripePos = blobFilePositions[stripe].getAndAdd(writeSize);
 
         try {
-            Map.Entry<AtomicLong, FileChannel> entry = blobChannels.get(stripe);
-
-            stripePos = entry.getKey().getAndAdd(writeSize);
-
-            entry.getValue().write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), stripePos);
+            int writen = blobChannels[stripe].write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), stripePos);
+            if (writen != writeSize) throw new IOException("Bytes written" + writen + "did not equal write size " + writeSize);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);
+            throw new UncheckedIOException("unable write " + writeSize + " bytes @ " + stripePos + " in blob stripe: " + stripe, e);
         }
-        // If stripe pos is > 256**7 this will be bad - but that is a big number...
+
+        if (stripePos > MAX_POSITION) {
+            throw new RuntimeException("Max blob file size exceeded: " + stripePos);
+        }
+
         byte[] bytePos = Longs.toByteArray(stripePos);
         bytePos[0] = (byte) stripe;
-        // put log_2(size) rounded up in the second byte to include an estimated size to read
+        bytePos[1] = log2Ceiling(writeSize);
 
-        log.trace("appended {} bytes to {} at pos {}", bytes.length, file, pos);
+        log.trace("appended {} bytes to blob stripe file {} @ {}", bytes.length, stripe, stripePos);
         return Longs.fromByteArray(bytePos);
     }
 
     public long size() {
-        return blobPosition.get();
+        return Arrays.stream(blobFilePositions).mapToLong(AtomicLong::get).sum();
     }
 
-    public byte[] read(long pos) {
-        log.trace("reading from {} @ {}", file, pos);
-        byte[] buf = new byte[lengthGuess + 4];
-        read(pos, buf);
+    public byte[] read(long encodedLong) {
+        byte[] longBytes = Longs.toByteArray(encodedLong);
+        log.trace("reading from {} with {}", dir, longBytes);
 
-        int size = Ints.fromBytes(buf[0],buf[1],buf[2], buf[3]);
+        int stripe = byteToUnsignedInt(longBytes[0]);
+        int sizeBound = intPowTwo(longBytes[1]);
 
-        final byte[] result;
-        if (size < lengthGuess){
-            result = Arrays.copyOfRange(buf, 4, size + 4);
-        } else {
+        long pos = Longs.fromBytes((byte) 0, (byte) 0, longBytes[2], longBytes[3], longBytes[4], longBytes[5], longBytes[6], longBytes[7]);
 
-            buf = new byte[size + 4];
-            read(pos, buf);
+        byte[] buf = new byte[sizeBound];
 
-            result = Arrays.copyOfRange(buf, 4, size + 4);
+        try {
+            blobChannels[stripe].read(ByteBuffer.wrap(buf), pos);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to read " + sizeBound + " bytes from blob stripe " + stripe + " @ " + pos, e);
         }
 
-        log.trace("read {} bytes from {} @ {}", size, file, pos);
+        int size = Ints.fromBytes(buf[0], buf[1], buf[2], buf[3]);
+
+        final byte[] result = Arrays.copyOfRange(buf, 4, size + 4);
+
+        log.trace("read {} bytes from blob stripe {} @ {}", size, stripe, pos);
         return result;
     }
 
     public void clear() {
-        log.trace("clearing {}", file);
-        blobChannels.values().forEach(entry -> {
+        log.trace("clearing {}", dir);
+
+        for (int i = 0; i < STRIPES; i++) {
             try {
-                entry.getValue().truncate(0);
-                entry.getKey().set(0);
+                blobFilePositions[i].set(0);
+                blobChannels[i].truncate(0);
             } catch (IOException e) {
-                throw new UncheckedIOException("unable to clear", e);
+                throw new UncheckedIOException("unable to clear blob stripe : " + i, e);
             }
-        });
-        blobPosition.set(0);
+        }
+        nextStripe.set(0);
+       log.trace("clear complete {}", dir);
     }
 
     @Override
     public void close() {
-        log.trace("closing {}", file);
+        log.trace("closing blobs {}", dir);
         closed.set(true);
-        blobChannels.values().forEach(entry -> {
+        for (int i = 0; i < STRIPES; i++) {
             try {
-                entry.getValue().close();
+                blobChannels[i].close();
             } catch (IOException e) {
-                throw new UncheckedIOException("unable to close blobs " + file, e);
+                throw new UncheckedIOException("unable to close blob stripe : " + i, e);
             }
-        });
-
+        }
+        log.trace("closed blobs {}", dir);
     }
 
     @Override
     public void flush() {
+        log.trace("flushing blobs {}", dir);
 
-        blobChannels.values().forEach(entry -> {
+        for (int i = 0; i < STRIPES; i++) {
             try {
-                entry.getValue().force(true);
+                blobChannels[i].force(true);
             } catch (IOException e) {
                 if (closed.get()) {
-                    log.debug("Unable to flush closed blobs {}", file, e);
+                    log.debug("Unable to flush closed blobs {}", i, e);
                 } else {
-                    throw new UncheckedIOException("unable to flush: " + file, e);
+                    throw new UncheckedIOException("unable to flush blob stripe: " + i, e);
                 }
             }
-        });
-    }
-
-    private void read(long pos, byte[] buf) {
-        read(pos, ByteBuffer.wrap(buf));
-    }
-
-    private void read(long pos, ByteBuffer buf) {
-        int len = buf.remaining();
-
-        byte[] longBytes = Longs.toByteArray(pos);
-        int stripe = longBytes[0];
-
-        longBytes[0] = 0;
-
-        long stripePos = Longs.fromByteArray(longBytes);
-
-
-        try {
-            Map.Entry<AtomicLong, FileChannel> entry = blobChannels.get(stripe);
-
-            entry.getValue().read(buf, stripePos);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Reading " + pos + ": " + file, e);
         }
-
-    }
-
-    public static byte[] read(FileChannel chan, long pos) {
-        log.trace("reading @ {}", pos);
-        ByteBuffer intBuffer = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
-        try {
-            chan.read(intBuffer, pos);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to read 4 bytes at pos " + pos, e);
-        }
-        intBuffer.flip();
-        int size = intBuffer.getInt();
-        byte[] bytes = new byte[size];
-        ByteBuffer buf = ByteBuffer.wrap(bytes);
-        int len = buf.remaining();
-        try {
-            chan.read(buf, pos + 4);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos, e);
-        }
-        log.trace("read {} bytes @ {}", size, pos);
-        return bytes;
-
+        log.trace("flushed blobs {}", dir);
     }
 }
