@@ -153,7 +153,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     public long writeCacheTasks(){
-        return writeCache.taskCount();
+        return (writeCache == null) ? 0 : writeCache.taskCount();
     }
 
 
