@@ -9,14 +9,21 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.Arrays;
 import java.util.concurrent.atomic.*;
 
 public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private static final int NUM_READ_CHANNELS = 256; // power of two
+    private static final int READ_CHAN_INDEX_MASK = NUM_READ_CHANNELS - 1;
+
     private final Path file;
 
     private final FileChannel blobs;
+    private final FileChannel[] readBlobs;
+    private final AtomicInteger readBlobsIndex;
+
     private final AtomicLong blobPosition;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -33,6 +40,12 @@ public class Blobs implements AutoCloseable, Flushable {
 
         try {
             blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            readBlobs = new FileChannel[NUM_READ_CHANNELS];
+            for (int i = 0; i < readBlobs.length; i++) {
+                readBlobs[i] = FileChannel.open(file, StandardOpenOption.READ);
+            }
+            readBlobsIndex = new AtomicInteger();
+
             blobPosition = new AtomicLong(blobs.size());
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blob file: " + file, e);
@@ -55,7 +68,7 @@ public class Blobs implements AutoCloseable, Flushable {
         return pos;
     }
 
-    public long size(){
+    public long size() {
         return blobPosition.get();
     }
 
@@ -84,6 +97,9 @@ public class Blobs implements AutoCloseable, Flushable {
         closed.set(true);
         try {
             blobs.close();
+            for (FileChannel chan: readBlobs){
+                chan.close();
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("unable to close blobs " + file, e);
         }
@@ -116,7 +132,7 @@ public class Blobs implements AutoCloseable, Flushable {
     private void read(long pos, ByteBuffer buf) {
         int len = buf.remaining();
         try {
-            blobs.read(buf, pos);
+            readBlobs[readBlobsIndex.getAndIncrement() & READ_CHAN_INDEX_MASK].read(buf, pos);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos + " in " + file, e);
         }
