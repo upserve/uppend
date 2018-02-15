@@ -25,8 +25,7 @@ public class LongLookupTest {
         SafeDeleting.removeDirectory(path);
     }
 
-    @Ignore // Test causes OOM on travis since LookupData was revised
-    @Test
+    //@Test Test causes OOM on travis since LookupData was revised
     public void testCtorErrors() throws Exception {
         Exception expected = null;
         try {
