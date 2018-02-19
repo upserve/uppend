@@ -28,7 +28,6 @@ public class Benchmark {
 
     private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
-    private final ReadOnlyAppendOnlyStore testReadOnlyInstance;
 
     private volatile boolean isDone = false;
 
@@ -57,7 +56,6 @@ public class Benchmark {
         switch (mode) {
             case readwrite:
                 testInstance = builder.build(false);
-                testReadOnlyInstance = testInstance;
                 writer = simpleWriter();
                 reader = simpleReader();
                 sleep = 31;
@@ -65,15 +63,13 @@ public class Benchmark {
                 break;
 
             case read:
-                testReadOnlyInstance = builder.buildReadOnly();
-                testInstance = null;
+                testInstance = builder.build(true);
                 writer = BenchmarkWriter.noop();
                 reader = simpleReader();
                 break;
 
             case write:
                 testInstance = builder.build(false);
-                testReadOnlyInstance = testInstance;
                 writer = simpleWriter();
                 reader = BenchmarkReader.noop();
                 break;
@@ -96,7 +92,7 @@ public class Benchmark {
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
                 random.longs(count, 0, range).parallel(),
-                longInt -> testReadOnlyInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
+                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
                             .mapToInt(theseBytes -> theseBytes.length)
                             .sum()
         );
