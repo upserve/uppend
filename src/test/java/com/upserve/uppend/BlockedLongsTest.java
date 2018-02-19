@@ -111,6 +111,32 @@ public class BlockedLongsTest {
         v.append(pos1, 0);
     }
 
+
+    @Test(expected = UncheckedIOException.class)
+    public void testReadOnly_failsIfNotExists() throws Exception {
+        BlockedLongs blocks = new BlockedLongs(path, 4, true);
+    }
+
+    @Test
+    public void testReadOnly_changesAreVisible() throws Exception {
+        BlockedLongs readWriteBlocks = new BlockedLongs(path, 4, false);
+        BlockedLongs readOnlyBlocks = new BlockedLongs(path, 4, true);
+
+        assertEquals(0, readOnlyBlocks.size());
+
+        long pos = readWriteBlocks.allocate();
+        readWriteBlocks.append(pos, 1);
+
+        readWriteBlocks.flush();
+
+        assertEquals(48, readOnlyBlocks.size());
+
+        assertEquals(1, readOnlyBlocks.lastValue(pos));
+
+        readOnlyBlocks.close();
+        readWriteBlocks.close();
+    }
+
     @Test
     public void testLastValue() throws Exception {
         BlockedLongs v = new BlockedLongs(path, 4);

@@ -20,9 +20,16 @@ public class Blobs implements AutoCloseable, Flushable {
     private final AtomicLong blobPosition;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final boolean readOnly;
 
     public Blobs(Path file) {
+        this(file, false);
+    }
+
+    public Blobs(Path file, boolean readOnly) {
         this.file = file;
+
+        this.readOnly = readOnly;
 
         Path dir = file.getParent();
         try {
@@ -31,8 +38,15 @@ public class Blobs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
+        OpenOption[] openOptions;
+        if (readOnly) {
+            openOptions = new OpenOption[]{StandardOpenOption.READ};
+        } else {
+            openOptions = new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
+        }
+
         try {
-            blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blobs = FileChannel.open(file, openOptions);
             blobPosition = new AtomicLong(blobs.size());
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blob file: " + file, e);
@@ -56,7 +70,16 @@ public class Blobs implements AutoCloseable, Flushable {
     }
 
     public long size(){
-        return blobPosition.get();
+        if (readOnly) {
+            try {
+                return blobs.size();
+            } catch (IOException e) {
+                log.error("Unable to get blobs file size: " + file, e);
+                return -1;
+            }
+        } else {
+            return blobPosition.get();
+        }
     }
 
     public byte[] read(long pos) {
@@ -91,6 +114,7 @@ public class Blobs implements AutoCloseable, Flushable {
 
     @Override
     public void flush() {
+        if (readOnly) return;
         try {
             blobs.force(true);
         } catch (IOException e) {

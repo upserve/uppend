@@ -125,7 +125,6 @@ public class LookupDataTest {
         data.flush();
         Map<String, Long> entries = new TreeMap<>();
         LookupData.scan(lookupDir.resolve("data"), entries::put);
-        assertEquals(2, entries.size());
         assertArrayEquals(new String[] {"mykey1", "mykey2"}, entries.keySet().toArray(new String[0]));
         assertArrayEquals(new Long[] {1L, 2L}, entries.values().toArray(new Long[0]));
     }

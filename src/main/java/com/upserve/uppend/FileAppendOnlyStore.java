@@ -27,8 +27,11 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );
-        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock);
-        blobs = new Blobs(dir.resolve("blobs"));
+
+        boolean readOnly = !doLock;
+
+        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);
+        blobs = new Blobs(dir.resolve("blobs"), readOnly);
     }
 
     @Override

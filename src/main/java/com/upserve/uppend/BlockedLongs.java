@@ -29,6 +29,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     private final int valuesPerBlock;
     private final int blockSize;
+    private final boolean readOnly;
+
 
     private final FileChannel blocks;
     private final MappedByteBuffer[] pages;
@@ -48,10 +50,18 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicLong appends = new AtomicLong();
 
 
+
     public BlockedLongs(Path file, int valuesPerBlock) {
+        this(file, valuesPerBlock, false);
+    }
+
+
+    public BlockedLongs(Path file, int valuesPerBlock, boolean readOnly) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
         }
+
+        this.readOnly = readOnly;
 
         this.file = file;
 
@@ -73,9 +83,18 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         // size | -next
         // prev | -last
+        OpenOption[] openOptions;
+        FileChannel.MapMode mapMode;
+        if (readOnly) {
+            openOptions = new OpenOption[]{StandardOpenOption.READ};
+            mapMode = FileChannel.MapMode.READ_ONLY;
+        } else {
+            openOptions = new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
+            mapMode = FileChannel.MapMode.READ_WRITE;
+        }
 
         try {
-            blocks = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blocks = FileChannel.open(file, openOptions);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks file: " + file, e);
         }
@@ -87,12 +106,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
 
         try {
-            blocksPos = FileChannel.open(posFile, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blocksPos = FileChannel.open(posFile, openOptions);
             if (blocksPos.size() > 8) {
                 throw new IllegalStateException("bad (!= 8) size for block pos file: " + posFile);
             }
             try {
-                posBuf = blocksPos.map(FileChannel.MapMode.READ_WRITE, 0, 8);
+                posBuf = blocksPos.map(mapMode, 0, 8);
             } catch (IOException e) {
                 throw new UncheckedIOException("unable to map pos buffer at in " + posFile, e);
             }
@@ -152,7 +171,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      * @return the number of bytes
      */
     public long size() {
-        return posMem.get();
+        if (readOnly) {
+            return posBuf.getLong(0);
+        } else {
+            return posMem.get();
+        }
     }
 
     public void append(final long pos, final long val) {
@@ -206,9 +229,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public LongStream values(long pos) {
         log.trace("streaming values from {} at {}", file, pos);
 
-        if (pos >= posMem.get()) {
-            return LongStream.empty();
-        }
         ByteBuffer buf = readBlock(pos);
         if (buf == null) {
             return LongStream.empty();
@@ -249,9 +269,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);
 
-        if (pos >= posMem.get()) {
-            return -1;
-        }
         ByteBuffer buf = readBlock(pos);
         if (buf == null) {
             return -1;
@@ -288,6 +305,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public void clear() {
         log.debug("clearing {}", file);
+        if (readOnly) throw new RuntimeException("Can not clear a read only block store");
         IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
             blocks.truncate(0);
@@ -320,6 +338,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void flush() {
         log.trace("flushing {}", file);
+        if (readOnly) return;
         try {
             posBuf.force();
             for (MappedByteBuffer page : pages) {
@@ -390,7 +409,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 if (page == null) {
                     long pageStart = (long) pageIndex * PAGE_SIZE;
                     try {
-                        page = blocks.map(FileChannel.MapMode.READ_WRITE, pageStart, PAGE_SIZE);
+                        page = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, pageStart, PAGE_SIZE);
                     } catch (IOException e) {
                         throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
                     }
