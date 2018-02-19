@@ -5,6 +5,7 @@ import com.codahale.metrics.Timer;
 import com.upserve.uppend.*;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
@@ -30,7 +31,7 @@ public class Benchmark {
 
     private volatile boolean isDone = false;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds, int buffered) {
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
@@ -42,28 +43,33 @@ public class Benchmark {
 
         metrics = new MetricRegistry();
 
-        testInstance = Uppend.store(path)
+        AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withLongLookupHashSize(hashSize)
                 .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
-                .withMetrics(metrics)
-                .build();
+                .withBufferedAppend(buffered, AutoFlusher.flushExecPool)
+                .withMetrics(metrics);
+
 
         range = (long) maxPartitions * (long) maxKeys * 199;
 
         switch (mode) {
             case readwrite:
+                testInstance = builder.build(false);
                 writer = simpleWriter();
                 reader = simpleReader();
                 sleep = 31;
+
                 break;
 
             case read:
+                testInstance = builder.build(true);
                 writer = BenchmarkWriter.noop();
                 reader = simpleReader();
                 break;
 
             case write:
+                testInstance = builder.build(false);
                 writer = simpleWriter();
                 reader = BenchmarkReader.noop();
                 break;
@@ -101,7 +107,7 @@ public class Benchmark {
     }
 
     public static byte[] bytes(long integer) {
-        int length =(int) (integer % 65536);
+        int length =(int) (integer % 1024);
         byte[] bytes = new byte[length];
         Arrays.fill(bytes, (byte) 0);
         return bytes;
@@ -115,6 +121,7 @@ public class Benchmark {
 
         Thread watcher = new Thread(() -> {
             Runtime runtime = Runtime.getRuntime();
+            int i = 0;
             while (!isDone) {
                 try {
                     Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
@@ -137,6 +144,16 @@ public class Benchmark {
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
 
                     log.info(String.format("Read: %7.2fmb/s %6dr/s; Write %7.2fmb/s %6da/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond,  writeRate, appendsPerSecond, free, total));
+
+                    if (testInstance != null) {
+                        i++;
+                        if ((i % 10) == 0) {
+                            log.info(testInstance.cacheStats().toString());
+
+                            log.info(testInstance.blockStats());
+                        }
+                    }
+
                 } catch (InterruptedException e) {
                     log.info("Interrupted - Stopping...");
                     break;
@@ -153,6 +170,8 @@ public class Benchmark {
         writerThread.join();
         readerThread.join();
 
+        testInstance.purgeWriteCache();
+
         watcher.join(1500);
 
         try {
@@ -160,7 +179,7 @@ public class Benchmark {
         } catch (Exception e) {
             throw new RuntimeException("error closing test uppend store", e);
         }
-
+        
         log.info("Benchmark is All Done!");
         System.out.println("[benchmark is done]"); // used in CliTest
         isDone = true;

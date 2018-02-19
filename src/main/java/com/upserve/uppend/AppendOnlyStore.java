@@ -33,7 +33,6 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Flushable {
      */
     Stream<byte[]> readSequentialFlushed(String partition, String key);
 
-
     /**
      * Read the last byte array that was stored under a given partition and
      * key, skipping the write cache of this store so that unflushed data is not
@@ -64,7 +63,20 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Flushable {
     void flush();
 
     /**
+     * Purge the write cache
+     */
+    void purgeWriteCache();
+
+    /**
      * Remove all keys and values from the store.
      */
     void clear();
+
+    /**
+     * Provide some insight into the resource used by the store
+     * @return a string describing the resources used
+     */
+    AppendStoreStats cacheStats();
+
+    String blockStats();
 }

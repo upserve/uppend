@@ -15,7 +15,7 @@ public class CounterStoreTest {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private CounterStore newStore() {
-        return new CounterStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
+        return new CounterStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).build(false);
     }
 
     private CounterStore store;

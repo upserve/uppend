@@ -1,17 +1,20 @@
 package com.upserve.uppend;
 
+import com.google.common.primitives.Longs;
 import com.upserve.uppend.lookup.LongLookup;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.*;
+
 
 import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
     private AppendOnlyStore newStore() {
-        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
+        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).withLongLookupHashSize(32).build(false);
     }
 
     private AppendOnlyStore store;
@@ -28,7 +31,7 @@ public class AppendOnlyStoreTest {
     @After
     public void cleanUp() {
         try {
-            store.close();
+            if (store!=null) store.close();
         } catch (Exception e){
             throw new AssertionError("Should not raise: {}", e);
         }
@@ -75,6 +78,21 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
+    public void size() {
+        assertEquals(0L, store.size());
+        store.append("partition0", "foo1", "bar".getBytes());
+        assertEquals(1L, store.size());
+        store.append("partition0", "foo1", "bar".getBytes());
+        assertEquals(1L, store.size());
+        store.append("partition1", "foo1", "bar".getBytes());
+        assertEquals(2L, store.size());
+        store.append("partition1", "foo1", "bar".getBytes());
+        assertEquals(2L, store.size());
+        store.append("partition1", "foo2", "bar".getBytes());
+        assertEquals(3L, store.size());
+    }
+
+    @Test
     public void fillTheCache() {
         int keys = LongLookup.DEFAULT_WRITE_CACHE_SIZE * 2;
 
@@ -87,7 +105,7 @@ public class AppendOnlyStoreTest {
 
         Arrays.stream(uuids)
                 .parallel()
-                .forEach(uuid -> store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes()));
+                .forEach(uuid -> store.append("_" + uuid.substring(0, 1), uuid, uuid.getBytes()));
 
         cleanUp();
         store = newStore();
@@ -96,12 +114,91 @@ public class AppendOnlyStoreTest {
         Arrays.stream(uuids2)
                 .parallel()
                 .forEach(uuid -> {
-                    byte[][] results = store.read("_" + uuid.substring(0, 2), uuid).toArray(byte[][]::new);
+                    byte[][] results = store.read("_" + uuid.substring(0, 1), uuid).toArray(byte[][]::new);
                     assertEquals("uuid failed to return 1 result: " + uuid, 1, results.length);
                     byte[] bytes = results[0];
                     assertArrayEquals("uuid result failed to check out: " + uuid, bytes, uuid.getBytes());
                 });
     }
+
+    @Test
+    public void testAppendWhilePurging() throws Exception {
+
+        ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+
+        Thread flusherThread = new Thread(() -> {
+            while (true) {
+                store.purgeWriteCache();
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        });
+        flusherThread.start();
+
+        new Random()
+                .longs(50000, 0, 1_000_000)
+                .parallel()
+                .forEach(val -> {
+                    String key = String.valueOf(val);
+
+                    testData.compute(key, (k, list) -> {
+                        if (list == null) {
+                            list = new ArrayList<>();
+                        }
+                        list.add(val);
+
+                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
+
+                        assertArrayEquals(
+                                list.stream().mapToLong(v -> v).toArray(),
+                                store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
+                        );
+
+                        return list;
+                    });
+
+                });
+
+        Thread.sleep(100);
+
+        flusherThread.interrupt();
+        flusherThread.join();
+    }
+
+    @Test
+    public void testWriteReadSequential() throws Exception {
+        ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
+
+        new Random()
+                .longs(5000, 0, 1_000_000)
+                .forEach(val -> {
+                    String key = String.valueOf(val);
+
+                    testData.compute(key, (k, list) -> {
+                        if (list == null) {
+                            list = new ArrayList<>();
+                        }
+                        list.add(val);
+
+                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
+
+                        try {
+                            assertArrayEquals(
+                                    list.stream().mapToLong(v -> v).toArray(),
+                                    store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
+                            );
+                        } catch (RuntimeException e){
+                            store.read("_" + key.substring(0, 1), key);
+                        }
+                        return list;
+                    });
+
+                });
+    }
+
 
     @Test
     public void testReadStream() throws Exception {

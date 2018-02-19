@@ -124,14 +124,19 @@ public class LookupMetadata {
             int[] compressedOrdering = iic.compress(keyStorageOrder);
             int compressedSize = compressedOrdering.length;
 
-            int bufSize = 16 + minKey.byteLength() + maxKey.byteLength();
+            byte[] minKeyBytes = minKey.bytes();
+            byte[] maxKeyBytes = maxKey.bytes();
+
+            int bufSize = 16 + minKeyBytes.length + maxKeyBytes.length;
             ByteBuffer headBuf = ByteBuffer.allocate(bufSize);
             headBuf.putInt(numKeys);
             headBuf.putInt(compressedSize);
-            headBuf.putInt(minKey.byteLength());
-            headBuf.put(minKey.bytes());
-            headBuf.putInt(maxKey.byteLength());
-            headBuf.put(maxKey.bytes());
+
+            headBuf.putInt(minKeyBytes.length);
+            headBuf.put(minKeyBytes);
+
+            headBuf.putInt(maxKeyBytes.length);
+            headBuf.put(maxKeyBytes);
             headBuf.flip();
             chan.write(headBuf, 0);
 

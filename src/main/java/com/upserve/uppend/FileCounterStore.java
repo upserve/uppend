@@ -59,6 +59,10 @@ public class FileCounterStore extends FileStore implements CounterStore {
     }
 
     @Override
+    public AppendStoreStats cacheStats(){
+        return new AppendStoreStats(0, 0, lookup.cacheSize(), lookup.cacheEntries(), lookup.writeCacheTasks(), 0, 0, 0);
+    }
+    @Override
     protected void flushInternal() {
         lookup.flush();
     }

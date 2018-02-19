@@ -1,22 +1,25 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.Maps;
 import com.upserve.uppend.lookup.LongLookup;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.stream.*;
 
 public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final int NUM_BLOBS_PER_BLOCK = 127;
+    public static final int NUM_BLOBS_PER_BLOCK = 127;
 
-    private final LongLookup lookups;
-    private final BlockedLongs blocks;
-    private final Blobs blobs;
+    protected final LongLookup lookups;
+    protected final BlockedLongs blocks;
+    protected final Blobs blobs;
 
-    FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize) {
+    protected FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize, int blobsPerBlock) {
         super(dir, flushDelaySeconds, doLock);
 
         lookups = new LongLookup(
@@ -24,8 +27,11 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );
-        blocks = new BlockedLongs(dir.resolve("blocks"), NUM_BLOBS_PER_BLOCK);
-        blobs = new Blobs(dir.resolve("blobs"));
+
+        boolean readOnly = !doLock;
+
+        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);
+        blobs = new Blobs(dir.resolve("blobs"), readOnly);
     }
 
     @Override
@@ -35,6 +41,23 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
         log.trace("appending {} bytes (blob pos {}, block pos {}) for key '{}'", value.length, blobPos, blockPos, key);
         blocks.append(blockPos, blobPos);
+    }
+
+    @Override
+    public void purgeWriteCache() {
+        lookups.close();
+        blocks.flush();
+        blobs.flush();
+    }
+
+    @Override
+    public AppendStoreStats cacheStats(){
+        return new AppendStoreStats(blobs.size(), blocks.size(), lookups.cacheSize(), lookups.cacheEntries(), lookups.writeCacheTasks(), 0, 0, 0);
+    }
+
+    @Override
+    public String blockStats() {
+        return blocks.stats();
     }
 
     @Override
@@ -59,6 +82,23 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
             return null;
         }
         return blobs.read(pos);
+    }
+
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition){
+        return lookups.scan(partition)
+                .map(entry ->
+                        Maps.immutableEntry(
+                                entry.getKey(),
+                                blocks.values(entry.getValue())
+                                        .parallel()
+                                        .mapToObj(blobs::read)
+                        )
+                );
+    }
+
+    @Override
+    public long size() {
+        return partitions().parallel().flatMapToLong(lookups::size).sum();
     }
 
     @Override
@@ -109,13 +149,19 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     protected void flushInternal() {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
-        lookups.flush();
-        blocks.flush();
-        blobs.flush();
+        // Check non null because the super class is registered in the autoflusher before the constructor finishes
+        if (lookups != null) lookups.flush();
+        if (blobs != null) blocks.flush();
+        if (blobs != null) blobs.flush();
     }
 
     @Override
     protected void closeInternal() {
+        try {
+            blobs.close();
+        } catch (Exception e) {
+            log.error("unable to close blobs", e);
+        }
         try {
             lookups.close();
         } catch (Exception e) {
@@ -126,11 +172,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         } catch (Exception e) {
             log.error("unable to close blocks", e);
         }
-        try {
-            blobs.close();
-        } catch (Exception e) {
-            log.error("unable to close blobs", e);
-        }
+
     }
 
     private LongStream blockValues(String partition, String key, boolean useCache) {

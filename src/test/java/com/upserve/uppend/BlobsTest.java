@@ -40,6 +40,26 @@ public class BlobsTest {
     }
 
     @Test
+    public void testReadOnly() {
+        Blobs readOnlyBlobs = new Blobs(Paths.get("build/test/blobs"), true);
+
+
+        long pos = blobs.append("foo".getBytes());
+        assertEquals(0, pos);
+        pos = blobs.append("bar".getBytes());
+        assertEquals(7, pos);
+
+        byte[] bytes = readOnlyBlobs.read(0);
+        assertEquals("foo", new String(bytes));
+        bytes = readOnlyBlobs.read(7);
+        assertEquals("bar", new String(bytes));
+
+        readOnlyBlobs.close();
+
+    }
+
+
+    @Test
     public void testClear(){
         long pos = blobs.append("foo".getBytes());
         assertEquals(0, pos);

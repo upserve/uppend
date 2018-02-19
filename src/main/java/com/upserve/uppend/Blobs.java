@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.google.common.primitives.Bytes;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
@@ -8,7 +9,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.*;
 
 public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -18,8 +19,17 @@ public class Blobs implements AutoCloseable, Flushable {
     private final FileChannel blobs;
     private final AtomicLong blobPosition;
 
+    private final AtomicBoolean closed = new AtomicBoolean(false);
+    private final boolean readOnly;
+
     public Blobs(Path file) {
+        this(file, false);
+    }
+
+    public Blobs(Path file, boolean readOnly) {
         this.file = file;
+
+        this.readOnly = readOnly;
 
         Path dir = file.getParent();
         try {
@@ -28,8 +38,15 @@ public class Blobs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
+        OpenOption[] openOptions;
+        if (readOnly) {
+            openOptions = new OpenOption[]{StandardOpenOption.READ};
+        } else {
+            openOptions = new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
+        }
+
         try {
-            blobs = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blobs = FileChannel.open(file, openOptions);
             blobPosition = new AtomicLong(blobs.size());
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blob file: " + file, e);
@@ -43,13 +60,26 @@ public class Blobs implements AutoCloseable, Flushable {
         try {
             ByteBuffer intBuf = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
             intBuf.putInt(bytes.length).flip();
-            blobs.write(intBuf, pos);
-            blobs.write(ByteBuffer.wrap(bytes), pos + 4);
+
+            blobs.write(ByteBuffer.wrap(Bytes.concat(intBuf.array(), bytes)), pos);
         } catch (IOException e) {
             throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + file, e);
         }
         log.trace("appended {} bytes to {} at pos {}", bytes.length, file, pos);
         return pos;
+    }
+
+    public long size(){
+        if (readOnly) {
+            try {
+                return blobs.size();
+            } catch (IOException e) {
+                log.error("Unable to get blobs file size: " + file, e);
+                return -1;
+            }
+        } else {
+            return blobPosition.get();
+        }
     }
 
     public byte[] read(long pos) {
@@ -74,6 +104,7 @@ public class Blobs implements AutoCloseable, Flushable {
     @Override
     public void close() {
         log.trace("closing {}", file);
+        closed.set(true);
         try {
             blobs.close();
         } catch (IOException e) {
@@ -83,10 +114,15 @@ public class Blobs implements AutoCloseable, Flushable {
 
     @Override
     public void flush() {
+        if (readOnly) return;
         try {
             blobs.force(true);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to flush: " + file, e);
+            if (closed.get()) {
+                log.debug("Unable to flush closed blobs {}", file, e);
+            } else {
+                throw new UncheckedIOException("unable to flush: " + file, e);
+            }
         }
     }
 
