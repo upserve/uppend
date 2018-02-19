@@ -25,11 +25,11 @@ public class LongLookupTest {
         SafeDeleting.removeDirectory(path);
     }
 
-    //@Test Test causes OOM on travis since LookupData was revised
+    @Test
     public void testCtorErrors() throws Exception {
         Exception expected = null;
         try {
-            new LongLookup(path, 0, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+            new LongLookup(path, 0, 64);
         } catch (IllegalArgumentException e) {
             expected = e;
         }
@@ -37,7 +37,7 @@ public class LongLookupTest {
 
         expected = null;
         try {
-            new LongLookup(path, (1 << 24) + 1, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+            new LongLookup(path, (1 << 24) + 1, 64);
         } catch (IllegalArgumentException e) {
             expected = e;
         }
