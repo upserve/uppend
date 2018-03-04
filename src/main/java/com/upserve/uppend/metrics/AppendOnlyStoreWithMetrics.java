@@ -4,6 +4,7 @@ import com.codahale.metrics.*;
 import com.upserve.uppend.AppendOnlyStore;
 
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
@@ -169,7 +170,18 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
             return store.scan(partition);
         } finally {
             context.stop();
-        }    }
+        }
+    }
+
+    @Override
+    public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
+        final Timer.Context context = scanTimer.time();
+        try {
+            store.scan(partition, callback);
+        } finally {
+            context.stop();
+        }
+    }
 
     @Override
     public void clear() {

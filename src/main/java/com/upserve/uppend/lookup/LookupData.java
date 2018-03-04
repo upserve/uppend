@@ -354,7 +354,25 @@ public class LookupData implements AutoCloseable, Flushable {
         return StreamSupport.stream(spliter, true).onClose(iter::close);
     }
 
-    static void scan(Path path, BiConsumer<String, Long> keyValueFunction) {
+    static Stream<Map.Entry<String, Long>> scan(Path path) {
+        if (Files.notExists(path)) {
+            return Stream.empty();
+        }
+        KeyLongIterator iter;
+        try {
+            iter = new KeyLongIterator(path);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
+        }
+        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
+                iter,
+                iter.getNumKeys(),
+                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
+        );
+        return StreamSupport.stream(spliter, true).onClose(iter::close);
+    }
+
+    static void scan(Path path, ObjLongConsumer<String> keyValueFunction) {
         if (Files.notExists(path)) {
             return;
         }
@@ -433,24 +451,6 @@ public class LookupData implements AutoCloseable, Flushable {
                 log.error("trouble closing: " + keysPath, e);
             }
         }
-    }
-
-    static Stream<Map.Entry<String, Long>> scan(Path path) {
-        if (Files.notExists(path)) {
-            return Stream.empty();
-        }
-        KeyLongIterator iter;
-        try {
-            iter = new KeyLongIterator(path);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
-        }
-        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
-                iter,
-                iter.getNumKeys(),
-                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
-        );
-        return StreamSupport.stream(spliter, true).onClose(iter::close);
     }
 
     private static class KeyLongIterator implements Iterator<Map.Entry<String, Long>>, AutoCloseable {

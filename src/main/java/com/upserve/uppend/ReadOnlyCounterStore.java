@@ -1,7 +1,8 @@
 package com.upserve.uppend;
 
 import java.util.Map;
-import java.util.stream.Stream;
+import java.util.function.*;
+import java.util.stream.*;
 
 public interface ReadOnlyCounterStore extends AutoCloseable {
     /**
@@ -31,9 +32,20 @@ public interface ReadOnlyCounterStore extends AutoCloseable {
     Stream<String> partitions();
 
     /**
-     * Scan the given partition returning a stream of the contents including the key
+     * Scan all the keys and values in a partition, returning a stream of
+     * entries
+     *
      * @param partition the partition to scan
-     * @return a stream of entries containing the key and the count
+     * @return a stream of entries of key to counter values
      */
     Stream<Map.Entry<String, Long>> scan(String partition);
+
+    /**
+     * Scan the given partition, calling the given function with each key and
+     * counter value
+     *
+     * @param partition the partition to scan
+     * @param callback function to call for each key and value
+     */
+    void scan(String partition, ObjLongConsumer<String> callback);
 }

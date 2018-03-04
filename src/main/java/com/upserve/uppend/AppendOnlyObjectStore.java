@@ -21,8 +21,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Constructs new instance, wrapping the underlying {@code AppendOnlyStore},
      * and using the supplied serialization/deserialization functions.
      *
-     * @param store        the append-only store to keep the serialized byte arrays
-     * @param serializer   the serialization function
+     * @param store the append-only store to keep the serialized byte arrays
+     * @param serializer the serialization function
      * @param deserializer the deserialization function
      */
     public AppendOnlyObjectStore(AppendOnlyStore store, Function<T, byte[]> serializer, Function<byte[], T> deserializer) {
@@ -35,8 +35,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Append an object under a given key
      *
      * @param partition the partition to store under
-     * @param key       the key to store under
-     * @param value     the value to append
+     * @param key the key to store under
+     * @param value the value to append
      * @throws IllegalArgumentException if partition is invalid
      */
     public void append(String partition, String key, T value) {
@@ -48,9 +48,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * parallel
      *
      * @param partition the key under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return a stream of the stored objects
+     * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of the stored objects
      */
     public Stream<T> read(String partition, String key) {
         return store.read(partition, key).map(deserializer);
@@ -61,9 +61,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * the order they were stored
      *
      * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return a stream of the stored objects in storage order
+     * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of the stored objects in storage order
      */
     public Stream<T> readSequential(String partition, String key) {
         return store.readSequential(partition, key).map(deserializer);
@@ -73,9 +73,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Read the last object that was stored under a given partition and key
      *
      * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return the stored object, or null if none
+     * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
+     * @return the stored object, or null if none
      */
     public T readLast(String partition, String key) {
         return deserializer.apply(store.readLast(partition, key));
@@ -86,9 +86,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * parallel, skipping the write cache so that unflushed data is not visible
      *
      * @param partition the key under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return a stream of the stored objects
+     * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of the stored objects
      */
     public Stream<T> readFlushed(String partition, String key) {
         return store.readFlushed(partition, key).map(deserializer);
@@ -100,9 +100,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * data is not visible
      *
      * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return a stream of the stored objects in storage order
+     * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of the stored objects in storage order
      */
     public Stream<T> readSequentialFlushed(String partition, String key) {
         return store.readSequentialFlushed(partition, key).map(deserializer);
@@ -113,9 +113,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * skipping the write cache so that unflushed data is not visible
      *
      * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return the stored object, or null if none
+     * @param key the key under which to retrieve
      * @throws IllegalArgumentException if partition is invalid
+     * @return the stored object, or null if none
      */
     public T readLastFlushed(String partition, String key) {
         return deserializer.apply(store.readLastFlushed(partition, key));
@@ -125,8 +125,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Enumerate the keys in the data store
      *
      * @param partition the key under which to retrieve
-     * @return a stream of string keys
      * @throws IllegalArgumentException if partition is invalid
+     * @return a stream of string keys
      */
     public Stream<String> keys(String partition) {
         return store.keys(partition);
@@ -142,13 +142,31 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     }
 
     /**
-     * Scan all the keys and values in a partition return a stream of entries for each key
+     * Scan all the keys and values in a partition, returning a stream of
+     * entries for each key
+     *
      * @param partition the name of the partition
-     * @return a Stream of Entries containing the key and a stream of values
+     * @return a stream of entries of key to stream of object values
      */
     public Stream<Map.Entry<String, Stream<T>>> scan(String partition) {
         return store.scan(partition).map(entry ->
-                Maps.immutableEntry(entry.getKey(), entry.getValue().map(deserializer)));
+                Maps.immutableEntry(
+                        entry.getKey(),
+                        entry.getValue().map(deserializer)
+                ));
+    }
+
+    /**
+     * Scan all the keys and values in a partition, calling the given function
+     * with each key and stream of object values
+     *
+     * @param partition the name of the partition
+     * @param callback function to call for each key and stream of values
+     */
+    public void scan(String partition, BiConsumer<String, Stream<T>> callback) {
+        store.scan(partition, (key, byteValues) ->
+                callback.accept(key, byteValues.map(deserializer))
+        );
     }
 
     /**

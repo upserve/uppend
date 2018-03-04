@@ -4,7 +4,7 @@ import com.codahale.metrics.*;
 import com.upserve.uppend.CounterStore;
 
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.function.ObjLongConsumer;
 import java.util.stream.Stream;
 
 public class CounterStoreWithMetrics implements CounterStore {
@@ -103,7 +103,18 @@ public class CounterStoreWithMetrics implements CounterStore {
             return store.scan(partition);
         } finally {
             context.stop();
-        }    }
+        }
+    }
+
+    @Override
+    public void scan(String partition, ObjLongConsumer<String> callback) {
+        final Timer.Context context = metricsScanTimer.time();
+        try {
+            store.scan(partition, callback);
+        } finally {
+            context.stop();
+        }
+    }
 
     @Override
     public void clear() {

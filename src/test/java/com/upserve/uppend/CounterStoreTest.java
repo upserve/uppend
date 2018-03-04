@@ -112,7 +112,7 @@ public class CounterStoreTest {
         store.increment("partition$three", "three", 3);
         store.increment("partition-four", "four", 4);
         store.increment("_2016-01-02", "five", 5);
-        assertArrayEquals(new String[]{"_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two"}, store.partitions().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[] { "_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
     }
 
     @Test
@@ -139,6 +139,26 @@ public class CounterStoreTest {
     }
 
     @Test
+    public void testScanCallback() {
+        store.increment("partition_one", "one", 1);
+        store.increment("partition_one", "two", 1);
+        store.increment("partition_one", "three", 1);
+        store.increment("partition_one", "one", 1);
+        store.increment("partition_two", "one", 1);
+
+        Map<String, Long> result = new TreeMap<>();
+        store.scan("partition_one", result::put);
+
+        Map<String, Long> expected = ImmutableMap.of(
+                "one", 2L,
+                "two", 1L,
+                "three", 1L
+        );
+
+        assertEquals(expected, result);
+    }
+
+    @Test
     public void testExample() throws Exception {
         store.close();
         store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, true, 1, 1);
@@ -154,7 +174,7 @@ public class CounterStoreTest {
 
         store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
 
-        assertArrayEquals(new String[]{"2017-11-30"}, store.partitions().toArray(String[]::new));
+        assertArrayEquals(new String[] { "2017-11-30" }, store.partitions().toArray(String[]::new));
         assertEquals(5, store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
         assertEquals(1, store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
         assertEquals(1, store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));

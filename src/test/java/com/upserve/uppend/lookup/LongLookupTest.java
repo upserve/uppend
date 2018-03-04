@@ -2,7 +2,6 @@ package com.upserve.uppend.lookup;
 
 import com.google.common.hash.HashCode;
 import com.upserve.uppend.util.SafeDeleting;
-import net.bytebuddy.utility.RandomString;
 import org.junit.*;
 
 import java.io.IOException;
@@ -163,7 +162,7 @@ public class LongLookupTest {
 
         Map<String, Long> result = IntStream.range(0, (int) putCount)
                 .parallel()
-                .mapToObj(i -> RandomString.make(entropy).toLowerCase())
+                .mapToObj(i -> randomString(entropy))
                 .peek(s -> longLookup.putIfNotExists(s.substring(0,1), s, supplier))
                 .collect(
                         Collectors.groupingByConcurrent(Function.identity(),
@@ -175,5 +174,27 @@ public class LongLookupTest {
         // The sum of the counts for each key should equal the number of time put was called
         assertEquals(putCount, result.values().stream().mapToLong(val -> val).sum());
         longLookup.close();
+    }
+
+    private static final int ALPHA_NUMS_LEN = 26 + 10;
+    private static char[] ALPHA_NUMS = new char[ALPHA_NUMS_LEN];
+    static {
+        int i = 0;
+        for (char c = 'a'; c <= 'z'; c++) {
+            ALPHA_NUMS[i++] = c;
+        }
+        for (char c = '0'; c <= '9'; c++) {
+            ALPHA_NUMS[i++] = c;
+        }
+    }
+
+    private static final Random ALPHA_NUM_RANDOMNESS = new Random(1234);
+
+    private static String randomString(int len) {
+        char[] chars = new char[len];
+        for (int i = 0; i < len; i++) {
+            chars[i] = ALPHA_NUMS[ALPHA_NUM_RANDOMNESS.nextInt(ALPHA_NUMS_LEN)];
+        }
+        return new String(chars);
     }
 }
