@@ -1,5 +1,7 @@
 package com.upserve.uppend;
 
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 /**
@@ -54,4 +56,22 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      * @return a stream of string partition
      */
     Stream<String> partitions();
+
+    /**
+     * Scan all the keys and values in a partition, returning a stream of
+     * entries for each key
+     *
+     * @param partition the partition to scan
+     * @return a stream of entries of key to stream of byte array values
+     */
+    Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition);
+
+    /**
+     * Scan the given partition, calling the given function with each key and
+     * stream of byte array values
+     *
+     * @param partition the partition to scan
+     * @param callback function to call for each key and stream of values
+     */
+    void scan(String partition, BiConsumer<String, Stream<byte[]>> callback);
 }

@@ -3,6 +3,8 @@ package com.upserve.uppend.metrics;
 import com.codahale.metrics.*;
 import com.upserve.uppend.AppendOnlyStore;
 
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
@@ -11,6 +13,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String READ_TIMER_METRIC_NAME = "readTimer";
     public static final String KEYS_TIMER_METRIC_NAME = "keysTimer";
     public static final String PARTITIONS_TIMER_METRIC_NAME = "partitionsTimer";
+    public static final String SCAN_TIMER_METRIC_NAME = "scanTimer";
     public static final String CLEAR_TIMER_METRIC_NAME = "clearTimer";
     public static final String CLOSE_TIMER_METRIC_NAME = "closeTimer";
 
@@ -25,6 +28,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Timer readTimer;
     private final Timer keysTimer;
     private final Timer partitionsTimer;
+    private final Timer scanTimer;
     private final Timer clearTimer;
     private final Timer closeTimer;
 
@@ -40,6 +44,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         readTimer = metrics.timer(READ_TIMER_METRIC_NAME);
         keysTimer = metrics.timer(KEYS_TIMER_METRIC_NAME);
         partitionsTimer = metrics.timer(PARTITIONS_TIMER_METRIC_NAME);
+        scanTimer = metrics.timer(SCAN_TIMER_METRIC_NAME);
         clearTimer = metrics.timer(CLEAR_TIMER_METRIC_NAME);
         closeTimer = metrics.timer(CLOSE_TIMER_METRIC_NAME);
 
@@ -153,6 +158,26 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         final Timer.Context context = partitionsTimer.time();
         try {
             return store.partitions();
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
+        final Timer.Context context = scanTimer.time();
+        try {
+            return store.scan(partition);
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
+        final Timer.Context context = scanTimer.time();
+        try {
+            store.scan(partition, callback);
         } finally {
             context.stop();
         }

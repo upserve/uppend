@@ -1,6 +1,9 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.Maps;
+
 import java.io.*;
+import java.util.Map;
 import java.util.function.*;
 import java.util.stream.Stream;
 
@@ -33,8 +36,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      *
      * @param partition the partition to store under
      * @param key the key to store under
-     * @throws IllegalArgumentException if partition is invalid
      * @param value the value to append
+     * @throws IllegalArgumentException if partition is invalid
      */
     public void append(String partition, String key, T value) {
         store.append(partition, key, serializer.apply(value));
@@ -136,6 +139,34 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      */
     public Stream<String> partitions() {
         return store.partitions();
+    }
+
+    /**
+     * Scan all the keys and values in a partition, returning a stream of
+     * entries for each key
+     *
+     * @param partition the name of the partition
+     * @return a stream of entries of key to stream of object values
+     */
+    public Stream<Map.Entry<String, Stream<T>>> scan(String partition) {
+        return store.scan(partition).map(entry ->
+                Maps.immutableEntry(
+                        entry.getKey(),
+                        entry.getValue().map(deserializer)
+                ));
+    }
+
+    /**
+     * Scan all the keys and values in a partition, calling the given function
+     * with each key and stream of object values
+     *
+     * @param partition the name of the partition
+     * @param callback function to call for each key and stream of values
+     */
+    public void scan(String partition, BiConsumer<String, Stream<T>> callback) {
+        store.scan(partition, (key, byteValues) ->
+                callback.accept(key, byteValues.map(deserializer))
+        );
     }
 
     /**

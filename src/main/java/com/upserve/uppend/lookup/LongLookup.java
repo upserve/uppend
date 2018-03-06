@@ -206,7 +206,24 @@ public class LongLookup implements AutoCloseable, Flushable {
                 .map(File::getName);
     }
 
-    public void scan(String partition, BiConsumer<String, Long> keyValueFunction) {
+    /**
+     * Scan the long lookups for a given partition streaming the key and long
+     *
+     * @param partition the partition to scan
+     * @return a stream of entries of key and long value
+     */
+    public Stream<Map.Entry<String, Long>> scan(String partition) {
+        validatePartition(partition);
+        return hashPaths(partition).flatMap(LookupData::scan);
+    }
+
+    /**
+     * Scan a partition and call a function for each key and value
+     *
+     * @param partition the partition to scan
+     * @param keyValueFunction function to call for each key and long value
+     */
+    public void scan(String partition, ObjLongConsumer<String> keyValueFunction) {
         validatePartition(partition);
 
         hashPaths(partition)

@@ -1,10 +1,13 @@
 package com.upserve.uppend;
 
+import com.google.common.collect.Maps;
 import com.upserve.uppend.lookup.LongLookup;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.stream.*;
 
 public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
@@ -96,6 +99,30 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     public Stream<String> partitions() {
         log.trace("getting partitions");
         return lookups.partitions();
+    }
+
+    @Override
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
+        return lookups.scan(partition)
+                .map(entry ->
+                        Maps.immutableEntry(
+                                entry.getKey(),
+                                blocks.values(entry.getValue())
+                                        .parallel()
+                                        .mapToObj(blobs::read)
+                        )
+                );
+    }
+
+    @Override
+    public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
+        lookups.scan(
+                partition,
+                (key, blobRefs) ->  callback.accept(
+                        key,
+                        blocks.values(blobRefs).mapToObj(blobs::read)
+                )
+        );
     }
 
     @Override

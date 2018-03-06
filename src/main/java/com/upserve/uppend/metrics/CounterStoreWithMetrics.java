@@ -3,6 +3,8 @@ package com.upserve.uppend.metrics;
 import com.codahale.metrics.*;
 import com.upserve.uppend.CounterStore;
 
+import java.util.Map;
+import java.util.function.ObjLongConsumer;
 import java.util.stream.Stream;
 
 public class CounterStoreWithMetrics implements CounterStore {
@@ -15,6 +17,7 @@ public class CounterStoreWithMetrics implements CounterStore {
     private final Timer metricsGetTimer;
     private final Timer metricsKeysTimer;
     private final Timer metricsPartitionsTimer;
+    private final Timer metricsScanTimer;
     private final Timer metricsClearTimer;
     private final Timer metricsCloseTimer;
 
@@ -28,6 +31,7 @@ public class CounterStoreWithMetrics implements CounterStore {
         metricsGetTimer = metrics.timer("get");
         metricsKeysTimer = metrics.timer("keys");
         metricsPartitionsTimer = metrics.timer("partitions");
+        metricsScanTimer = metrics.timer("scan");
         metricsClearTimer = metrics.timer("clear");
         metricsCloseTimer = metrics.timer("close");
     }
@@ -87,6 +91,26 @@ public class CounterStoreWithMetrics implements CounterStore {
         final Timer.Context context = metricsPartitionsTimer.time();
         try {
             return store.partitions();
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public Stream<Map.Entry<String, Long>> scan(String partition) {
+        final Timer.Context context = metricsScanTimer.time();
+        try {
+            return store.scan(partition);
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public void scan(String partition, ObjLongConsumer<String> callback) {
+        final Timer.Context context = metricsScanTimer.time();
+        try {
+            store.scan(partition, callback);
         } finally {
             context.stop();
         }
