@@ -1,14 +1,11 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.blobs.VirtualPageFile;
-import com.upserve.uppend.lookup.LookupCache;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
 import java.io.*;
 import java.nio.file.*;
 import java.util.Optional;
-import java.util.concurrent.ForkJoinPool;
 
 import static org.junit.Assert.*;
 
@@ -16,26 +13,11 @@ public class FileStoreTest {
     private final Path path = Paths.get("build/test/tmp/file-store");
     private final Path pageFilesPath = Paths.get("build/test/tmp/file-store-page-files");
 
-    private VirtualPageFile partitionLongKeyFile;
-    private VirtualPageFile partitionMetadataBlobFile;
-    private VirtualPageFile partitionBlobsFile;
-    private BlockedLongs partitionBlocks;
-    private LookupCache partitionLookupCache;
-
     @Before
     public void initialize() throws Exception {
         SafeDeleting.removeTempPath(path);
         SafeDeleting.removeTempPath(pageFilesPath);
         Files.createDirectories(pageFilesPath);
-        Path partitionLongKeyPath = pageFilesPath.resolve("long-key");
-        Path partitionMetadataBlobPath = pageFilesPath.resolve("metadata-blob");
-        Path partitionBlobPath = pageFilesPath.resolve("blob");
-        Path partitionBlocksPath = pageFilesPath.resolve("blocks");
-        partitionLongKeyFile = new VirtualPageFile(partitionLongKeyPath, 36, 1024, false);
-        partitionMetadataBlobFile = new VirtualPageFile(partitionMetadataBlobPath, 36, 1024, false);
-        partitionBlobsFile = new VirtualPageFile(partitionBlobPath, 36, 1024, false);
-        partitionBlocks = new BlockedLongs(partitionBlocksPath, 20, false);
-        partitionLookupCache = new LookupCache(0, 0, ForkJoinPool.commonPool(), null, 0, 0, 0, ForkJoinPool.commonPool(), null);
     }
 
     @Test
@@ -67,7 +49,7 @@ public class FileStoreTest {
     public void testCtorPathExists() throws Exception {
         Path dir = path.resolve("ctor-path-exists");
         Files.createDirectories(path);
-        Files.write(dir, new byte[] { });
+        Files.write(dir, new byte[]{});
         new MyFileStore(dir, 10);
     }
 
@@ -148,33 +130,52 @@ public class FileStoreTest {
         v.getOrCreate("p1").append("k1", "v1".getBytes());
         v.getOrCreate("p2").append("k2", "v2".getBytes());
         v.flush();
-        //flush(v);
-        //v.close();
-        //v = new MyFileStore(path.resolve("stream-partitions-non-empty"), 0);
         assertEquals(2, v.streamPartitions().count());
-        assertArrayEquals(new String[] { "k1" }, v.streamPartitions().findFirst().get().keys().toArray());
-        assertArrayEquals(new String[] { "k2" }, v.streamPartitions().skip(1).findFirst().get().keys().toArray());
+        assertArrayEquals(new String[]{"k1"}, v.streamPartitions().findFirst().get().keys().toArray());
+        assertArrayEquals(new String[]{"k2"}, v.streamPartitions().skip(1).findFirst().get().keys().toArray());
     }
 
     @Test
     public void testStreamPartitionsBadData() throws Exception {
         Path dir = path.resolve("stream-partitions-bad-data");
         MyFileStore v = new MyFileStore(dir, 0);
-        Files.write(dir.resolve("partitions"), new byte[] { });
+        Files.write(dir.resolve("partitions"), new byte[]{});
         v.streamPartitions(); // current expected behavior is for this to return empty
     }
 
-    private void flush(FileStore store) {
-        store.flush();
-        try {
-            partitionLongKeyFile.flush();
-            partitionMetadataBlobFile.flush();
-            partitionBlobsFile.flush();
-            partitionBlocks.flush();
-            partitionLookupCache.flush();
-        } catch (IOException e) {
-            throw new UncheckedIOException("trouble flushing", e);
-        }
+    @Test
+    public void testCreateDirectoriesWithSymlink() throws Exception {
+        Path base = Paths.get("build/test/filestore");
+        SafeDeleting.removeDirectory(base);
+
+        Path directory = base.resolve("directory");
+        Path symlink = base.resolve("symlink");
+        Files.createDirectories(directory);
+        Files.createSymbolicLink(symlink, directory.toAbsolutePath());
+
+        // build/test/filestore/symlink@
+        new MyFileStore(symlink, 0);
+
+        SafeDeleting.removeDirectory(base);
+    }
+
+    @Test
+    public void testCreateDirectoriesWithParentSymlink() throws Exception {
+        Path base = Paths.get("build/test/filestore");
+        SafeDeleting.removeDirectory(base);
+        Path directory = base.resolve("directory");
+        Path symlink = base.resolve("symlink");
+        Path symlinkChild = symlink.resolve("child");
+
+        Files.createDirectories(directory);
+        Files.createSymbolicLink(symlink, directory.toAbsolutePath());
+        Files.createDirectories(directory.resolve("child"));
+
+        // build/test/filestore/symlink@/child
+        new MyFileStore(symlinkChild, 0);
+
+        SafeDeleting.removeDirectory(directory);
+        SafeDeleting.removeDirectory(base);
     }
 
     private class MyFileStore extends FileAppendOnlyStore {
