@@ -296,6 +296,18 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
+    public void trim() {
+        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
+        try {
+            flush();
+            Arrays.fill(pages, null);
+            currentPage.set(0);
+            ensurePage(0);
+        } finally {
+            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
+        }
+    }
+
     private ByteBuffer readBlock(long pos) {
         ByteBuffer buf = bufferLocal.get();
         try {

@@ -8,7 +8,7 @@ import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-abstract class FileStore implements AutoCloseable, Flushable {
+abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     /**
@@ -64,6 +64,15 @@ abstract class FileStore implements AutoCloseable, Flushable {
     protected abstract void flushInternal();
 
     protected abstract void closeInternal();
+
+    protected abstract void trimInternal();
+
+    @Override
+    public void trim(){
+        log.info("Triming {}", dir);
+        trimInternal();
+        log.info("Trimed {}", dir);
+    };
 
     @Override
     public void flush() {

@@ -99,6 +99,15 @@ public class CounterStoreTest {
     }
 
     @Test
+    public void testPurge() throws Exception {
+        store.set("partition", "foo", 7);
+        store.trim();
+        assertEquals(7, store.get("partition", "foo"));
+        store.increment("partition", "foo");
+        assertEquals(8, store.get("partition", "foo"));
+    }
+
+    @Test
     public void testWriteThenClearThenClose() throws Exception {
         store.increment("partition", "foo");
         store.clear();

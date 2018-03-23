@@ -16,6 +16,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String SCAN_TIMER_METRIC_NAME = "scanTimer";
     public static final String CLEAR_TIMER_METRIC_NAME = "clearTimer";
     public static final String CLOSE_TIMER_METRIC_NAME = "closeTimer";
+    public static final String PURGE_TIMER_METRIC_NAME = "purgeTimer";
 
     public static final String WRITE_BYTES_METER_METRIC_NAME = "writeBytesMeter";
     public static final String READ_BYTES_METER_METRIC_NAME = "readBytesMeter";
@@ -31,6 +32,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Timer scanTimer;
     private final Timer clearTimer;
     private final Timer closeTimer;
+    private final Timer trimTimer;
 
     private final Meter writeBytesMeter;
     private final Meter readBytesMeter;
@@ -47,6 +49,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         scanTimer = metrics.timer(SCAN_TIMER_METRIC_NAME);
         clearTimer = metrics.timer(CLEAR_TIMER_METRIC_NAME);
         closeTimer = metrics.timer(CLOSE_TIMER_METRIC_NAME);
+        trimTimer = metrics.timer(PURGE_TIMER_METRIC_NAME);
 
         writeBytesMeter = metrics.meter(WRITE_BYTES_METER_METRIC_NAME);
         readBytesMeter = metrics.meter(READ_BYTES_METER_METRIC_NAME);
@@ -188,6 +191,16 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         final Timer.Context context = clearTimer.time();
         try {
             store.clear();
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public void trim() {
+        final Timer.Context context = trimTimer.time();
+        try {
+            store.trim();
         } finally {
             context.stop();
         }

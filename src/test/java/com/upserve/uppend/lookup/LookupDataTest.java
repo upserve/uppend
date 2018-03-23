@@ -65,6 +65,23 @@ public class LookupDataTest {
     }
 
     @Test
+    public void testIsDirty() throws IOException {
+        LookupData data = new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
+        assertFalse("new data should be clean", data.isDirty());
+
+        LookupKey key = new LookupKey("key");
+        data.put(key, 1L);
+        assertTrue("after a put data should be dirty", data.isDirty());
+
+        data.flush();
+        assertFalse("after a flush data should be clean", data.isDirty());
+
+        data.putIfNotExists(key, () -> 2L);
+        assertFalse("putting a key that already exists does not make data dirty",data.isDirty());
+        data.close();
+    }
+
+    @Test
     public void testGetAndPut() throws Exception {
         LookupData data = new LookupData(lookupDir.resolve("data"), lookupDir.resolve("meta"));
         final LookupKey key = new LookupKey("mykey");

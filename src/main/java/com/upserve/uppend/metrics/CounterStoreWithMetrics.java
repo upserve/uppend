@@ -20,6 +20,7 @@ public class CounterStoreWithMetrics implements CounterStore {
     private final Timer metricsScanTimer;
     private final Timer metricsClearTimer;
     private final Timer metricsCloseTimer;
+    private final Timer metricsTrimTimer;
 
     public CounterStoreWithMetrics(CounterStore store, MetricRegistry metrics) {
         this.store = store;
@@ -34,6 +35,7 @@ public class CounterStoreWithMetrics implements CounterStore {
         metricsScanTimer = metrics.timer("scan");
         metricsClearTimer = metrics.timer("clear");
         metricsCloseTimer = metrics.timer("close");
+        metricsTrimTimer = metrics.timer("trim");
     }
 
     @Override
@@ -121,6 +123,16 @@ public class CounterStoreWithMetrics implements CounterStore {
         final Timer.Context context = metricsClearTimer.time();
         try {
             store.clear();
+        } finally {
+            context.stop();
+        }
+    }
+
+    @Override
+    public void trim() {
+        final Timer.Context context = metricsTrimTimer.time();
+        try {
+            store.trim();
         } finally {
             context.stop();
         }

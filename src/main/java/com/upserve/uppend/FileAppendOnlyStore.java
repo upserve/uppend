@@ -136,13 +136,27 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     protected void flushInternal() {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
-        lookups.flush();
-        blocks.flush();
+        // Check non null because the super class is registered in the autoflusher before the constructor finishes
+        if (lookups != null) lookups.flush();
+        if (blocks != null) blocks.flush();
+        if (blobs != null) blobs.flush();
+    }
+
+    @Override
+    public void trimInternal() {
+        lookups.close();
+        blocks.trim();
         blobs.flush();
     }
 
     @Override
     protected void closeInternal() {
+        // Close blobs first to stop appends
+        try {
+            blobs.close();
+        } catch (Exception e) {
+            log.error("unable to close blobs", e);
+        }
         try {
             lookups.close();
         } catch (Exception e) {
@@ -152,11 +166,6 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
             blocks.close();
         } catch (Exception e) {
             log.error("unable to close blocks", e);
-        }
-        try {
-            blobs.close();
-        } catch (Exception e) {
-            log.error("unable to close blobs", e);
         }
     }
 
