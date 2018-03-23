@@ -5,7 +5,7 @@ import java.io.Flushable;
 /**
  * Keep counters for partitioned keys.
  */
-public interface CounterStore extends ReadOnlyCounterStore, Flushable {
+public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoCloseable, Flushable {
     /**
      * Set the counter under a given partition and key, to the given value
      *
@@ -48,6 +48,13 @@ public interface CounterStore extends ReadOnlyCounterStore, Flushable {
      */
     @Override
     void flush();
+
+    /**
+     * Trim flushes any pending changes and then close cached resources to
+     * reduce heap consumption
+     */
+    @Override
+    void trim();
 
     /**
      * Remove all keys and values from the store.

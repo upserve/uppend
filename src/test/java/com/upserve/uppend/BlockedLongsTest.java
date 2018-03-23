@@ -9,8 +9,8 @@ import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.Supplier;
-import java.util.stream.LongStream;
+import java.util.function.*;
+import java.util.stream.*;
 
 import static org.junit.Assert.*;
 
@@ -198,6 +198,32 @@ public class BlockedLongsTest {
                     entry.getValue().stream().sorted().mapToLong(value -> value).toArray(),
                     block.values(entry.getKey()).sorted().toArray());
         });
+    }
+
+    @Test
+    public void testTrim() {
+        BlockedLongs blocks = new BlockedLongs(path, 524_286); // Page size blocks
+
+        long block1 = blocks.allocate();
+        blocks.append(block1, 1L);
+
+        long block2 = blocks.allocate();
+        blocks.append(block2, 2L);
+
+        long block3 = blocks.allocate();
+        blocks.append(block3, 3L);
+
+        blocks.trim();
+        blocks.append(block3, 3L);
+
+        blocks.trim();
+        assertEquals(Collections.singletonList(2L), blocks.values(block2).boxed().collect(Collectors.toList()));
+
+        blocks.trim();
+        long block4 = blocks.allocate();
+        blocks.append(block4, 4L);
+
+        assertEquals(Arrays.asList(3L, 3L), blocks.values(block3).boxed().collect(Collectors.toList()));
     }
 
     @Test

@@ -20,6 +20,7 @@ public class LookupData implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final AtomicBoolean isClosed;
+    private final AtomicBoolean isDirty;
 
     private final Path path;
     private final Path metadataPath;
@@ -63,6 +64,7 @@ public class LookupData implements AutoCloseable, Flushable {
         }
 
         isClosed = new AtomicBoolean(false);
+        isDirty = new AtomicBoolean(false);
     }
 
     /**
@@ -206,7 +208,16 @@ public class LookupData implements AutoCloseable, Flushable {
         return newValue;
     }
 
+    /**
+     * Check if this LookupData is dirty before calling flush
+     * @return
+     */
+    public boolean isDirty(){
+        return isDirty.get();
+    }
+
     private void set(int index, LookupKey key, long value) {
+        isDirty.set(true);
         try {
             long keyPos = keyBlobs.append(key.bytes());
             ByteBuffer buf = recordBufSupplier.get();
@@ -220,6 +231,7 @@ public class LookupData implements AutoCloseable, Flushable {
     }
 
     private void set(int index, long value) {
+        isDirty.set(true);
         try {
             ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
             buf.putLong(value);
@@ -254,17 +266,19 @@ public class LookupData implements AutoCloseable, Flushable {
 
     @Override
     public void flush() throws IOException {
-        synchronized (chan) {
-            if (isClosed.get()) {
-                log.debug("ignoring flush of closed lookup data at {}", path);
-                return;
+        if (isDirty.getAndSet(false)) {
+            synchronized (chan) {
+                if (isClosed.get()) {
+                    log.debug("ignoring flush of closed lookup data at {}", path);
+                    return;
+                }
+                log.trace("flushing lookup and metadata at {}", metadataPath);
+                keyBlobs.flush();
+                chan.force(true);
+                LookupMetadata metadata = generateMetadata();
+                metadata.writeTo(metadataPath);
+                log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
             }
-            log.trace("flushing lookup and metadata at {}", metadataPath);
-            keyBlobs.flush();
-            chan.force(true);
-            LookupMetadata metadata = generateMetadata();
-            metadata.writeTo(metadataPath);
-            log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
         }
     }
 

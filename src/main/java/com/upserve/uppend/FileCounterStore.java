@@ -71,6 +71,11 @@ public class FileCounterStore extends FileStore implements CounterStore {
     }
 
     @Override
+    public void trimInternal() {
+        lookup.close();
+    }
+
+    @Override
     protected void flushInternal() {
         lookup.flush();
     }

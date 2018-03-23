@@ -270,17 +270,21 @@ public class LongLookup implements AutoCloseable, Flushable {
             cacheCopy = new ConcurrentHashMap<>(writeCache);
         }
         ArrayList<Future> futures = new ArrayList<>();
-        cacheCopy.forEach((path, data) ->
-            futures.add(AutoFlusher.flushExecPool.submit(() -> {
-                try {
-                    log.trace("cache flushing {}", path);
-                    data.flush();
-                    log.trace("cache flushed {}", path);
-                } catch (Exception e) {
-                    log.error("unable to flush " + path, e);
+        cacheCopy.forEach(
+                (path, data) ->
+                {
+                    if (data.isDirty())
+                        futures.add(AutoFlusher.flushExecPool.submit(() -> {
+                            try {
+                                log.trace("cache flushing {}", path);
+                                data.flush();
+                                log.trace("cache flushed {}", path);
+                            } catch (Exception e) {
+                                log.error("unable to flush " + path, e);
+                            }
+                        }));
                 }
-            }
-        )));
+        );
         Futures.getAll(futures);
         log.trace("flushed {}", dir);
     }
@@ -310,7 +314,7 @@ public class LongLookup implements AutoCloseable, Flushable {
                 return new LookupData(
                         hashPath.resolve("data"),
                         hashPath.resolve("meta")
-                    );
+                );
             });
         }
     }
@@ -349,7 +353,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         // Also see hashPath method in this class
         Stream<String> paths = IntStream
                 .range(0, hashFinalByteMask + 1)
-                .mapToObj(i ->  String.format("%02x/data", i));
+                .mapToObj(i -> String.format("%02x/data", i));
 
         for (int i = 1; i < hashBytes; i++) {
             paths = paths
