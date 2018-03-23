@@ -39,8 +39,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     private final int hashBytes;
     private final int hashFinalByteMask;
     private final HashFunction hashFunction;
-    private final LinkedHashMap<Path, LookupData> writeCache;
-    private final Object writeCacheDataCloseMonitor = new Object();
+    private final ConcurrentCache writeCache;
 
     public LongLookup(Path dir) {
         this(dir, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
@@ -82,30 +81,9 @@ public class LongLookup implements AutoCloseable, Flushable {
         if (writeCacheSize == 0) {
             writeCache = null;
         } else {
-            writeCache = new LinkedHashMap<Path, LookupData>(writeCacheSize + 1, 1.1f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<Path, LookupData> eldest) {
-                    if (size() > writeCacheSize) {
-                        Path path = eldest.getKey();
-                        log.trace("cache removing {}", path);
-                        try {
-                            synchronized (writeCacheDataCloseMonitor) {
-                                eldest.getValue().close();
-                            }
-                        } catch (IOException e) {
-                            log.error("unable to close " + path, e);
-                            throw new UncheckedIOException("unable to close " + path, e);
-                        } catch (Exception e) {
-                            log.error("unexpected error closing " + path, e);
-                            throw e;
-                        }
-                        return true;
-                    }
-                    return false;
-                }
-            };
-
+            writeCache = new ConcurrentCache(writeCacheSize + 1, 1.1f);
         }
+
     }
 
     /**
@@ -114,7 +92,7 @@ public class LongLookup implements AutoCloseable, Flushable {
      * visible
      *
      * @param partition the partition to look up
-     * @param key the key to look up
+     * @param key       the key to look up
      * @return the value for the partition and key, or -1 if not found
      */
     public long get(String partition, String key) {
@@ -126,12 +104,8 @@ public class LongLookup implements AutoCloseable, Flushable {
         Path hashPath = hashPath(partition, lookupKey);
 
         if (writeCache != null) {
-            LookupData data;
-            synchronized (writeCache) {
-                data = writeCache.get(hashPath);
-            }
-            if (data != null) {
-                long value = data.get(lookupKey);
+            Long value = writeCache.evaluateIfPresent(hashPath, lookupData -> lookupData.get(lookupKey));
+            if (value != null) {
                 return value == Long.MIN_VALUE ? -1 : value;
             }
         }
@@ -145,7 +119,7 @@ public class LongLookup implements AutoCloseable, Flushable {
      * values are not visible
      *
      * @param partition the partition to look up
-     * @param key the key to look up
+     * @param key       the key to look up
      * @return the value for the partition and key, or -1 if not found
      */
     public long getFlushed(String partition, String key) {
@@ -159,36 +133,53 @@ public class LongLookup implements AutoCloseable, Flushable {
         return getUncachedInternal(lookupKey, hashPath);
     }
 
+    /**
+     * Scan the long lookups for a given partition streaming the key and long
+     * @param partition the partition name to scan
+     * @return a Stream of entries containing key and long
+     */
+    public Stream<Map.Entry<String, Long>> scan(String partition) {
+        validatePartition(partition);
+
+        return hashPaths(partition).flatMap(LookupData::scan);
+    }
+
+    public int cacheSize(){
+        return (writeCache == null) ? 0 : writeCache.size();
+    }
+
+    public long cacheEntries() {
+        return (writeCache == null) ? 0 : writeCache.totalKeys();
+    }
+
+    public long writeCacheTasks(){
+        return (writeCache == null) ? 0 : writeCache.taskCount();
+    }
+
+
     public long put(String partition, String key, long value) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        synchronized (writeCacheDataCloseMonitor) {
-            return loadFromCacheForWrite(hashPath).put(lookupKey, value);
-        }
+        return loadFromCacheForWrite(hashPath, lookupData -> lookupData.put(lookupKey, value));
     }
 
     public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        synchronized (writeCacheDataCloseMonitor) {
-            return loadFromCacheForWrite(hashPath).putIfNotExists(lookupKey, allocateLongFunc);
-        }
+        return loadFromCacheForWrite(hashPath, lookupData -> lookupData.putIfNotExists(lookupKey, allocateLongFunc));
     }
 
     public long increment(String partition, String key, long delta) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        synchronized (writeCacheDataCloseMonitor) {
-            return loadFromCacheForWrite(hashPath).increment(lookupKey, delta);
-        }
+        return loadFromCacheForWrite(hashPath, lookupData -> lookupData.increment(lookupKey, delta));
     }
 
     public Stream<String> keys(String partition) {
         validatePartition(partition);
-
         return hashPaths(partition)
                 .flatMap(LookupData::keys)
                 .map(LookupKey::string);
@@ -206,23 +197,12 @@ public class LongLookup implements AutoCloseable, Flushable {
                 .map(File::getName);
     }
 
-    /**
-     * Scan the long lookups for a given partition streaming the key and long
-     *
-     * @param partition the partition to scan
-     * @return a stream of entries of key and long value
-     */
-    public Stream<Map.Entry<String, Long>> scan(String partition) {
+    public LongStream size(String partition){
         validatePartition(partition);
-        return hashPaths(partition).flatMap(LookupData::scan);
+        return hashPaths(partition)
+                .mapToLong(LookupData::size);
     }
 
-    /**
-     * Scan a partition and call a function for each key and value
-     *
-     * @param partition the partition to scan
-     * @param keyValueFunction function to call for each key and long value
-     */
     public void scan(String partition, ObjLongConsumer<String> keyValueFunction) {
         validatePartition(partition);
 
@@ -235,24 +215,10 @@ public class LongLookup implements AutoCloseable, Flushable {
     @Override
     public void close() {
         if (writeCache != null) {
-            synchronized (writeCache) {
-                if (log.isTraceEnabled()) {
-                    log.trace("closing {} (~{} entries)", dir, writeCache.size());
-                }
-                synchronized (writeCacheDataCloseMonitor) {
-                    writeCache.forEach((path, data) -> {
-                        log.trace("cache removing {}", path);
-                        try {
-                            data.close();
-                        } catch (IOException e) {
-                            log.error("unable to close " + path, e);
-                            throw new UncheckedIOException("unable to close " + path, e);
-                        }
-
-                    });
-                    writeCache.clear();
-                }
+            if (log.isTraceEnabled()) {
+                log.trace("closing {} (~{} entries)", dir, writeCache.size());
             }
+            writeCache.close();
         }
         log.trace("closed {}", dir);
     }
@@ -265,27 +231,8 @@ public class LongLookup implements AutoCloseable, Flushable {
         if (log.isTraceEnabled()) {
             log.trace("flushing {}", dir);
         }
-        ConcurrentHashMap<Path, LookupData> cacheCopy;
-        synchronized (writeCache) {
-            cacheCopy = new ConcurrentHashMap<>(writeCache);
-        }
-        ArrayList<Future> futures = new ArrayList<>();
-        cacheCopy.forEach(
-                (path, data) ->
-                {
-                    if (data.isDirty())
-                        futures.add(AutoFlusher.flushExecPool.submit(() -> {
-                            try {
-                                log.trace("cache flushing {}", path);
-                                data.flush();
-                                log.trace("cache flushed {}", path);
-                            } catch (Exception e) {
-                                log.error("unable to flush " + path, e);
-                            }
-                        }));
-                }
-        );
-        Futures.getAll(futures);
+
+        writeCache.flush();
         log.trace("flushed {}", dir);
     }
 
@@ -304,23 +251,15 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
     }
 
-    private LookupData loadFromCacheForWrite(Path hashPath) {
+    private Long loadFromCacheForWrite(Path hashPath, Function<LookupData, Long> function) {
         if (writeCache == null) {
             throw new IllegalStateException("attempting write without a write cache: " + hashPath);
         }
-        synchronized (writeCache) {
-            return writeCache.computeIfAbsent(hashPath, path -> {
-                log.trace("cache loading {}", hashPath);
-                return new LookupData(
-                        hashPath.resolve("data"),
-                        hashPath.resolve("meta")
-                );
-            });
-        }
+        return writeCache.compute(hashPath, function);
     }
 
-    protected Path hashPath(String partition, LookupKey key) {
-        String hashPath = hashFunction == null ? "00" : hashPath(hashFunction.hashBytes(key.bytes()));
+    public Path hashPath(String partition, LookupKey key) {
+        String hashPath = hashFunction == null ? "00" : hashPath(hashFunction.hashString(key.string(), Charsets.UTF_8));
         return dir.resolve(partition).resolve(hashPath);
     }
 
@@ -345,6 +284,8 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     private Stream<Path> hashPaths(String partition) {
+        validatePartition(partition);
+
         Path partitionPath = dir.resolve(partition);
         if (Files.notExists(partitionPath)) {
             return Stream.empty();
@@ -375,10 +316,20 @@ public class LongLookup implements AutoCloseable, Flushable {
             return -1;
         }
 
-        LookupMetadata metadata = new LookupMetadata(metaPath);
-        return metadata.readData(hashPath.resolve("data"), lookupKey);
-    }
+        int cnt = 0;
+        Exception error = null;
+        while (cnt < 5){
+            try {
+                return new LookupMetadata(metaPath).readData(hashPath.resolve("data"), lookupKey);
+            } catch (UncheckedIOException | IllegalStateException e) {
+                error = e;
+            }
+            cnt++;
+        }
+        log.error("Lookup MetaData race on multiple retries!", error);
 
+        return -1;
+    }
 
     private static void validatePartition(String partition) {
         if (partition == null) {
