@@ -5,16 +5,37 @@ import com.upserve.uppend.lookup.LongLookup;
 import com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics;
 
 import java.nio.file.Path;
+import java.util.concurrent.ExecutorService;
 
 public class AppendOnlyStoreBuilder {
     private Path dir;
     private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
     private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
     private int flushDelaySeconds = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
+    private int blobsPerBlock = FileAppendOnlyStore.DEFAULT_BLOBS_PER_BLOCK;
+    private int suggestedBufferSize = 0;
+    private ExecutorService executorService = null;
+
     private MetricRegistry metrics;
 
     public AppendOnlyStoreBuilder withDir(Path dir) {
         this.dir = dir;
+        return this;
+    }
+
+    public AppendOnlyStoreBuilder withBufferedAppend(int suggestedBufferSize){
+        this.suggestedBufferSize = suggestedBufferSize;
+        return this;
+    }
+
+    public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock){
+        this.blobsPerBlock = blobsPerBlock;
+        return this;
+    }
+
+    public AppendOnlyStoreBuilder withBufferedAppend(int maxBufferSize, ExecutorService executorService){
+        this.suggestedBufferSize = maxBufferSize;
+        this.executorService = executorService;
         return this;
     }
 
@@ -38,8 +59,17 @@ public class AppendOnlyStoreBuilder {
         return this;
     }
 
-    public AppendOnlyStore build() {
-        AppendOnlyStore store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize);
+    public AppendOnlyStore build(boolean readOnly) {
+        AppendOnlyStore store;
+
+        if (readOnly) {
+            store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0, blobsPerBlock);
+        } else if (suggestedBufferSize > 0) {
+            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, blobsPerBlock, executorService);
+        } else {
+            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize, blobsPerBlock);
+        }
+
         if (metrics != null) {
             store = new AppendOnlyStoreWithMetrics(store, metrics);
         }
@@ -47,7 +77,11 @@ public class AppendOnlyStoreBuilder {
     }
 
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        return new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0);
+        AppendOnlyStore store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize,  0, blobsPerBlock);
+        if (metrics != null) {
+            store = new AppendOnlyStoreWithMetrics(store, metrics);
+        }
+        return store;
     }
 
     @Override
@@ -57,6 +91,8 @@ public class AppendOnlyStoreBuilder {
                 ", longLookupHashSize=" + longLookupHashSize +
                 ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +
                 ", flushDelaySeconds=" + flushDelaySeconds +
+                ", blobsPerBlock=" + blobsPerBlock +
+                ", bufferedAppendSize=" + suggestedBufferSize +
                 ", metrics=" + metrics +
                 '}';
     }

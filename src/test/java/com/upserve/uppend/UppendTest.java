@@ -20,7 +20,7 @@ public class UppendTest {
         final Path path = Paths.get(pathStr);
         SafeDeleting.removeTempPath(path);
         assertFalse(Files.exists(path));
-        AppendOnlyStore store = Uppend.store(pathStr).build();
+        AppendOnlyStore store = Uppend.store(pathStr).build(false);
         store.append("partition", "foo", "bar".getBytes());
         assertTrue(Files.exists(path));
         store.flush();
