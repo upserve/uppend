@@ -39,6 +39,9 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-c", "--cache-size"}, description = "Cache size")
     int cacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
 
+    @Option(names = {"-b", "--buffered"}, description = "Use BufferedAppendOnlyStore with this size")
+    int buffered = 0;
+
     @Option(names = {"-f", "--flush-delay"}, description = "Flush delay (sec)")
     int flushDelay = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
 
@@ -48,7 +51,7 @@ public class CommandBenchmark implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
-        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize, flushDelay);
+        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize, flushDelay, buffered);
         benchmark.run();
         return null;
     }
