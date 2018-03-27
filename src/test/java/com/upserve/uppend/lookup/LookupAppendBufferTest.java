@@ -14,6 +14,7 @@ import static org.junit.Assert.*;
 
 public class LookupAppendBufferTest {
     private final Path path = Paths.get("build/test/long-lookup-test");
+    private final Path blockPath = Paths.get("build/test/block");
 
     private LookupAppendBuffer instance;
     private LongLookup longLookup;
@@ -22,8 +23,9 @@ public class LookupAppendBufferTest {
     @Before
     public void init() throws IOException {
         SafeDeleting.removeDirectory(path);
+        SafeDeleting.removeTempPath(blockPath);
 
-        longLookup = new LongLookup(path, 32, 0);
+        longLookup = new LongLookup(path, new BlockedLongs(blockPath, 16), 32, 0);
         blockedLongs = new BlockedLongs(path.resolve("blocks"), 127);
 
         instance = new LookupAppendBuffer(longLookup, blockedLongs, 24, 0, Optional.empty());

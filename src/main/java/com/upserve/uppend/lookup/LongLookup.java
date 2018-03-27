@@ -2,7 +2,7 @@ package com.upserve.uppend.lookup;
 
 import com.google.common.base.Charsets;
 import com.google.common.hash.*;
-import com.upserve.uppend.AutoFlusher;
+import com.upserve.uppend.*;
 import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
@@ -41,11 +41,15 @@ public class LongLookup implements AutoCloseable, Flushable {
     private final HashFunction hashFunction;
     private final ConcurrentCache writeCache;
 
-    public LongLookup(Path dir) {
-        this(dir, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
+    private final BlockedLongs blocks;
+
+    public LongLookup(Path dir, BlockedLongs blocks) {
+        this(dir, blocks, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
     }
 
-    public LongLookup(Path dir, int hashSize, int writeCacheSize) {
+    public LongLookup(Path dir, BlockedLongs blocks, int hashSize, int writeCacheSize) {
+        this.blocks = blocks;
+
         if (hashSize < 1) {
             throw new IllegalArgumentException("hashSize must be >= 1");
         }
@@ -164,11 +168,15 @@ public class LongLookup implements AutoCloseable, Flushable {
         return loadFromCacheForWrite(hashPath, lookupData -> lookupData.put(lookupKey, value));
     }
 
-    public long putIfNotExists(String partition, String key, LongSupplier allocateLongFunc) {
+    public long putIfNotExists(String partition, String key, byte[] blob) {
         validatePartition(partition);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(partition, lookupKey);
-        return loadFromCacheForWrite(hashPath, lookupData -> lookupData.putIfNotExists(lookupKey, allocateLongFunc));
+        long blobPos = loadFromCacheForWrite(hashPath, lookupData -> lookupData.append(blob));
+        long blockPos = loadFromCacheForWrite(hashPath, lookupData -> lookupData.putIfNotExists(lookupKey, blocks::allocate));
+
+        blocks.append(blockPos, blobPos);
+        return blockPos;
     }
 
     public long increment(String partition, String key, long delta) {
@@ -357,4 +365,63 @@ public class LongLookup implements AutoCloseable, Flushable {
     private static boolean isValidPartitionCharPart(char c) {
         return Character.isJavaIdentifierPart(c) || c == '-';
     }
+
+    public Stream<byte[]> read(String partition, String key) {
+
+        log.trace("reading from {}: {}: {}", dir, partition, key);
+
+        validatePartition(partition);
+
+        LookupKey lookupKey = new LookupKey(key);
+        Path hashPath = hashPath(partition, lookupKey);
+
+        Stream<byte[]> result = null;
+        if (writeCache != null) {
+             result = writeCache.evaluateIfPresent(hashPath, lookupData -> {
+                 long blockPos = lookupData.get(lookupKey);
+                 blockPos = blockPos == Long.MIN_VALUE ? -1 : blockPos;
+                 Blobs blobs = lookupData.getBlobs();
+                 return blocks.values(blockPos).mapToObj(blobs::read);
+            });
+        }
+        if (result != null){
+            return result;
+        } else {
+            long blockPos = getUncachedInternal(lookupKey, hashPath);
+            try (Blobs blobs = new Blobs(hashPath.resolve("blobs"), true)) {
+                return blocks.values(blockPos).mapToObj(blobs::read);
+            }
+        }
+    }
+
+    private LongStream blockValues(String partition, String key, boolean useCache) {
+        log.trace("reading block values for key: {}", key);
+        long blockPos = blockPos(partition, key, useCache);
+        if (blockPos == -1) {
+            log.trace("key not found: {}", key);
+            return LongStream.empty();
+        }
+        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
+        return blocks.values(blockPos);
+    }
+
+    private long blockLastValue(String partition, String key, boolean useCache) {
+        log.trace("reading last value for key: {}", key);
+        long blockPos = blockPos(partition, key, useCache);
+        if (blockPos == -1) {
+            log.trace("key not found: {}", key);
+            return -1;
+        }
+        log.trace("returning last value at block pos {} for key: {}", blockPos, key);
+        return blocks.lastValue(blockPos);
+    }
+
+    private long blockPos(String partition, String key, boolean useCache) {
+        if (useCache) {
+            return get(partition, key);
+        } else {
+            return getFlushed(partition, key);
+        }
+    }
+
 }
