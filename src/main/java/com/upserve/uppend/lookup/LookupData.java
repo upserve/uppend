@@ -72,7 +72,7 @@ public class LookupData implements AutoCloseable, Flushable {
      *
      * @param key the key to look up
      * @return the value associated with the key, or {@code Long.MIN_VALUE} if
-     *         the key was not found
+     * the key was not found
      */
     public long get(LookupKey key) {
         synchronized (memMonitor) {
@@ -86,7 +86,7 @@ public class LookupData implements AutoCloseable, Flushable {
      * @param key the key whose value to set
      * @param value the new value set
      * @return the old value associated with the key, or {@code Long.MIN_VALUE}
-     *         if the entry didn't exist yet
+     * if the entry didn't exist yet
      */
     public long put(LookupKey key, final long value) {
         log.trace("putting {}={} in {}", key, value, path);
@@ -210,10 +210,42 @@ public class LookupData implements AutoCloseable, Flushable {
 
     /**
      * Check if this LookupData is dirty before calling flush
-     * @return
+     *
+     * @return isDirty
      */
-    public boolean isDirty(){
+    public boolean isDirty() {
         return isDirty.get();
+    }
+
+    /**
+     * number of keys in this Lookup Data
+     *
+     * @return the number of keys
+     */
+    public long size() {
+        try {
+            return chan.size() / 16;
+        } catch (IOException e) {
+            // This means the object has been close and its size for most purposes is now 0
+            log.trace("Could not get channel size", e);
+            return 0;
+        }
+    }
+
+    /**
+     * Static method to return the number of keys in a lookup data path
+     * @param path to the lookup data
+     * @return the number of keys
+     */
+    static Long size(Path path) {
+        if (Files.notExists(path)) {
+            return 0L;
+        }
+        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
+            return chan.size() / 16;
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to get size of " + path, e);
+        }
     }
 
     private void set(int index, LookupKey key, long value) {
@@ -241,7 +273,6 @@ public class LookupData implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to write value (" + value + ") at index: " + index, e);
         }
     }
-
 
     @Override
     public void close() throws IOException {
