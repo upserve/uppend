@@ -1,5 +1,6 @@
 package com.upserve.uppend.lookup;
 
+import com.google.common.primitives.Ints;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import me.lemire.integercompression.differential.IntegratedIntCompressor;
 import org.slf4j.Logger;

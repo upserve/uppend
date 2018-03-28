@@ -330,6 +330,7 @@ public class LongLookup implements AutoCloseable, Flushable {
             try {
                 return new LookupMetadata(metaPath).readData(hashPath.resolve("data"), lookupKey);
             } catch (UncheckedIOException | IllegalStateException e) {
+                log.warn("LookupMetadata retry for {}", metaPath, e);
                 error = e;
             }
             cnt++;
