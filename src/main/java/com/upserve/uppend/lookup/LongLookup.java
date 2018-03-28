@@ -379,7 +379,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         if (writeCache != null) {
              result = writeCache.evaluateIfPresent(hashPath, lookupData -> {
                  long blockPos = lookupData.get(lookupKey);
-                 blockPos = blockPos == Long.MIN_VALUE ? -1 : blockPos;
+                 if (blockPos == Long.MIN_VALUE) return Stream.empty();
                  Blobs blobs = lookupData.getBlobs();
 
                  LongStream longs = blocks.values(blockPos);
