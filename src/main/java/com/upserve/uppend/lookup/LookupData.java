@@ -1,7 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
-import com.upserve.uppend.Blobs;
+import com.upserve.uppend.*;
 
 import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
@@ -417,6 +417,28 @@ public class LookupData implements AutoCloseable, Flushable {
         return StreamSupport.stream(spliter, true).onClose(iter::close);
     }
 
+
+    static Stream<Map.Entry<String, Stream<byte[]>>> streamBlobs(Path hashPath, BlockedLongs blocks){
+
+        // Don't use an open write cache entry for a long running scan
+        Path blobsPath = hashPath.resolve("blobs");
+        if (Files.notExists(blobsPath)) {
+            return Stream.empty();
+        }
+
+        Blobs blobs = new Blobs(blobsPath, true);
+        return stream(hashPath)
+                .map(entry ->
+                        Maps.immutableEntry(
+                                entry.getKey(),
+                                blocks.values(entry.getValue())
+                                        .parallel()
+                                        .mapToObj(blobs::read)
+                                        .onClose(blobs::close)
+                        )
+                );
+    }
+
     static Stream<Map.Entry<String, Long>> stream(Path path) {
         if (Files.notExists(path)) {
             return Stream.empty();
@@ -516,8 +538,6 @@ public class LookupData implements AutoCloseable, Flushable {
             keyValueFunction.accept(key.string(), val);
         });
     }
-
-
 
     private static class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
         private final Path path;

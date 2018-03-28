@@ -142,10 +142,10 @@ public class LongLookup implements AutoCloseable, Flushable {
      * @param partition the partition name to scan
      * @return a Stream of entries containing key and long
      */
-    public Stream<Map.Entry<String, Long>> scan(String partition) {
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
         validatePartition(partition);
 
-        return hashPaths(partition).flatMap(LookupData::stream);
+        return hashPaths(partition).flatMap(path -> LookupData.streamBlobs(path, blocks));
     }
 
     public int cacheSize(){
@@ -366,7 +366,7 @@ public class LongLookup implements AutoCloseable, Flushable {
         return Character.isJavaIdentifierPart(c) || c == '-';
     }
 
-    public Stream<byte[]> read(String partition, String key) {
+    public Stream<byte[]> read(String partition, String key, boolean parallel) {
 
         log.trace("reading from {}: {}: {}", dir, partition, key);
 
@@ -381,47 +381,101 @@ public class LongLookup implements AutoCloseable, Flushable {
                  long blockPos = lookupData.get(lookupKey);
                  blockPos = blockPos == Long.MIN_VALUE ? -1 : blockPos;
                  Blobs blobs = lookupData.getBlobs();
-                 return blocks.values(blockPos).mapToObj(blobs::read);
+
+                 LongStream longs = blocks.values(blockPos);
+
+                 if (parallel) longs = longs.parallel();
+
+                 return longs.mapToObj(blobs::read);
             });
         }
         if (result != null){
             return result;
         } else {
             long blockPos = getUncachedInternal(lookupKey, hashPath);
-            try (Blobs blobs = new Blobs(hashPath.resolve("blobs"), true)) {
-                return blocks.values(blockPos).mapToObj(blobs::read);
-            }
+
+            if (blockPos == -1) return Stream.empty();
+
+            Blobs blobs = new Blobs(hashPath.resolve("blobs"), true);
+
+            LongStream longs = blocks.values(blockPos);
+
+            if (parallel) longs = longs.parallel();
+
+            return longs.mapToObj(blobs::read).onClose(blobs::close);
         }
     }
 
-    private LongStream blockValues(String partition, String key, boolean useCache) {
-        log.trace("reading block values for key: {}", key);
-        long blockPos = blockPos(partition, key, useCache);
-        if (blockPos == -1) {
-            log.trace("key not found: {}", key);
-            return LongStream.empty();
-        }
-        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
-        return blocks.values(blockPos);
+
+    public Stream<byte[]> readFlushed(String partition, String key, boolean parallel) {
+
+        log.trace("reading from {}: {}: {}", dir, partition, key);
+
+        validatePartition(partition);
+
+        LookupKey lookupKey = new LookupKey(key);
+        Path hashPath = hashPath(partition, lookupKey);
+
+        long blockPos = getUncachedInternal(lookupKey, hashPath);
+
+        if (blockPos == -1) return Stream.empty();
+
+        Blobs blobs = new Blobs(hashPath.resolve("blobs"), true);
+
+        LongStream longs = blocks.values(blockPos);
+
+        if (parallel) longs = longs.parallel();
+
+        return longs.mapToObj(blobs::read).onClose(blobs::close);
     }
 
-    private long blockLastValue(String partition, String key, boolean useCache) {
-        log.trace("reading last value for key: {}", key);
-        long blockPos = blockPos(partition, key, useCache);
-        if (blockPos == -1) {
-            log.trace("key not found: {}", key);
-            return -1;
-        }
-        log.trace("returning last value at block pos {} for key: {}", blockPos, key);
-        return blocks.lastValue(blockPos);
-    }
+    public byte[] readLast(String partition, String key) {
 
-    private long blockPos(String partition, String key, boolean useCache) {
-        if (useCache) {
-            return get(partition, key);
+        log.trace("reading from {}: {}: {}", dir, partition, key);
+
+        validatePartition(partition);
+
+        LookupKey lookupKey = new LookupKey(key);
+        Path hashPath = hashPath(partition, lookupKey);
+
+        byte[] result = null;
+        if (writeCache != null) {
+            result = writeCache.evaluateIfPresent(hashPath, lookupData -> {
+                long blockPos = lookupData.get(lookupKey);
+                if (blockPos == Long.MIN_VALUE) return null;
+                Blobs blobs = lookupData.getBlobs();
+                return blobs.read(blocks.lastValue(blockPos));
+                // This returns null if the cache is not loaded && if the key has no data!
+                // If the key has no data - it will try to load it again below - bad!
+            });
+        }
+        if (result != null){
+            return result;
         } else {
-            return getFlushed(partition, key);
+            long blockPos = getUncachedInternal(lookupKey, hashPath);
+
+            if (blockPos == -1) return  null;
+
+            Blobs blobs = new Blobs(hashPath.resolve("blobs"), true);
+
+            return blobs.read(blocks.lastValue(blockPos));
         }
+    }
+
+    public byte[] readLastFlushed(String partition, String key) {
+
+        log.trace("reading from {}: {}: {}", dir, partition, key);
+
+        validatePartition(partition);
+
+        LookupKey lookupKey = new LookupKey(key);
+        Path hashPath = hashPath(partition, lookupKey);
+
+        long blockPos = getUncachedInternal(lookupKey, hashPath);
+
+        if (blockPos == -1) return null;
+        Blobs blobs = new Blobs(hashPath.resolve("blobs"), true);
+        return blobs.read(blocks.lastValue(blockPos));
     }
 
 }

@@ -60,37 +60,22 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public Stream<byte[]> read(String partition, String key) {
         log.trace("reading in partition {} with key {}", partition, key);
-        return lookups.read(partition, key);
+        return lookups.read(partition, key, true);
     }
 
     @Override
     public Stream<byte[]> readSequential(String partition, String key) {
         log.trace("reading sequential in partition {} with key {}", partition, key);
-//        return blockValues(partition, key, true)
-//                .mapToObj(blobs::read);
-        return Stream.empty();
+        return lookups.read(partition, key, false);
     }
 
     public byte[] readLast(String partition, String key) {
         log.trace("reading last in partition {} with key {}", partition, key);
-//        long pos = blockLastValue(partition, key, true);
-//        if (pos == -1) {
-//            return null;
-//        }
-        return new byte[]{};
+        return lookups.readLast(partition, key);
     }
 
     public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition){
-//        return lookups.scan(partition)
-//                .map(entry ->
-//                        Maps.immutableEntry(
-//                                entry.getKey(),
-//                                blocks.values(entry.getValue())
-//                                        .parallel()
-//                                        .mapToObj(blobs::read)
-//                        )
-//                );
-        return Stream.empty();
+        return lookups.scan(partition);
     }
 
     @Override
@@ -101,23 +86,19 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public Stream<byte[]> readFlushed(String partition, String key) {
         log.trace("reading cached in partition {} with key {}", partition, key);
-        return Stream.empty();
+        return lookups.readFlushed(partition, key, true);
     }
 
     @Override
     public Stream<byte[]> readSequentialFlushed(String partition, String key) {
         log.trace("reading sequential cached in partition {} with key {}", partition, key);
-        return Stream.empty();
+        return lookups.readFlushed(partition, key, false);
     }
 
     @Override
     public byte[] readLastFlushed(String partition, String key) {
         log.trace("reading last cached in partition {} with key {}", partition, key);
-//        long pos = blockLastValue(partition, key, false);
-//        if (pos == -1) {
-//            return null;
-//        }
-        return new byte[]{};
+        return lookups.readLastFlushed(partition, key);
     }
 
     @Override
