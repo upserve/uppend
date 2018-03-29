@@ -16,6 +16,7 @@ public class FileCounterStore extends FileStore implements CounterStore {
 
         lookup = new LongLookup(
                 dir.resolve("inc-lookup"),
+                null,
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );

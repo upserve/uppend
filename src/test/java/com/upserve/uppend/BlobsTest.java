@@ -8,7 +8,10 @@ import java.lang.reflect.*;
 import java.nio.*;
 import java.nio.channels.*;
 import java.nio.file.Paths;
+import java.util.Random;
 
+import static com.upserve.uppend.Blobs.PAGE_SIZE;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 
@@ -49,6 +52,8 @@ public class BlobsTest {
         pos = blobs.append("bar".getBytes());
         assertEquals(7, pos);
 
+        blobs.flush();
+
         byte[] bytes = readOnlyBlobs.read(0);
         assertEquals("foo", new String(bytes));
         bytes = readOnlyBlobs.read(7);
@@ -58,6 +63,16 @@ public class BlobsTest {
 
     }
 
+    @Test
+    public void testPageOverflow(){
+        byte[] someBytes = genBytes(217);
+        long someBytePos = blobs.append(someBytes);
+
+        byte[] moreBytes = genBytes(PAGE_SIZE + 23);
+        long moreBytesPos = blobs.append(moreBytes);
+        assertArrayEquals(moreBytes, blobs.read(moreBytesPos));
+        assertArrayEquals(someBytes, blobs.read(someBytePos));
+    }
 
     @Test
     public void testClear(){
@@ -177,5 +192,11 @@ public class BlobsTest {
         modifiersField.setAccessible(true);
         modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
         field.set(inst, val);
+    }
+
+    private byte[] genBytes(int len){
+        byte[] bytes = new byte[len];
+        new Random().nextBytes(bytes);
+        return bytes;
     }
 }

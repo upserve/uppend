@@ -1,7 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
-import com.upserve.uppend.Blobs;
+import com.upserve.uppend.*;
 
 import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
@@ -25,10 +25,13 @@ public class LookupData implements AutoCloseable, Flushable {
     private final Path path;
     private final Path metadataPath;
     private final Path keysPath;
+    private final Path blobsPath;
     private final Supplier<ByteBuffer> recordBufSupplier;
     private final FileChannel chan;
     private final FileChannel keys;
     private final AtomicInteger keysPos;
+
+    private final Blobs blobs;
 
     private final Object memMonitor = new Object();
     private Object2LongSortedMap<LookupKey> mem;
@@ -43,6 +46,8 @@ public class LookupData implements AutoCloseable, Flushable {
         this.path = path;
         this.metadataPath = metadataPath;
         keysPath = path.resolveSibling("keys");
+        blobsPath = path.resolveSibling("blobs");
+
         Path parentPath = path.getParent();
         if (!Files.exists(parentPath) /* notExists() returns true erroneously */) {
             try {
@@ -71,6 +76,8 @@ public class LookupData implements AutoCloseable, Flushable {
             throw new UncheckedIOException("can't open file: " + path, e);
         }
 
+        blobs = new Blobs(blobsPath, false);
+
         try {
             init();
         } catch (IOException e) {
@@ -78,6 +85,10 @@ public class LookupData implements AutoCloseable, Flushable {
         }
 
         isClosed = new AtomicBoolean(false);
+    }
+
+    public long append(byte[] blob) {
+        return blobs.append(blob);
     }
 
     /**
@@ -95,6 +106,10 @@ public class LookupData implements AutoCloseable, Flushable {
 
     public boolean isDirty() {
         return isDirty.get();
+    }
+
+    public Blobs getBlobs() {
+        return blobs;
     }
 
     /**
@@ -276,6 +291,13 @@ public class LookupData implements AutoCloseable, Flushable {
         log.trace("closing lookup data at {}", path);
         synchronized (chan) {
             if (isClosed.compareAndSet(false, true)) {
+
+                try {
+                    blobs.close();
+                } catch (Exception e){
+                    log.error("unable to close blobs", e);
+                }
+
                 try {
                     keys.close();
                 } catch (Exception e) {
@@ -302,6 +324,7 @@ public class LookupData implements AutoCloseable, Flushable {
                 return;
             }
             log.trace("flushing lookup and metadata at {}", metadataPath);
+            blobs.flush();
             keys.force(true);
             chan.force(true);
             LookupMetadata metadata = generateMetadata();
@@ -392,6 +415,28 @@ public class LookupData implements AutoCloseable, Flushable {
                 Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
         );
         return StreamSupport.stream(spliter, true).onClose(iter::close);
+    }
+
+
+    static Stream<Map.Entry<String, Stream<byte[]>>> streamBlobs(Path hashPath, BlockedLongs blocks){
+
+        // Don't use an open write cache entry for a long running scan
+        Path blobsPath = hashPath.resolve("blobs");
+        if (Files.notExists(blobsPath)) {
+            return Stream.empty();
+        }
+
+        Blobs blobs = new Blobs(blobsPath, true);
+        return stream(hashPath)
+                .map(entry ->
+                        Maps.immutableEntry(
+                                entry.getKey(),
+                                blocks.values(entry.getValue())
+                                        .parallel()
+                                        .mapToObj(blobs::read)
+                                        .onClose(blobs::close)
+                        )
+                );
     }
 
     static Stream<Map.Entry<String, Long>> stream(Path path) {
@@ -493,8 +538,6 @@ public class LookupData implements AutoCloseable, Flushable {
             keyValueFunction.accept(key.string(), val);
         });
     }
-
-
 
     private static class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
         private final Path path;

@@ -29,13 +29,12 @@ public class BufferedAppendOnlyStore extends FileAppendOnlyStore {
     @Override
     public void append(String partition, String key, byte[] value) {
         log.trace("buffered append for key '{}'", key);
-        long blobPos = blobs.append(value);
-        lookupAppendBuffer.bufferedAppend(partition, key, blobPos);
+        lookupAppendBuffer.bufferedAppend(partition, key, value);
     }
 
     @Override
     public AppendStoreStats cacheStats(){
-        return new AppendStoreStats(blobs.size(), blocks.size(), 0, 0, 0, lookupAppendBuffer.bufferCount(), lookupAppendBuffer.bufferEntries(), lookupAppendBuffer.taskCount());
+        return new AppendStoreStats(0, blocks.size(), 0, 0, 0, lookupAppendBuffer.bufferCount(), lookupAppendBuffer.bufferEntries(), lookupAppendBuffer.taskCount());
     }
 
     @Override

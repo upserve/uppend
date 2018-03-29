@@ -14,13 +14,15 @@ public class LongLookupPerformanceTest {
     private static final int INITIAL_KEYS = 500_000;
 
     private Path lookupDir = Paths.get("build/test/tmp/lookup");
+    private Path blocks = Paths.get("build/test/tmp/blocks");
 
     @Before
     public void initialize() throws Exception {
         SafeDeleting.removeTempPath(lookupDir);
+        SafeDeleting.removeTempPath(blocks);
 
         LongLookup lookup;
-        lookup = new LongLookup(lookupDir, 32, 32);
+        lookup = new LongLookup(lookupDir, new BlockedLongs(blocks, 16), 32, 32);
         long lastReportTime = System.currentTimeMillis();
         log.info("init: starting");
         for(int i = 0; i < INITIAL_KEYS; ++i) {
@@ -40,7 +42,7 @@ public class LongLookupPerformanceTest {
 
     @Test(timeout = 100)
     public void speedTest() throws Exception {
-        LongLookup lookup = new LongLookup(lookupDir);
+        LongLookup lookup = new LongLookup(lookupDir, new BlockedLongs(blocks, 16));
         lookup.close();
     }
 

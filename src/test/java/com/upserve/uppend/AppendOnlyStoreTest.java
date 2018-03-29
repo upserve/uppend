@@ -2,18 +2,22 @@ package com.upserve.uppend;
 
 import com.google.common.primitives.Longs;
 import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Stream;
 
 
 import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
     private AppendOnlyStore newStore() {
+
         return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).withLongLookupHashSize(32).build(false);
     }
 
@@ -23,9 +27,9 @@ public class AppendOnlyStoreTest {
     public ExpectedException thrown = ExpectedException.none();
 
     @Before
-    public void initialize() {
+    public void initialize() throws IOException {
+        SafeDeleting.removeDirectory(Paths.get("build/test/file-append-only-store"));
         store = newStore();
-        store.clear();
     }
 
     @After
@@ -114,13 +118,18 @@ public class AppendOnlyStoreTest {
         Arrays.stream(uuids2)
                 .parallel()
                 .forEach(uuid -> {
-                    byte[][] results = store.read("_" + uuid.substring(0, 1), uuid).toArray(byte[][]::new);
+                    byte[][] results;
+                    try(Stream<byte[]> stream = store.read("_" + uuid.substring(0, 1), uuid)){
+                        results = stream.toArray(byte[][]::new);
+                    }
+
                     assertEquals("uuid failed to return 1 result: " + uuid, 1, results.length);
                     byte[] bytes = results[0];
                     assertArrayEquals("uuid result failed to check out: " + uuid, bytes, uuid.getBytes());
                 });
     }
 
+    @Ignore
     @Test
     public void testAppendWhilePurging() throws Exception {
 

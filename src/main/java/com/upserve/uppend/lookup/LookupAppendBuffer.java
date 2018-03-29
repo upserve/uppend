@@ -28,7 +28,7 @@ public class LookupAppendBuffer {
     private final int minSize;
     private final LongLookup longLookup;
     private final BlockedLongs blockedLongs;
-    private final ConcurrentHashMap<Path, List<Map.Entry<LookupKey, Long>>> appendBuffer;
+    private final ConcurrentHashMap<Path, List<Map.Entry<LookupKey, byte[]>>> appendBuffer;
 
     private final Striped<Lock> pathLock;
 
@@ -60,23 +60,23 @@ public class LookupAppendBuffer {
      *
      * @param partition the append store partition
      * @param key       the append store key
-     * @param blobPos   the position of the bytes in the blob file
+     * @param value   the position of the bytes in the blob file
      */
-    public void bufferedAppend(String partition, String key, long blobPos) {
+    public void bufferedAppend(String partition, String key, byte[] value) {
         LookupKey lookupKey = new LookupKey(key);
 
         // ConcurrentHashMap guarantees atomic, blocking exactly once execution of the compute method.
-        appendBuffer.compute(longLookup.hashPath(partition, lookupKey), (Path pathKey, List<Map.Entry<LookupKey, Long>> entryList) -> {
+        appendBuffer.compute(longLookup.hashPath(partition, lookupKey), (Path pathKey, List<Map.Entry<LookupKey, byte[]>> entryList) -> {
             if (entryList == null) {
                 entryList = new ArrayList<>(maxSize);
             }
 
             if (closed.get()) throw new RuntimeException("Closed for business");
 
-            entryList.add(Maps.immutableEntry(lookupKey, blobPos));
+            entryList.add(Maps.immutableEntry(lookupKey, value));
 
             if (entryList.size() >= ThreadLocalRandom.current().nextInt(minSize, maxSize)) {
-                List<Map.Entry<LookupKey, Long>> finalEntryList = new ArrayList<>(entryList);
+                List<Map.Entry<LookupKey, byte[]>> finalEntryList = new ArrayList<>(entryList);
                 entryList.clear();
                 threadPool.submit(() -> flushEntry(pathKey, finalEntryList));
                 taskCount.getAndAdd(1);
@@ -117,7 +117,7 @@ public class LookupAppendBuffer {
                     final Future[] future = new Future[1];
                     appendBuffer.compute(path, (keyPath, entryList) -> {
                         if (entryList.isEmpty()) return entryList;
-                        List<Map.Entry<LookupKey, Long>> finalEntryList = new ArrayList<>(entryList);
+                        List<Map.Entry<LookupKey, byte[]>> finalEntryList = new ArrayList<>(entryList);
                         entryList.clear();
                         future[0] = threadPool.submit(() -> flushEntry(path, finalEntryList));
                         taskCount.addAndGet(1);
@@ -158,14 +158,15 @@ public class LookupAppendBuffer {
         }
     }
 
-    private void flushEntry(Path path, List<Map.Entry<LookupKey, Long>> entryList) {
+    private void flushEntry(Path path, List<Map.Entry<LookupKey, byte[]>> entryList) {
         Lock lock = pathLock.get(path);
         lock.lock();
 
         try (LookupData lookupData = new LookupData(path.resolve("data"), path.resolve("meta"))) {
             entryList.forEach(entry -> {
+                long blobPos = lookupData.append(entry.getValue());
                 long blockPos = lookupData.putIfNotExists(entry.getKey(), blockedLongs::allocate);
-                blockedLongs.append(blockPos, entry.getValue());
+                blockedLongs.append(blockPos, blobPos);
             });
             taskCount.getAndAdd(-1);
         } catch (IOException e) {

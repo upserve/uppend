@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
+import java.util.stream.Stream;
 
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
@@ -92,9 +93,11 @@ public class Benchmark {
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
                 random.longs(count, 0, range).parallel(),
-                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
-                            .mapToInt(theseBytes -> theseBytes.length)
-                            .sum()
+                longInt -> {
+                    try(Stream<byte[]> stream = testInstance.read(partition(longInt, maxPartitions), key(longInt / maxPartitions, maxKeys))){
+                       return stream.mapToInt(theseBytes -> theseBytes.length).sum();
+                    }
+                }
         );
     }
 
