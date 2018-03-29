@@ -21,7 +21,7 @@ public class Blobs implements AutoCloseable, Flushable {
     private final AtomicLong blobPosition;
 
     protected static final int PAGE_SIZE = 256 * 1024; // allocate 256 KB chunks
-    private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
+    private static final int MAX_PAGES = 1024; // max 4 TB (~800 MB heap)
     private final MappedByteBuffer[] pages;
 
     private final AtomicBoolean closed = new AtomicBoolean(false);
