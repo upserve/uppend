@@ -17,6 +17,8 @@ import static org.junit.Assert.*;
 public class LongLookupTest {
     private final Path path = Paths.get("build/test/long-lookup-test");
 
+    private final LookupCache lookupCache = new LookupCache();
+
     @Before
     public void init() throws IOException {
         SafeDeleting.removeDirectory(path);
@@ -26,7 +28,7 @@ public class LongLookupTest {
     public void testCtorErrors() throws Exception {
         Exception expected = null;
         try {
-            new LongLookup(path, 0, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+            new LongLookup(path, lookupCache, 0, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         } catch (IllegalArgumentException e) {
             expected = e;
         }
@@ -34,7 +36,7 @@ public class LongLookupTest {
 
         expected = null;
         try {
-            new LongLookup(path, (1 << 24) + 1, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+            new LongLookup(path, lookupCache,(1 << 24) + 1, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         } catch (IllegalArgumentException e) {
             expected = e;
         }
@@ -42,7 +44,7 @@ public class LongLookupTest {
 
         expected = null;
         try {
-            new LongLookup(path, 1, -1);
+            new LongLookup(path, lookupCache,  1, -1);
         } catch (IllegalArgumentException e) {
             expected = e;
         }
@@ -54,7 +56,7 @@ public class LongLookupTest {
         for (int hashSize : new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536 }) {
             Path hashPath = path.resolve(String.format("byte-boundary-%d", hashSize));
             SafeDeleting.removeDirectory(hashPath);
-            try (LongLookup longLookup = new LongLookup(hashPath, hashSize, 1)) {
+            try (LongLookup longLookup = new LongLookup(hashPath, lookupCache, hashSize, 1)) {
                 assertEquals(hashSize, IntStream
                         .range(0, hashSize)
                         .mapToObj(HashCode::fromInt)
@@ -68,7 +70,7 @@ public class LongLookupTest {
 
     @Test
     public void testKeysDepth1() throws Exception {
-        LongLookup longLookup = new LongLookup(path, 1, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+        LongLookup longLookup = new LongLookup(path, lookupCache, 1, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         longLookup.put("partition", "b", 1);
         longLookup.put("partition", "c", 1);
         longLookup.put("partition", "a", 1);
@@ -78,7 +80,7 @@ public class LongLookupTest {
 
     @Test
     public void testKeysDepth2() throws Exception {
-        LongLookup longLookup = new LongLookup(path, 257, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+        LongLookup longLookup = new LongLookup(path, lookupCache, 257, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         longLookup.put("partition", "b", 1);
         longLookup.put("partition", "c", 1);
         longLookup.put("partition", "a", 1);
@@ -88,7 +90,7 @@ public class LongLookupTest {
 
     @Test
     public void testKeysDepth3() throws Exception {
-        LongLookup longLookup = new LongLookup(path, 65537, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
+        LongLookup longLookup = new LongLookup(path, lookupCache, 65537, LongLookup.DEFAULT_WRITE_CACHE_SIZE);
         longLookup.put("partition", "b", 1);
         longLookup.put("partition", "c", 1);
         longLookup.put("partition", "a", 1);
@@ -98,7 +100,7 @@ public class LongLookupTest {
 
     @Test
     public void testPartitions() throws Exception {
-        LongLookup longLookup = new LongLookup(path);
+        LongLookup longLookup = new LongLookup(path, lookupCache);
         longLookup.put("b", "b", 1);
         longLookup.put("c", "c", 1);
         longLookup.put("a", "a", 1);
@@ -108,9 +110,9 @@ public class LongLookupTest {
 
     @Test
     public void testGetFlushed() throws Exception {
-        LongLookup longLookup = new LongLookup(path);
+        LongLookup longLookup = new LongLookup(path, lookupCache);
         longLookup.put("a", "b", 1);
-        LongLookup longLookup2 = new LongLookup(path);
+        LongLookup longLookup2 = new LongLookup(path, lookupCache);
         assertEquals(-1, longLookup2.getFlushed("a", "b"));
         longLookup.flush();
         assertEquals(1, longLookup2.getFlushed("a", "b"));
@@ -121,14 +123,14 @@ public class LongLookupTest {
 
     @Test
     public void testScan() throws Exception {
-        LongLookup longLookup = new LongLookup(path);
+        LongLookup longLookup = new LongLookup(path, lookupCache);
         longLookup.put("a", "a1", 1);
         longLookup.put("a", "a2", 2);
         longLookup.put("b", "b1", 1);
         longLookup.put("b", "b2", 2);
         longLookup.close();
 
-        longLookup = new LongLookup(path);
+        longLookup = new LongLookup(path, lookupCache);
         Map<String, Long> results = new TreeMap<>();
         longLookup.scan("a", results::put);
         assertArrayEquals(new String[] {"a1", "a2"}, results.keySet().toArray(new String[0]));
@@ -152,7 +154,7 @@ public class LongLookupTest {
         // Actual number of hashPaths will be hashSize * 36 -> 1152
         int entropy = 3; // number of alpha numeric characters to use as entropy
 
-        LongLookup longLookup = new LongLookup(path, hashSize, writeCacheSize);
+        LongLookup longLookup = new LongLookup(path, lookupCache, hashSize, writeCacheSize);
 
         AtomicInteger counter = new AtomicInteger();
         LongSupplier supplier = () -> {

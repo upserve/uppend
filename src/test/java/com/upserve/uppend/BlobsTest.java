@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
@@ -15,9 +16,11 @@ import static org.junit.Assert.assertEquals;
 public class BlobsTest {
     private Blobs blobs;
 
+    private PagedFileMapper pagedFileMapper = new PagedFileMapper(32);
+
     @Before
     public void initialize() {
-        blobs = new Blobs(Paths.get("build/test/blobs"));
+        blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
         blobs.clear();
     }
 
@@ -55,7 +58,7 @@ public class BlobsTest {
         assertEquals(0, blobs.append("foo".getBytes()));
         blobs.close();
         blobs.close();
-        blobs = new Blobs(Paths.get("build/test/blobs"));
+        blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
         assertEquals("foo", new String(blobs.read(0)));
     }
 
