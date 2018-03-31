@@ -1,6 +1,6 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.lookup.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.slf4j.Logger;
@@ -20,7 +20,7 @@ public class LongLookupPerformanceTest {
         SafeDeleting.removeTempPath(lookupDir);
 
         LongLookup lookup;
-        lookup = new LongLookup(lookupDir, 512, 512);
+        lookup = new LongLookup(lookupDir, new LookupCache(), 512, 512);
         long lastReportTime = System.currentTimeMillis();
         log.info("init: starting");
         for(int i = 0; i < INITIAL_KEYS; ++i) {
@@ -40,7 +40,7 @@ public class LongLookupPerformanceTest {
 
     @Test(timeout = 100)
     public void speedTest() throws Exception {
-        LongLookup lookup = new LongLookup(lookupDir);
+        LongLookup lookup = new LongLookup(lookupDir, new LookupCache());
         lookup.close();
     }
 

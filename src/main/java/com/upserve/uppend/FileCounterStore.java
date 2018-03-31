@@ -1,6 +1,6 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.lookup.*;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -18,6 +18,7 @@ public class FileCounterStore extends FileStore implements CounterStore {
 
         lookup = new LongLookup(
                 dir.resolve("inc-lookup"),
+                new LookupCache(),
                 longLookupHashSize,
                 longLookupWriteCacheSize
         );

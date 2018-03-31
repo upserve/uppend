@@ -42,11 +42,13 @@ public class LongLookup implements AutoCloseable, Flushable {
     private final LinkedHashMap<Path, LookupData> writeCache;
     private final Object writeCacheDataCloseMonitor = new Object();
 
-    public LongLookup(Path dir) {
-        this(dir, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
+    private final LookupCache lookupCache;
+
+    public LongLookup(Path dir, LookupCache lookupCache) {
+        this(dir, lookupCache, DEFAULT_HASH_SIZE, DEFAULT_WRITE_CACHE_SIZE);
     }
 
-    public LongLookup(Path dir, int hashSize, int writeCacheSize) {
+    public LongLookup(Path dir, LookupCache lookupCache, int hashSize, int writeCacheSize) {
         if (hashSize < 1) {
             throw new IllegalArgumentException("hashSize must be >= 1");
         }
@@ -58,6 +60,8 @@ public class LongLookup implements AutoCloseable, Flushable {
         }
 
         this.dir = dir;
+        this.lookupCache = lookupCache;
+
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {

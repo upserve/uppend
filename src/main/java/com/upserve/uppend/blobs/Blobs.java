@@ -1,5 +1,6 @@
-package com.upserve.uppend;
+package com.upserve.uppend.blobs;
 
+import com.google.common.primitives.Ints;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
@@ -14,12 +15,14 @@ public class Blobs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final Path file;
+    private final PagedFileMapper pagedFileMapper;
 
     private final FileChannel blobs;
     private final AtomicLong blobPosition;
 
-    public Blobs(Path file) {
+    public Blobs(Path file, PagedFileMapper pagedFileMapper) {
         this.file = file;
+        this.pagedFileMapper = pagedFileMapper;
 
         Path dir = file.getParent();
         try {
@@ -53,11 +56,11 @@ public class Blobs implements AutoCloseable, Flushable {
     }
 
     public byte[] read(long pos) {
-        log.trace("reading from {} @ {}", file, pos);
-        int size = readInt(pos);
+        log.trace("read mapped from  {} @ {}", file, pos);
+        int size = readMappedInt(pos);
         byte[] buf = new byte[size];
-        read(pos + 4, buf);
-        log.trace("read {} bytes from {} @ {}", size, file, pos);
+        readMapped(pos + 4, buf);
+        log.trace("read mapped {} bytes from {} @ {}", size, file, pos);
         return buf;
     }
 
@@ -90,24 +93,33 @@ public class Blobs implements AutoCloseable, Flushable {
         }
     }
 
-    private int readInt(long pos) {
-        ByteBuffer intBuffer = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
-        read(pos, intBuffer);
-        intBuffer.flip();
-        return intBuffer.getInt();
+    private int readMappedInt(long pos) {
+        byte[] buf = new byte[4];
+        readMapped(pos, buf);
+        return Ints.fromByteArray(buf);
     }
 
-    private void read(long pos, byte[] buf) {
-        read(pos, ByteBuffer.wrap(buf));
-    }
-
-    private void read(long pos, ByteBuffer buf) {
-        int len = buf.remaining();
-        try {
-            blobs.read(buf, pos);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to read " + len + " bytes at pos " + pos + " in " + file, e);
+    private void readMapped(long pos, byte[] buf){
+        final int result = readMappedOffset(pos, buf, 0);
+        if (result != buf.length) {
+            throw new RuntimeException("FOo");
         }
+    }
+
+    private int readMappedOffset(long pos, byte[] buf, int offset) {
+        FilePage filePage = pagedFileMapper.getPage(blobs, file, pos);
+
+        int bytesRead;
+        try {
+            bytesRead = filePage.get(pos, buf, offset);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to read bytes in blob store", e);
+        }
+
+        if (bytesRead < buf.length){
+            bytesRead += readMappedOffset(pos + bytesRead, buf, offset + bytesRead);
+        }
+        return bytesRead;
     }
 
     public static byte[] read(FileChannel chan, long pos) {
@@ -130,6 +142,5 @@ public class Blobs implements AutoCloseable, Flushable {
         }
         log.trace("read {} bytes @ {}", size, pos);
         return bytes;
-
     }
 }

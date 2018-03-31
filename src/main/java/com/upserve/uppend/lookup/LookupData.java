@@ -1,7 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
-import com.upserve.uppend.Blobs;
+import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.*;
 import it.unimi.dsi.fastutil.objects.*;
 import org.slf4j.Logger;
@@ -18,6 +18,8 @@ import java.util.stream.*;
 
 public class LookupData implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    private final PagedFileMapper pagedFileMapper = new PagedFileMapper(32);
 
     private final AtomicBoolean isClosed;
     private final AtomicBoolean isDirty;
@@ -55,7 +57,7 @@ public class LookupData implements AutoCloseable, Flushable {
             throw new UncheckedIOException("can't open file: " + path, e);
         }
 
-        keyBlobs = new Blobs(path.resolveSibling("keys"));
+        keyBlobs = new Blobs(path.resolveSibling("keys"), pagedFileMapper);
 
         try {
             init();
@@ -391,7 +393,7 @@ public class LookupData implements AutoCloseable, Flushable {
             return;
         }
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
-            try (Blobs keyBlobs = new Blobs(path.resolveSibling("keys"))) {
+            try (Blobs keyBlobs = new Blobs(path.resolveSibling("keys"), new PagedFileMapper(32))) {
                 chan.position(0);
                 long pos = 0;
                 long size = chan.size();
@@ -482,7 +484,7 @@ public class LookupData implements AutoCloseable, Flushable {
             chan = FileChannel.open(path, StandardOpenOption.READ);
             chan.position(0);
             keysPath = path.resolveSibling("keys");
-            keyBlobs = new Blobs(keysPath);
+            keyBlobs = new Blobs(keysPath, new PagedFileMapper(32));
             numKeys = (int) chan.size() / 16;
             dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
         }

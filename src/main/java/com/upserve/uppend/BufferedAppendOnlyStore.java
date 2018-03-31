@@ -23,14 +23,14 @@ public class BufferedAppendOnlyStore extends FileAppendOnlyStore {
 
     BufferedAppendOnlyStore(Path dir, boolean doLock, int longLookupHashSize, int bufferSize, int blobsPerBlock, ExecutorService executorService) {
         super(dir, 0, doLock, longLookupHashSize, 0, blobsPerBlock);
-        lookupAppendBuffer = new LookupAppendBuffer(lookups, blocks, bufferSize, bufferSize/5, executorService);
+        lookupAppendBuffer = new LookupAppendBuffer(new LongLookup(dir, new LookupCache()), blocks, bufferSize, bufferSize/5, executorService);
     }
 
     @Override
     public void append(String partition, String key, byte[] value) {
         log.trace("buffered append for key '{}'", key);
-        long blobPos = blobs.append(value);
-        lookupAppendBuffer.bufferedAppend(partition, key, blobPos);
+//        long blobPos = blobs.append(value);
+//        lookupAppendBuffer.bufferedAppend(partition, key, blobPos);
     }
 
     @Override
