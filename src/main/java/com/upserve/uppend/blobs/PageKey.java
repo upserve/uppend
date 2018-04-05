@@ -5,13 +5,11 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 public class PageKey {
-    private final Path fileName;
-    private final FileChannel chan;
+    private final Path filePath;
     private final int page;
 
-    PageKey(Path fileName, FileChannel chan, int page){
-        this.fileName = fileName;
-        this.chan = chan;
+    PageKey(Path filePath, int page){
+        this.filePath = filePath;
         this.page = page;
     }
 
@@ -21,20 +19,17 @@ public class PageKey {
         if (o == null || getClass() != o.getClass()) return false;
         PageKey pageKey = (PageKey) o;
         return page == pageKey.page &&
-                Objects.equals(chan, pageKey.chan);
+                Objects.equals(filePath, pageKey.filePath);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(chan, page);
+
+        return Objects.hash(filePath, page);
     }
 
-    Path getFileName() {
-        return fileName;
-    }
-
-    FileChannel getChan() {
-        return chan;
+    Path getFilePath() {
+        return filePath;
     }
 
     int getPage() {

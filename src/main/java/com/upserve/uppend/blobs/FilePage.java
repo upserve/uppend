@@ -10,14 +10,20 @@ public class FilePage {
     private final byte[] bytes;
     private final PageKey key;
     private final int pageSize;
-
+    private final FileCache fileCache;
     private int bytesRead;
 
-    public FilePage(PageKey key, int pageSize) throws IOException {
+    /**
+     * Lazy loaded page of a file. The open file channel must be provided to read bytes but data can be cached regardless
+     * @param key
+     * @param pageSize
+     * @throws IOException
+     */
+    public FilePage(PageKey key, int pageSize, FileCache fileCache) throws IOException {
         this.key = key;
         this.pageSize = pageSize;
+        this.fileCache = fileCache;
         this.bytes = new byte[pageSize];
-        loadBytes();
     }
 
     protected int get(long filePosition, byte[] dst, int bufferOffset) throws IOException {
@@ -28,7 +34,7 @@ public class FilePage {
         result =  getBytes(filePosition, dst, bufferOffset);
         if (result > 0) return result;
 
-        throw new IOException("Unable to read " + (dst.length - bufferOffset) + " bytes at pos " + filePosition + ": Past end of file: " + key.getFileName());
+        throw new IOException("Unable to read " + (dst.length - bufferOffset) + " bytes at pos " + filePosition + ": Past end of file: " + key.getFilePath());
     }
 
     private int pagePosition(long pos){
@@ -57,7 +63,7 @@ public class FilePage {
                     bufferOffset,
                     actualRead);
         } catch (RuntimeException e) {
-            throw new IOException("Unable to read " + desiredRead + " bytes from page " + key.getPage() + " at pos " + filePosition + " in file " + key.getFileName(), e);
+            throw new IOException("Unable to read " + desiredRead + " bytes from page " + key.getPage() + " at pos " + filePosition + " in file " + key.getFilePath(), e);
         }
         return actualRead;
     }
@@ -74,9 +80,9 @@ public class FilePage {
         long pos = (long) key.getPage() * pageSize + bytesRead;
         ByteBuffer buffer = ByteBuffer.wrap(bytes, bytesRead, pageSize - bytesRead);
         try {
-            bytesRead += key.getChan().read(buffer, pos);
+            bytesRead += fileCache.getFileChannel(key.getFilePath()).read(buffer, pos);
         } catch (IOException e) {
-            throw new IOException("Unable to read page " + key.getPage() + " at pos " + pos + " with Size " + pageSize + " in file " + key.getFileName(), e);
+            throw new IOException("Unable to read page " + key.getPage() + " at pos " + pos + " with Size " + pageSize + " in file " + key.getFilePath(), e);
         }
     }
 }

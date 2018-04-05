@@ -4,12 +4,14 @@ import java.nio.charset.StandardCharsets;
 
 public class LookupKey implements Comparable<LookupKey> {
     private final byte[] bytes;
+    private boolean dirty;
 
     public LookupKey(byte[] bytesValue) {
         if (bytesValue == null) {
             throw new NullPointerException("null bytes given");
         }
         bytes = bytesValue;
+        dirty = false;
     }
 
     public LookupKey(String stringValue) {
@@ -17,6 +19,12 @@ public class LookupKey implements Comparable<LookupKey> {
             throw new NullPointerException("null string given");
         }
         bytes = stringValue.getBytes(StandardCharsets.UTF_8);
+    }
+
+    public boolean isDirty() { return dirty; }
+
+    public void setDirty(boolean dirty) {
+        this.dirty = dirty;
     }
 
     public String string() {

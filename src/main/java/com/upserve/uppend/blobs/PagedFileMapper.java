@@ -9,20 +9,21 @@ import java.nio.file.Path;
 public class PagedFileMapper {
 
     private final int pageSize;
-
+    private final FileCache fileCache;
     private final LoadingCache<PageKey, FilePage> pageCache;
 
-    public PagedFileMapper(int pageSize) {
+    public PagedFileMapper(int pageSize, int initialCacheSize, int maximumCacheSize, FileCache fileCache) {
         this.pageSize = pageSize;
-
+        this.fileCache = fileCache;
         this.pageCache = Caffeine
                 .<PageKey, FilePage>newBuilder()
-                .initialCapacity(1000)
-                .<PageKey, FilePage>build(key -> new FilePage(key, pageSize));
+                .initialCapacity(initialCacheSize)
+                .maximumSize(maximumCacheSize)
+                .<PageKey, FilePage>build(key -> new FilePage(key, pageSize, fileCache));
     }
 
-    FilePage getPage(FileChannel chan, Path file, long pos){
-        return getPage(new PageKey(file, chan, page(pos)));
+    FilePage getPage(Path filePath, long pos){
+        return getPage(new PageKey(filePath, page(pos)));
     }
 
     private FilePage getPage(PageKey key){
@@ -36,9 +37,14 @@ public class PagedFileMapper {
         }
         return (int) pageIndexLong;
     }
+    public boolean readOnly() { return fileCache.readOnly(); }
 
     public CacheStats cacheStats(){
         return pageCache.stats();
+    }
+
+    public FileCache getFileCache() {
+        return fileCache;
     }
 
     int getPageSize() {

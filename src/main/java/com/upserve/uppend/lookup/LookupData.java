@@ -12,57 +12,68 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.*;
 import java.util.function.*;
 import java.util.stream.*;
 
 public class LookupData implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PagedFileMapper pagedFileMapper = new PagedFileMapper(32);
+    private final PartitionLookupCache partitionLookupCache;
+
+    // The container for stuff we need to write
+    private final ConcurrentHashMap<LookupKey, Long> writeCache;
 
     private final AtomicBoolean isClosed;
     private final AtomicBoolean isDirty;
 
-    private final Path path;
+    private final Path hashPath;
+    private final Path dataPath;
     private final Path metadataPath;
-    private final Supplier<ByteBuffer> recordBufSupplier;
-    private final FileChannel chan;
+    private final Path keyPath;
 
-    private final Object memMonitor = new Object();
-    private Object2LongSortedMap<LookupKey> mem;
-    private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
+    private final Supplier<ByteBuffer> recordBufSupplier;
+
+    private final boolean readOnly;
 
     private final Blobs keyBlobs;
 
-    public LookupData(Path path, Path metadataPath) {
-        log.trace("opening lookup data: {}", path);
+    public LookupData(Path path, PartitionLookupCache lookupCache) {
+        log.trace("opening hashpath for lookup: {}", path);
 
-        this.path = path;
-        this.metadataPath = metadataPath;
-        Path parentPath = path.getParent();
-        if (!Files.exists(parentPath) /* notExists() returns true erroneously */) {
+        this.hashPath = path;
+        this.dataPath = path.resolve("data");
+        this.metadataPath = path.resolve("meta");
+        this.keyPath = path.resolve("keys");
+
+        this.partitionLookupCache = lookupCache;
+
+
+        if (lookupCache.getPageCache().getFileCache().readOnly()) {
+            readOnly = true;
+            writeCache = null;
+        } else {
+            readOnly = false;
+            writeCache = new ConcurrentHashMap<>();
+        }
+
+        if (!Files.exists(path) /* notExists() returns true erroneously */) {
             try {
-                Files.createDirectories(parentPath);
+                Files.createDirectories(path);
             } catch (IOException e) {
-                throw new UncheckedIOException("unable to make parent dir: " + parentPath, e);
+                throw new UncheckedIOException("unable to make parent dir: " + path, e);
             }
         }
 
         recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(16);
 
-        try {
-            chan = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-        } catch (IOException e) {
-            throw new UncheckedIOException("can't open file: " + path, e);
-        }
-
-        keyBlobs = new Blobs(path.resolveSibling("keys"), pagedFileMapper);
+        keyBlobs = new Blobs(keyPath, partitionLookupCache.getPageCache());
 
         try {
             init();
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to initialize data at " + path, e);
+            throw new UncheckedIOException("unable to initialize lookup data at " + hashPath, e);
         }
 
         isClosed = new AtomicBoolean(false);
@@ -73,12 +84,13 @@ public class LookupData implements AutoCloseable, Flushable {
      * Return the value associated with the given key
      *
      * @param key the key to look up
-     * @return the value associated with the key, or {@code Long.MIN_VALUE} if
-     *         the key was not found
+     * @return the value associated with the key, null if the key was not found
      */
-    public long get(LookupKey key) {
-        synchronized (memMonitor) {
-            return mem.getLong(key);
+    public Long get(LookupKey key) {
+        if (readOnly) {
+            return getCached(key);
+        } else {
+            return writeCache.getOrDefault(key, getCached(key));
         }
     }
 
@@ -87,134 +99,117 @@ public class LookupData implements AutoCloseable, Flushable {
      *
      * @param key the key whose value to set
      * @param value the new value set
-     * @return the old value associated with the key, or {@code Long.MIN_VALUE}
-     *         if the entry didn't exist yet
+     * @return the old value associated with the key, or null if the entry didn't exist yet
      */
-    public long put(LookupKey key, final long value) {
-        log.trace("putting {}={} in {}", key, value, path);
+    public Long put(LookupKey key, final long value) {
+        if (readOnly) throw new RuntimeException("Can not put in read only LookupData: " + hashPath);
 
-        final long existingValue;
-        final int index;
-        final boolean existing;
-
-        synchronized (memMonitor) {
-            existingValue = mem.put(key, value);
-            if (existing = existingValue != Long.MIN_VALUE) {
-                index = memOrder.getInt(key);
-                if (index == Integer.MIN_VALUE) {
-                    throw new IllegalStateException("unknown index order for existing key: " + key);
-                }
-            } else {
-                index = memOrder.size();
-                if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-                }
-            }
-        }
-
-        if (existing) {
-            set(index, value);
-        } else {
-            set(index, key, value);
-        }
-
-        return existingValue;
-    }
-
-    public long putIfNotExists(LookupKey key, final long value) {
-        log.trace("putting (if not exists) {}={} in {}", key, value, path);
-
-        final int index;
-
-        synchronized (memMonitor) {
-            long existingValue = mem.getLong(key);
-            if (existingValue != Long.MIN_VALUE) {
-                return existingValue;
-            }
-            if (mem.put(key, value) != Long.MIN_VALUE) {
-                throw new IllegalStateException("race while performing conditional put within synchronized block");
+        AtomicReference<Long>  ref = new AtomicReference<>();
+        writeCache.compute(key, (k, oldValue) -> {
+            if (oldValue == null) {
+                oldValue = getCached(k);
             }
 
-            index = memOrder.size();
-            if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-            }
-        }
-        set(index, key, value);
-        return value;
-    }
-
-    public long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
-        log.trace("putting (if not exists) {}=<lambda> in {}", key, path);
-
-        final long newValue;
-        final int index;
-
-        synchronized (memMonitor) {
-            long firstExistingValue = mem.getLong(key);
-            if (firstExistingValue != Long.MIN_VALUE) {
-                return firstExistingValue;
-            }
-
-            newValue = allocateLongFunc.getAsLong();
-            long existingValue = mem.put(key, newValue);
-
-            if (existingValue != Long.MIN_VALUE) {
-                throw new IllegalStateException("race while putting (if not exists) " + key + "=<lambda> in " + path);
-            }
-            index = memOrder.size();
-            if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-            }
-        }
-
-        set(index, key, newValue);
-
-        return newValue;
-    }
-
-    public long increment(LookupKey key, long delta) {
-        log.trace("incrementing {} by {} in {}", key, delta, path);
-
-        final long existingValue;
-        final long newValue;
-        final int index;
-        final boolean existing;
-
-        synchronized (memMonitor) {
-            existingValue = mem.getLong(key);
-            if (existing = existingValue != Long.MIN_VALUE) {
-                newValue = existingValue + delta;
-                index = memOrder.getInt(key);
-                if (index == Integer.MIN_VALUE) {
-                    throw new IllegalStateException("unknown index order for existing key: " + key);
-                }
-            } else {
-                newValue = delta;
-                index = memOrder.size();
-                if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-                }
-            }
-            if (mem.put(key, newValue) != existingValue) {
-                throw new IllegalStateException("race while incrementing key " + key + " in " + path);
-            }
-        }
-
-        if (existing) {
-            set(index, newValue);
-        } else {
-            set(index, key, newValue);
-        }
-
-        return newValue;
+            if (value != oldValue) k.setDirty(true);
+            // This will add keys which are not dirty to the write cache but the write cache will no-op on flush
+            ref.set(oldValue);
+            return value;
+        });
+        return ref.get();
     }
 
     /**
+     * Set the value of the key if it does not exist or return the existing value
+     *
+     * @param key the key to check or set
+     * @param allocateLongFunc the function to call to get the value if this is a new key
+     * @return the value associated with the key
+     */
+    public long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
+        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
+
+        return writeCache.compute(key, (k, value) -> {
+            if (value == null) {
+                // If not write cached, check the read cache
+                value = getCached(k);
+                if (value == null) {
+                    // if not read cached call the long supplier and mark it dirty in the write cache
+                    value = allocateLongFunc.getAsLong();
+                    k.setDirty(true);
+                }
+                // This will add values from the read cache to the write cache but they will be clean and no-op on flush
+            }
+            return value;
+        });
+    }
+
+    /**
+     * Increment the value of the key if it does not exist or return the existing value
+     *
+     * @param key the key to check or set
+     * @param delta the amount to increment
+     * @return the new value associated with the key
+     */
+    public long increment(LookupKey key, long delta) {
+        if (readOnly) throw new RuntimeException("Can not increment read only LookupData: " + hashPath);
+
+        return writeCache.compute(key, (k, value) -> {
+            k.setDirty(true);
+            if (value == null) {
+                return getCached(k, 0L) + delta;
+            } else{
+                return value + delta;
+            }
+        });
+    }
+
+    private long getCached(LookupKey key, long defaultValue){
+        Long result = getCached(key);
+        if (result == null) {
+            return defaultValue;
+        } else {
+            return result;
+        }
+    }
+
+    private Long getCached(LookupKey key){
+        return partitionLookupCache.getLong(key, this::loadKey);
+    }
+
+
+    /**
+     * load a key from paged files for the partition lookup cache
+     * Must return null to prevent loading missing value into cache
+     *
+     * @param key the Key we are looking for
+     * @return OptionalLong value
+     */
+    private Long loadKey(PartitionLookupKey key) {
+        return loadKey(key.getLookupKey());
+    }
+
+    /**
+     * Load a key from cached pages
+     *
+     * @param key the key we are looking for
+     * @return OptionalLong value
+     */
+
+    private Long loadKey(LookupKey key) {
+        return 0L;
+    }
+
+
+
+
+
+
+    /**
      * Check if this LookupData is dirty before calling flush
+     *
      * @return
      */
-    public boolean isDirty(){
+    public boolean isDirty() {
         return isDirty.get();
     }
 
@@ -247,7 +242,7 @@ public class LookupData implements AutoCloseable, Flushable {
 
     @Override
     public void close() throws IOException {
-        log.trace("closing lookup data at {}", path);
+        log.trace("closing lookup data at {}", hashPath);
         synchronized (chan) {
             if (isClosed.compareAndSet(false, true)) {
                 try {
@@ -256,82 +251,44 @@ public class LookupData implements AutoCloseable, Flushable {
                     log.error("unable to close key blobs", e);
                 }
                 chan.close();
-                log.trace("closed lookup data at {}", path);
+                log.trace("closed lookup data at {}", hashPath);
                 LookupMetadata metadata = generateMetadata();
                 metadata.writeTo(metadataPath);
                 log.trace("wrote lookup metadata at {}: {}", metadataPath, metadata);
             } else {
-                log.warn("lookup data already closed: " + path, new RuntimeException("already closed") /* get stack */);
+                log.warn("lookup data already closed: " + dataPath, new RuntimeException("already closed") /* get stack */);
             }
         }
     }
 
     @Override
     public void flush() throws IOException {
-        if (isDirty.getAndSet(false)) {
-            synchronized (chan) {
-                if (isClosed.get()) {
-                    log.debug("ignoring flush of closed lookup data at {}", path);
-                    return;
-                }
-                log.trace("flushing lookup and metadata at {}", metadataPath);
-                keyBlobs.flush();
-                chan.force(true);
-                LookupMetadata metadata = generateMetadata();
-                metadata.writeTo(metadataPath);
-                log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
-            }
+        if (readOnly)  throw new RuntimeException("Can not flush read only LookupData: " + hashPath);
+
+        if (writeCache.size() > 0){
+
+            writeCache
+                    .keySet()
+                    .stream()
+                    .filter(LookupKey::isDirty)
+                    .forEach(key -> {
+                        writeCache.computeIfPresent(key, (k, value)-> {
+
+                            
+
+                            return value;
+                        });
+
+                    });
+
+
         }
+
+
+
     }
 
-    private void init() throws IOException {
-        synchronized (memMonitor) {
-            mem = new Object2LongAVLTreeMap<>();
-            mem.defaultReturnValue(Long.MIN_VALUE);
 
-            memOrder = new Object2IntLinkedOpenHashMap<>();
-            memOrder.defaultReturnValue(Integer.MIN_VALUE);
-
-            chan.position(0);
-            long pos = 0;
-            long size = chan.size();
-            DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
-            // don't call dis.close() on wrapping InputStream since we don't want it to chain to chan.close()
-            while (pos < size) {
-                long nextPos = pos + 16;
-                if (nextPos > size) {
-                    // corrupt; fix
-                    log.error("truncating at pos " + pos + " for file of corrupted size " + size);
-                    chan.truncate(pos);
-                    break;
-                }
-                long keyPos;
-                try {
-                    keyPos = dis.readLong();
-                } catch (IOException e) {
-                    throw new IOException("read bad key pos at pos " + pos, e);
-                }
-                byte[] keyBytes = keyBlobs.read(keyPos);
-                LookupKey key = new LookupKey(keyBytes);
-                long val;
-                try {
-                    val = dis.readLong();
-                } catch (IOException e) {
-                    throw new IOException("read bad value for key " + key + " at pos " + pos, e);
-                }
-                if (mem.put(key, val) != Long.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem key at pos " + pos + ": " + key);
-                }
-                if (memOrder.put(key, memOrder.size()) != Integer.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
-                }
-                pos = nextPos;
-            }
-            if (chan.position() != chan.size()) {
-                log.warn("init incomplete at pos " + chan.position() + " / " + chan.size());
-            }
-        }
-    }
 
     private LookupMetadata generateMetadata() {
         final LookupKey minKey;
@@ -360,7 +317,7 @@ public class LookupData implements AutoCloseable, Flushable {
         try {
             iter = new KeyIterator(path);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
+            throw new UncheckedIOException("unable to create key iterator for dataPath: " + path, e);
         }
         Spliterator<LookupKey> spliter = Spliterators.spliterator(
                 iter,
@@ -378,7 +335,7 @@ public class LookupData implements AutoCloseable, Flushable {
         try {
             iter = new KeyLongIterator(path);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
+            throw new UncheckedIOException("unable to create key iterator for dataPath: " + path, e);
         }
         Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
                 iter,

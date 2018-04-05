@@ -71,7 +71,7 @@ public class LookupAppendBuffer {
         LookupKey lookupKey = new LookupKey(key);
 
         // ConcurrentHashMap guarantees atomic, blocking exactly once execution of the compute method.
-        appendBuffer.compute(longLookup.hashPath(partition, lookupKey), (Path pathKey, List<Map.Entry<LookupKey, Long>> entryList) -> {
+        appendBuffer.compute(longLookup.hashPath(lookupKey), (Path pathKey, List<Map.Entry<LookupKey, Long>> entryList) -> {
             if (entryList == null) {
                 entryList = new ArrayList<>(maxSize);
             }

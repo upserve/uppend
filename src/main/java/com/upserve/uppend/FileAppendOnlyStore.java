@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
-import com.google.common.collect.Maps;
-import com.upserve.uppend.blobs.PagedFileMapper;
+import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
 import org.slf4j.Logger;
 
@@ -16,50 +15,61 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     protected static final int DEFAULT_BLOBS_PER_BLOCK = 127;
-    protected static final int DEFAULT_BLOB_PAGE_SIZE = 256 * 1024;
+    protected static final int DEFAULT_BLOB_PAGE_SIZE = 1024 * 1024;
+    protected static final int DEFAULT_MAXIMUM_BLOB_CACHE_SIZE = 10_000;
+    protected static final int DEFAULT_INITIAL_BLOB_CACHE_SIZE = 100;
+
+    protected static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 *1024;
+    protected static final int DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE = 10_000;
+    protected static final int DEFAULT_INITIAL_LOOKUP_CACHE_SIZE = 100;
+
+    protected static final int DEFAULT_MAXIMUM_FILE_CACHE_SIZE = 10_000;
+    protected static final int DEFAULT_INITIAL_FILE_CACHE_SIZE = 1000;
+
+    protected static final int DEFAULT_HASH_SIZE = 256;
 
     protected final BlockedLongs blocks;
 
     private final Map<String, Partition> partitionMap;
-    private final PagedFileMapper pagedFileMapper;
+    private final PagedFileMapper blobPageCache;
+    private final PagedFileMapper lookupPageCache;
     private final LookupCache lookupCache;
-
+    private final FileCache fileCache;
 
     FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize, int blobsPerBlock) {
         super(dir, flushDelaySeconds, doLock);
 
         partitionMap = new ConcurrentHashMap<>();
-        pagedFileMapper = new PagedFileMapper(DEFAULT_BLOB_PAGE_SIZE);
-        lookupCache = new LookupCache();
+
+        fileCache = new FileCache(DEFAULT_INITIAL_FILE_CACHE_SIZE, DEFAULT_MAXIMUM_FILE_CACHE_SIZE, false);
+        blobPageCache = new PagedFileMapper(DEFAULT_BLOB_PAGE_SIZE, DEFAULT_INITIAL_BLOB_CACHE_SIZE, DEFAULT_MAXIMUM_BLOB_CACHE_SIZE, fileCache);
+        lookupPageCache = new PagedFileMapper(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
+        lookupCache = new LookupCache(lookupPageCache);
 
         blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock);
     }
 
     private Partition createPartition(String partition){
-        Path partitionDir = dir.resolve(partition);
-        return new Partition(partitionDir, pagedFileMapper, new LongLookup(partitionDir, new LookupCache()));
+        return Partition.createPartition(dir.resolve("partitions"), partition, DEFAULT_HASH_SIZE, blobPageCache, lookupCache);
     }
 
 
     @Override
     public void append(String partition, String key, byte[] value) {
-        log.trace("appending for key '{}'", key);
-//        long blobPos = blobs.append(value);
-//        long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
+        log.trace("appending for partition '{}', key '{}'", partition, key);
 
-
-
-//        log.trace("appending {} bytes (blob pos {}, block pos {}) for key '{}'", value.length, blobPos, blockPos, key);
-//        blocks.append(blockPos, blobPos);
+        partitionMap.computeIfAbsent(partition, partitionKey -> Partition.createPartition(dir.resolve("partitions"), partitionKey, DEFAULT_HASH_SIZE, blobPageCache, lookupCache));
+        // Not necessary to append inside the compute block
+        partitionMap.get(partition).append(key, value, blocks);
     }
 
     @Override
     public Stream<byte[]> read(String partition, String key) {
         log.trace("reading in partition {} with key {}", partition, key);
-//        return blockValues(partition, key, true)
-//                .parallel()
-//                .mapToObj(blobs::read);
-        return Stream.empty();
+
+        return Optional.ofNullable(partitionMap.get(partition))
+                .map(partitionObject -> partitionObject.read(key, blocks))
+                .orElse(Stream.empty());
     }
 
     @Override
@@ -120,10 +130,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     @Override
     public Stream<String> partitions() {
-        log.trace("getting partitions");
-//        return lookups.partitions();
-        return Stream.empty();
-
+        return partitionMap.keySet().stream();
     }
 
     @Override
