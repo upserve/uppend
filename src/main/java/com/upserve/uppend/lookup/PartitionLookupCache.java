@@ -27,7 +27,20 @@ public class PartitionLookupCache {
         return lookupCache.getPageCache();
     }
 
+    public void putLookup(LookupKey key, long val){
+        lookupCache.putLookup(new PartitionLookupKey(partition, key), val);
+    }
+
     public Long getLong(LookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader){
         return lookupCache.getLong(new PartitionLookupKey(partition, lookupKey), cacheLoader);
     }
+
+    public LookupMetadata getMetadata(LookupData key){
+        return lookupCache.getMetadata(key);
+    }
+
+    public void putMetadata(LookupData key, LookupMetadata value){
+        lookupCache.putMetadata(key, value);
+    }
+
 }

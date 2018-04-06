@@ -42,6 +42,7 @@ public class Partition {
     }
 
     Stream<byte[]> read(String key, BlockedLongs blocks){
+        // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
         return blocks.values(lookups.get(key)).mapToObj(blobs::read);
     }
 

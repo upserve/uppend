@@ -1,6 +1,8 @@
 package com.upserve.uppend.lookup;
 
+import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import me.lemire.integercompression.differential.IntegratedIntCompressor;
 import org.slf4j.Logger;
 
@@ -9,23 +11,34 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 6;
+
+    private final int metaDataGeneration;
 
     private final int numKeys;
     private final LookupKey minKey;
     private final LookupKey maxKey;
     private final int[] keyStorageOrder;
 
-    public LookupMetadata(int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder) {
+    private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
+
+    public LookupMetadata(int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metaDataGeneration) {
         this.numKeys = numKeys;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
+        this.metaDataGeneration = metaDataGeneration;
+
+        bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public LookupMetadata(Path path) {
+    public LookupMetadata(Path path, int metaDataGeneration) {
         log.trace("constructing metadata at path: {}", path);
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
             int compressedSize, minKeyLength, maxKeyLength;
@@ -57,63 +70,70 @@ public class LookupMetadata {
         } catch (IOException e) {
             throw new UncheckedIOException("unable to construct metadata from path: " + path, e);
         }
-    }
 
-    public long readData(Path dataPath, LookupKey key) {
-        try {
-            try (FileChannel dataChan = FileChannel.open(dataPath, StandardOpenOption.READ)) {
-                if (numKeys > LookupData.numEntries(dataChan)) {
-                    throw new IOException("metadata num keys (" + numKeys + ") exceeds num data entries");
-                }
+        this.metaDataGeneration = metaDataGeneration;
 
-                Path keysPath = dataPath.resolveSibling("keys");
-                try (FileChannel keysChan = FileChannel.open(keysPath, StandardOpenOption.READ)) {
-                    int keyIndexLower = 0;
-                    int keyIndexUpper = numKeys - 1;
-                    LookupKey lowerKey = minKey;
-                    LookupKey upperKey = maxKey;
-                    do {
-                        int comparison = lowerKey.compareTo(key);
-                        if (comparison > 0 /* lowerKey is greater than key */) {
-                            return -1;
-                        }
-                        if (comparison == 0) {
-                            return LookupData.readValue(dataChan, keyStorageOrder[keyIndexLower]);
-                        }
-                        comparison = upperKey.compareTo(key);
-                        if (comparison < 0 /* upperKey is less than key */) {
-                            return -1;
-                        }
-                        if (comparison == 0) {
-                            return LookupData.readValue(dataChan, keyStorageOrder[keyIndexUpper]);
-                        }
-                        int midpointPercentage = searchMidpointPercentage(lowerKey.string(), upperKey.string(), key.string());
-                        int midpointKeyIndex = keyIndexLower + 1 + ((keyIndexUpper - keyIndexLower) * midpointPercentage / 100);
-                        if (midpointKeyIndex >= keyIndexUpper) {
-                            midpointKeyIndex = keyIndexUpper - 1;
-                        }
-                        log.trace("reading {} from {}: [{}, {}], [{}, {}], {}", key, dataPath, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
-                        int keyNumber = keyStorageOrder[midpointKeyIndex];
-                        LookupKey midpointKey = LookupData.readKey(dataChan, keysChan, keyNumber);
-                        comparison = key.compareTo(midpointKey);
-                        if (comparison < 0) {
-                            keyIndexUpper = midpointKeyIndex - 1;
-                            keyIndexLower++;
-                        } else if (comparison > 0) {
-                            keyIndexLower = midpointKeyIndex + 1;
-                            keyIndexUpper--;
-                        } else {
-                            return LookupData.readValue(dataChan, keyNumber);
-                        }
-                        upperKey = LookupData.readKey(dataChan, keysChan, keyStorageOrder[keyIndexUpper]);
-                        lowerKey = LookupData.readKey(dataChan, keysChan, keyStorageOrder[keyIndexLower]);
-                    } while (keyIndexLower <= keyIndexUpper);
-                    return -1;
-                }
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not read key " + key + " at " + dataPath, e);
+        bisectKeys = new ConcurrentHashMap<>();
         }
+
+    public Long readData(LookupData lookupData, LookupKey key) {
+
+        int keyIndexLower = 0;
+        int keyIndexUpper = numKeys - 1;
+        LookupKey lowerKey = minKey;
+        LookupKey upperKey = maxKey;
+
+        int bisectCount = 0;
+
+        int comparison = lowerKey.compareTo(key);
+        if (comparison > 0 /* lowerKey is greater than key */) {
+            key.setLookupBlockIndex(keyIndexLower);
+            key.setMetaDataGeneration(metaDataGeneration);
+            return null;
+        }
+        if (comparison == 0) {
+            return lookupData.getKeyValue(keyStorageOrder[keyIndexLower]);
+        }
+        comparison = upperKey.compareTo(key);
+        if (comparison < 0 /* upperKey is less than key */) {
+            key.setLookupBlockIndex(keyIndexUpper+1);
+            key.setMetaDataGeneration(metaDataGeneration);
+            return null;
+        }
+        if (comparison == 0) {
+            return lookupData.getKeyValue(keyStorageOrder[keyIndexUpper]);
+        }
+
+        LookupKey midpointKey;
+        int midpointKeyIndex;
+        do {
+            midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);
+
+            if (log.isTraceEnabled()) log.trace("reading {} from {}: [{}, {}], [{}, {}], {}", key, lookupData.getHashPath(), keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
+
+            int keyNumber = keyStorageOrder[midpointKeyIndex];
+            if (bisectCount < MAX_BISECT_KEY_CACHE_DEPTH) {
+                midpointKey = bisectKeys.computeIfAbsent(keyNumber, lookupData::getKey);
+            } else {
+                midpointKey = lookupData.getKey(keyNumber);
+            }
+
+            comparison = key.compareTo(midpointKey);
+            if (comparison < 0) {
+                upperKey = midpointKey;
+                keyIndexUpper = midpointKeyIndex;
+            } else if (comparison > 0) {
+                keyIndexLower = midpointKeyIndex;
+                lowerKey = midpointKey;
+            } else {
+                return lookupData.getKeyValue(keyNumber);
+            }
+
+            bisectCount++;
+        } while ((keyIndexLower +1) < keyIndexUpper);
+        key.setMetaDataGeneration(metaDataGeneration);
+        key.setLookupBlockIndex(keyIndexLower);
+        return null;
     }
 
     public void writeTo(Path path) throws IOException {
@@ -191,5 +211,9 @@ public class LookupMetadata {
             return 10;
         }
         return pct;
+    }
+
+    public int weight() {
+        return numKeys;
     }
 }

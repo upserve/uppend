@@ -5,20 +5,40 @@ import java.nio.charset.StandardCharsets;
 public class LookupKey implements Comparable<LookupKey> {
     private final byte[] bytes;
     private boolean dirty;
-
-    public LookupKey(byte[] bytesValue) {
-        if (bytesValue == null) {
-            throw new NullPointerException("null bytes given");
-        }
-        bytes = bytesValue;
-        dirty = false;
-    }
+    private int lookupBlockIndex;
+    private int metaDataGeneration;
 
     public LookupKey(String stringValue) {
         if (stringValue == null) {
             throw new NullPointerException("null string given");
         }
         bytes = stringValue.getBytes(StandardCharsets.UTF_8);
+        lookupBlockIndex = -1;
+    }
+
+    public LookupKey(byte[] bytesValue){
+        if (bytesValue == null) {
+            throw new NullPointerException("null bytes given");
+        }
+        bytes = bytesValue;
+        dirty = false;
+        lookupBlockIndex = -1;
+    }
+
+    public int getLookupBlockIndex(){
+        return lookupBlockIndex;
+    }
+
+    public void setLookupBlockIndex(int value){
+        lookupBlockIndex = value;
+    }
+
+    public int getMetaDataGeneration() {
+        return metaDataGeneration;
+    }
+
+    public void setMetaDataGeneration(int metaDataGeneration) {
+        this.metaDataGeneration = metaDataGeneration;
     }
 
     public boolean isDirty() { return dirty; }
