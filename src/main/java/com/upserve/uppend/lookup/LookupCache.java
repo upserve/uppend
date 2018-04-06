@@ -3,10 +3,11 @@ package com.upserve.uppend.lookup;
 import com.github.benmanes.caffeine.cache.*;
 import com.upserve.uppend.blobs.PagedFileMapper;
 
+import java.io.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.*;
 
-public class LookupCache {
+public class LookupCache implements Flushable {
 
     // An LRU cache of Lookup Keys
     private final Cache<PartitionLookupKey, Long> keyLongLookupCache;
@@ -34,10 +35,6 @@ public class LookupCache {
                         lookupData.getMetadataPath(),
                         lookupData.getMetaDataGeneration()
                 ));
-
-
-
-
     }
 
     public PagedFileMapper getPageCache(){
@@ -59,5 +56,13 @@ public class LookupCache {
 
     public void putMetadata(LookupData key, LookupMetadata value) {
         lookupMetaDataCache.put(key, value);
+    }
+
+
+    @Override
+    public void flush() {
+        lookupMetaDataCache.invalidateAll();
+        keyLongLookupCache.invalidateAll();
+        pageCache.flush();
     }
 }

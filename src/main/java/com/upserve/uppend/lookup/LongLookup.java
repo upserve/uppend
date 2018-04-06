@@ -1,8 +1,6 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.hash.*;
-import com.upserve.uppend.AutoFlusher;
-import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
@@ -14,7 +12,7 @@ import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class LongLookup implements AutoCloseable, Flushable {
+public class LongLookup implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     /**
@@ -36,6 +34,7 @@ public class LongLookup implements AutoCloseable, Flushable {
     public static final int DEFAULT_WRITE_CACHE_SIZE = DEFAULT_HASH_SIZE * 1;
 
     private final Path lookupsDir;
+    private final boolean readOnly;
     private final int hashBytes;
     private final int hashFinalByteMask;
     private final HashFunction hashFunction;
@@ -52,6 +51,7 @@ public class LongLookup implements AutoCloseable, Flushable {
             throw new IllegalArgumentException("hashSize must be <= " + MAX_HASH_SIZE);
         }
 
+        this.readOnly = partitionLookupCache.getPageCache().readOnly();
         this.lookupsDir = lookupsDir;
         this.partitionLookupCache = partitionLookupCache;
 
@@ -87,17 +87,17 @@ public class LongLookup implements AutoCloseable, Flushable {
      * @param key the key to look up
      * @return the long value for the key, or @{code Long.MIN_VALUE} if not found
      */
-    public long get(String key) {
+    public long getLookupData(String key) {
         log.trace("getting from {}: {}", lookupsDir, key);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
-        return get(hashPath).get(lookupKey);
+        return getLookupData(hashPath).get(lookupKey);
         }
 
     public long put(String key, long value) {
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
-        return get(hashPath).put(lookupKey, value);
+        return getLookupData(hashPath).put(lookupKey, value);
 
     }
 
@@ -105,36 +105,44 @@ public class LongLookup implements AutoCloseable, Flushable {
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
 
-        return get(hashPath).putIfNotExists(lookupKey, allocateLongFunc);
+        return getLookupData(hashPath).putIfNotExists(lookupKey, allocateLongFunc);
     }
 
     public long increment(String key, long delta) {
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
-        return get(hashPath).increment(lookupKey, delta);
+        return getLookupData(hashPath).increment(lookupKey, delta);
     }
 
-    private LookupData get(Path hashPath){
-        return lookups
-                .computeIfAbsent(hashPath, pathKey -> new LookupData(pathKey, partitionLookupCache));
+    private Optional<LookupData> getLookupData(Path hashPath){
+        if (readOnly) {
+            LookupData result = lookups.get(hashPath);
+            if (result == null && Files.exists(LookupData.metadataPath(hashPath))){
+                result = lookups
+                        .computeIfAbsent(
+                                hashPath,
+                                pathKey -> new LookupData(pathKey, partitionLookupCache)
+                        );
+            }
+            return Optional.ofNullable(result);
+
+        } else {
+            return Optional.of(lookups
+                    .computeIfAbsent(
+                            hashPath,
+                            pathKey -> new LookupData(pathKey, partitionLookupCache)
+                    )
+            );
+        }
     }
 
     public Stream<String> keys() {
         return hashPaths()
+                .map(this::getLookupData)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
                 .flatMap(LookupData::keys)
                 .map(LookupKey::string);
-    }
-
-    public Stream<String> partitions() {
-        File[] files = lookupsDir.toFile().listFiles();
-        if (files == null) {
-            return Stream.empty();
-        }
-
-        return Arrays
-                .stream(files)
-                .filter(File::isDirectory)
-                .map(File::getName);
     }
 
     /**
@@ -143,7 +151,7 @@ public class LongLookup implements AutoCloseable, Flushable {
      * @return a stream of entries of key and long value
      */
     public Stream<Map.Entry<String, Long>> scan() {
-        return hashPaths().flatMap(LookupData::scan);
+        return hashPaths().map(this::getLookupData).flatMap(LookupData::scan);
     }
 
     /**
@@ -152,28 +160,26 @@ public class LongLookup implements AutoCloseable, Flushable {
      * @param keyValueFunction function to call for each key and long value
      */
     public void scan(ObjLongConsumer<String> keyValueFunction) {
-
         hashPaths()
-                .forEach(p -> {
-                    LookupData.scan(p, keyValueFunction);
+                .map(this::getLookupData)
+                .forEach(lookupData -> {
+                    lookupData.scan(keyValueFunction);
                 });
     }
 
-    @Override
-    public void close() {
-
-        log.trace("closed {}", lookupsDir);
-    }
 
     @Override
-    public void flush() {
-
+    public void flush() throws IOException{
+        for (LookupData lookup: lookups.values()){
+            lookup.flush();
+        }
         log.trace("flushed {}", lookupsDir);
     }
 
     public void clear() {
         log.info("clearing {}", lookupsDir);
-        close();
+
+        lookups.clear();
         try {
             if (Files.exists(lookupsDir)) {
                 Path tmpDir = Files.createTempFile(lookupsDir.getParent(), lookupsDir.getFileName().toString(), ".defunct");
@@ -212,9 +218,6 @@ public class LongLookup implements AutoCloseable, Flushable {
     }
 
     private Stream<Path> hashPaths() {
-        if (Files.notExists(lookupsDir)) {
-            return Stream.empty();
-        }
         // Also see hashPath method in this class
         Stream<String> paths = IntStream
                 .range(0, hashFinalByteMask + 1)

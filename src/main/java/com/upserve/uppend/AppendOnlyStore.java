@@ -10,43 +10,6 @@ import java.util.stream.Stream;
  */
 public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, AutoCloseable, Flushable {
     /**
-     * Read byte arrays that have been stored under a given partition and key in
-     * parallel, skipping the write cache of this store so that unflushed data
-     * is not visible
-     *
-     * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return a parallel stream of the stored byte arrays
-     * @throws IllegalArgumentException if partition is invalid
-     */
-    Stream<byte[]> readFlushed(String partition, String key);
-
-    /**
-     * Read byte arrays that have been stored under a given partition and key in
-     * the order they were stored, skipping the write cache of this store so
-     * that unflushed data is not visible
-     *
-     * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return a stream of the stored byte arrays in storage order
-     * @throws IllegalArgumentException if partition is invalid
-     */
-    Stream<byte[]> readSequentialFlushed(String partition, String key);
-
-
-    /**
-     * Read the last byte array that was stored under a given partition and
-     * key, skipping the write cache of this store so that unflushed data is not
-     * visible
-     *
-     * @param partition the partition under which to retrieve
-     * @param key       the key under which to retrieve
-     * @return the stored byte array, or null if none
-     * @throws IllegalArgumentException if partition is invalid
-     */
-    byte[] readLastFlushed(String partition, String key);
-
-    /**
      * Append a byte array under a given partition and key
      *
      * @param partition the partition to store under

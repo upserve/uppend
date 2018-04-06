@@ -8,6 +8,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.file.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
 public class BlockedLongPairs extends PageMappedFileIO {
@@ -42,6 +43,10 @@ public class BlockedLongPairs extends PageMappedFileIO {
             throw new UncheckedIOException("Unable to append record to BlockedLongPairs: " + filePath, e);
         }
         return pos / 16;
+    }
+
+    public int getMaxIndex(){
+        return (int) (position.get() / 16);
     }
 
     /**

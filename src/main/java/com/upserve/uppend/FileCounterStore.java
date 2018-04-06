@@ -39,7 +39,7 @@ public class FileCounterStore extends FileStore implements CounterStore {
     @Override
     public long get(String partition, String key) {
         log.trace("getting value for key '{}' in partition '{}'", key, partition);
-        long val = lookup.get(partition, key);
+        long val = lookup.getLookupData(partition, key);
         return val == -1 ? 0 : val;
     }
 

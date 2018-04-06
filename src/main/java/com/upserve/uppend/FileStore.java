@@ -61,16 +61,20 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
         isClosed = new AtomicBoolean(false);
     }
 
-    protected abstract void flushInternal();
+    protected abstract void flushInternal() throws IOException;
 
-    protected abstract void closeInternal();
+    protected abstract void closeInternal() throws IOException;
 
-    protected abstract void trimInternal();
+    protected abstract void trimInternal() throws IOException;
 
     @Override
     public void trim(){
         log.info("Triming {}", dir);
-        trimInternal();
+        try {
+            trimInternal();
+        } catch (Exception e){
+            log.error("unable to trim {}", dir, e);
+        }
         log.info("Trimed {}", dir);
     };
 
@@ -80,7 +84,7 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
         try {
             flushInternal();
         } catch (Exception e) {
-            log.error("unable to flush", e);
+            log.error("unable to flush {}", dir, e);
         }
         log.info("flushed {}", dir);
     }
@@ -99,7 +103,7 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
         try {
             closeInternal();
         } catch (Exception e) {
-            log.error("unable to close", e);
+            log.error("unable to close {}", dir, e);
         }
 
         if (doLock) {

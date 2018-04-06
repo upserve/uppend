@@ -3,12 +3,17 @@ package com.upserve.uppend.blobs;
 import com.github.benmanes.caffeine.cache.*;
 import org.slf4j.Logger;
 
-import java.io.IOException;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 
-public class FileCache {
+/**
+ * A cache of open file handles.
+ * If it is desirable to explicitly manage file close - we can add a method to invalidate a path and make all
+ * the objects using Files closable but it seems better to just close the cache when everything is done.
+ */
+public class FileCache implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final LoadingCache<Path, FileChannel> fileCache;
@@ -50,7 +55,10 @@ public class FileCache {
         return fileCache.get(path);
     }
 
-    public void close(){
+    public FileChannel getFileChannelIfPresent(Path path) { return fileCache.getIfPresent(path); }
+
+    @Override
+    public void flush(){
         fileCache.invalidateAll();
     }
 }

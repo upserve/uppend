@@ -3,10 +3,11 @@ package com.upserve.uppend.blobs;
 import com.github.benmanes.caffeine.cache.*;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 
+import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 
-public class PagedFileMapper {
+public class PagedFileMapper implements Flushable {
 
     private final int pageSize;
     private final FileCache fileCache;
@@ -49,5 +50,10 @@ public class PagedFileMapper {
 
     int getPageSize() {
         return pageSize;
+    }
+
+    @Override
+    public void flush() {
+        pageCache.invalidateAll();
     }
 }

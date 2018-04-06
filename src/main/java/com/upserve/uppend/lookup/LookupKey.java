@@ -4,7 +4,6 @@ import java.nio.charset.StandardCharsets;
 
 public class LookupKey implements Comparable<LookupKey> {
     private final byte[] bytes;
-    private boolean dirty;
     private int lookupBlockIndex;
     private int metaDataGeneration;
 
@@ -21,7 +20,6 @@ public class LookupKey implements Comparable<LookupKey> {
             throw new NullPointerException("null bytes given");
         }
         bytes = bytesValue;
-        dirty = false;
         lookupBlockIndex = -1;
     }
 
@@ -39,12 +37,6 @@ public class LookupKey implements Comparable<LookupKey> {
 
     public void setMetaDataGeneration(int metaDataGeneration) {
         this.metaDataGeneration = metaDataGeneration;
-    }
-
-    public boolean isDirty() { return dirty; }
-
-    public void setDirty(boolean dirty) {
-        this.dirty = dirty;
     }
 
     public String string() {

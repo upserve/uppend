@@ -6,7 +6,6 @@ import org.junit.*;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
@@ -52,14 +51,14 @@ public class LookupAppendBufferTest {
         instance.flush();
 
         long lookup;
-        lookup = longLookup.get("partition1","key");
+        lookup = longLookup.getLookupData("partition1","key");
         assertArrayEquals(new long[]{15, 72}, blockedLongs.values(lookup).toArray());
 
         instance.bufferedAppend("partition2", "key", 29);
         assertEquals(2, instance.bufferCount());
 
         // New data is not yet written
-        lookup = longLookup.get("partition2","key");
+        lookup = longLookup.getLookupData("partition2","key");
         assertArrayEquals(new long[]{16}, blockedLongs.values(lookup).toArray());
     }
 
@@ -73,7 +72,7 @@ public class LookupAppendBufferTest {
             Thread.sleep(10);
         }
 
-        long lookup = longLookup.get("partition3","key");
+        long lookup = longLookup.getLookupData("partition3","key");
         assertEquals(24*50, blockedLongs.values(lookup).count());
     }
 
@@ -91,10 +90,10 @@ public class LookupAppendBufferTest {
         instance.close();
 
         long lookup;
-        lookup = longLookup.get("partition1","key");
+        lookup = longLookup.getLookupData("partition1","key");
         assertArrayEquals(new long[]{15, 72}, blockedLongs.values(lookup).toArray());
 
-        lookup = longLookup.get("partition2","key");
+        lookup = longLookup.getLookupData("partition2","key");
         assertArrayEquals(new long[]{16}, blockedLongs.values(lookup).toArray());
 
 
@@ -115,7 +114,7 @@ public class LookupAppendBufferTest {
 
         instance.flush();
         long lookup;
-        lookup = longLookup.get("partition1","key");
+        lookup = longLookup.getLookupData("partition1","key");
         assertArrayEquals(new long[]{15}, blockedLongs.values(lookup).toArray());
 
         instance.clearLock();
@@ -131,13 +130,13 @@ public class LookupAppendBufferTest {
         longLookup.clear();
         instance.unlock();
 
-        assertEquals(-1, longLookup.get("partition1","key"));
+        assertEquals(-1, longLookup.getLookupData("partition1","key"));
 
         instance.bufferedAppend("partition1", "key", 16);
         assertEquals(1, instance.bufferCount());
 
         instance.flush();
-        lookup = longLookup.get("partition1","key");
+        lookup = longLookup.getLookupData("partition1","key");
         assertArrayEquals(new long[]{16}, blockedLongs.values(lookup).toArray());
     }
 }

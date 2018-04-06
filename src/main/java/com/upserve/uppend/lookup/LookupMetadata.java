@@ -1,8 +1,6 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import me.lemire.integercompression.differential.IntegratedIntCompressor;
 import org.slf4j.Logger;
 
@@ -11,7 +9,6 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class LookupMetadata {
@@ -19,7 +16,7 @@ public class LookupMetadata {
 
     private static final int MAX_BISECT_KEY_CACHE_DEPTH = 6;
 
-    private final int metaDataGeneration;
+    private final int metadataGeneration;
 
     private final int numKeys;
     private final LookupKey minKey;
@@ -28,17 +25,33 @@ public class LookupMetadata {
 
     private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
 
-    public LookupMetadata(int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metaDataGeneration) {
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, Path path, int metadataGeneration) throws IOException {
+
+        LookupMetadata newMetadata = new LookupMetadata(
+                keyStorageOrder.length,
+                minKey,
+                maxKey,
+                keyStorageOrder,
+                metadataGeneration
+        );
+
+        newMetadata.writeTo(path);
+
+        return newMetadata;
+    }
+
+
+    public LookupMetadata(int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
         this.numKeys = numKeys;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
-        this.metaDataGeneration = metaDataGeneration;
+        this.metadataGeneration = metadataGeneration;
 
         bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public LookupMetadata(Path path, int metaDataGeneration) {
+    public LookupMetadata(Path path, int metadataGeneration) {
         log.trace("constructing metadata at path: {}", path);
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
             int compressedSize, minKeyLength, maxKeyLength;
@@ -71,12 +84,20 @@ public class LookupMetadata {
             throw new UncheckedIOException("unable to construct metadata from path: " + path, e);
         }
 
-        this.metaDataGeneration = metaDataGeneration;
+        this.metadataGeneration = metadataGeneration;
 
         bisectKeys = new ConcurrentHashMap<>();
         }
 
-    public Long readData(LookupData lookupData, LookupKey key) {
+    /**
+     * Finds the long value associated with a key or null if not present using bisect on the sorted storage order
+     * The key is marked with the generation of the metadata used and the keyindex of append only block that contains the value
+     * @param lookupData a reference to use for reading blocks and keys
+     * @param key the key to find and mark
+     * @return the long value associated with that key
+     */
+
+    public Long findLong(LookupData lookupData, LookupKey key) {
 
         int keyIndexLower = 0;
         int keyIndexUpper = numKeys - 1;
@@ -84,38 +105,45 @@ public class LookupMetadata {
         LookupKey upperKey = maxKey;
 
         int bisectCount = 0;
+        int keyNumber;
+        LookupKey midpointKey;
+        int midpointKeyIndex;
+
+        key.setMetaDataGeneration(metadataGeneration);
 
         int comparison = lowerKey.compareTo(key);
         if (comparison > 0 /* lowerKey is greater than key */) {
-            key.setLookupBlockIndex(keyIndexLower);
-            key.setMetaDataGeneration(metaDataGeneration);
+            key.setLookupBlockIndex(-1);
             return null;
         }
         if (comparison == 0) {
-            return lookupData.getKeyValue(keyStorageOrder[keyIndexLower]);
+            keyNumber = keyStorageOrder[keyIndexLower];
+            key.setLookupBlockIndex(keyNumber); // This is the key index in the data file
+            return lookupData.getKeyValue(keyNumber);
         }
         comparison = upperKey.compareTo(key);
         if (comparison < 0 /* upperKey is less than key */) {
-            key.setLookupBlockIndex(keyIndexUpper+1);
-            key.setMetaDataGeneration(metaDataGeneration);
+            key.setLookupBlockIndex(keyStorageOrder[keyIndexUpper]); // Insert it after this index in the sort order
             return null;
         }
         if (comparison == 0) {
-            return lookupData.getKeyValue(keyStorageOrder[keyIndexUpper]);
+            keyNumber = keyStorageOrder[keyIndexUpper];
+            key.setLookupBlockIndex(keyNumber); // This is the key index in the data file
+            return lookupData.getKeyValue(keyNumber);
         }
 
-        LookupKey midpointKey;
-        int midpointKeyIndex;
+        // bisect till we find the key or return null
         do {
             midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);
 
             if (log.isTraceEnabled()) log.trace("reading {} from {}: [{}, {}], [{}, {}], {}", key, lookupData.getHashPath(), keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
 
-            int keyNumber = keyStorageOrder[midpointKeyIndex];
+            keyNumber = keyStorageOrder[midpointKeyIndex];
+            // Cache only the most frequently used midpoint keys
             if (bisectCount < MAX_BISECT_KEY_CACHE_DEPTH) {
-                midpointKey = bisectKeys.computeIfAbsent(keyNumber, lookupData::getKey);
+                midpointKey = bisectKeys.computeIfAbsent(keyNumber, lookupData::readKey);
             } else {
-                midpointKey = lookupData.getKey(keyNumber);
+                midpointKey = lookupData.readKey(keyNumber);
             }
 
             comparison = key.compareTo(midpointKey);
@@ -126,13 +154,14 @@ public class LookupMetadata {
                 keyIndexLower = midpointKeyIndex;
                 lowerKey = midpointKey;
             } else {
+                key.setLookupBlockIndex(keyNumber); // This is the index in the data file
                 return lookupData.getKeyValue(keyNumber);
             }
 
             bisectCount++;
         } while ((keyIndexLower +1) < keyIndexUpper);
-        key.setMetaDataGeneration(metaDataGeneration);
-        key.setLookupBlockIndex(keyIndexLower);
+        key.setMetaDataGeneration(metadataGeneration);
+        key.setLookupBlockIndex(keyStorageOrder[keyIndexLower]); // Insert it in the sort order after this key
         return null;
     }
 
@@ -176,44 +205,23 @@ public class LookupMetadata {
                 '}';
     }
 
-    static int searchMidpointPercentage(String lower, String upper, String key) {
-        int firstDifferentCharIndex = -1;
-        int minLength = Math.min(key.length(), Math.min(lower.length(), upper.length()));
-        char lowerChar = 0, upperChar = 0, keyChar = 0;
-        for (int i = 0; i < minLength; i++) {
-            lowerChar = lower.charAt(i);
-            upperChar = upper.charAt(i);
-            keyChar = key.charAt(i);
-            if (lowerChar != upperChar) {
-                firstDifferentCharIndex = i;
-                break;
-            }
-            if (keyChar != upperChar) {
-                log.warn("returning 50% search midpoint for key ({}); key is outside of range [{}, {}]", key, lower, upper);
-                return 50;
-            }
-        }
-        if (firstDifferentCharIndex == -1) {
-            log.trace("returning 50% search midpoint for key ({}) in single element range [{}, {}]", key, lower, upper);
-            return 50;
-        }
-        int keyDistance = keyChar - lowerChar;
-        int rangeDistance = upperChar - lowerChar;
-        if (keyDistance < 0 || rangeDistance < 0 || keyDistance > rangeDistance) {
-            log.warn("returning 50% search midpoint for key ({}); weight could not be determined from range [{}, {}]", key, lower, upper);
-            return 50;
-        }
-        int pct = 100 * keyDistance / rangeDistance;
-        if (pct > 90) {
-            return 90;
-        }
-        if (pct < 10) {
-            return 10;
-        }
-        return pct;
+    public int getMetadataGeneration(){
+        return metadataGeneration;
     }
 
     public int weight() {
         return numKeys;
+    }
+
+    public int[] getKeyStorageOrder(){
+        return keyStorageOrder;
+    }
+
+    public LookupKey getMinKey(){
+        return minKey;
+    }
+
+    public LookupKey getMaxKey(){
+        return maxKey;
     }
 }

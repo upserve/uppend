@@ -29,7 +29,7 @@ public class CounterStoreWithMetrics implements CounterStore {
         metricsSetTimer = metrics.timer("set");
         metricsIncrementTimer = metrics.timer("increment");
         metricsFlushTimer = metrics.timer("flush");
-        metricsGetTimer = metrics.timer("get");
+        metricsGetTimer = metrics.timer("getLookupData");
         metricsKeysTimer = metrics.timer("keys");
         metricsPartitionsTimer = metrics.timer("partitions");
         metricsScanTimer = metrics.timer("scan");

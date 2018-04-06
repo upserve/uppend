@@ -8,10 +8,11 @@ import org.slf4j.Logger;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
+import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class PageMappedFileIO  implements AutoCloseable, Flushable {
+public class PageMappedFileIO implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     final Path filePath;
@@ -54,20 +55,6 @@ public class PageMappedFileIO  implements AutoCloseable, Flushable {
         }
     }
 
-    @Override
-    public void close() {
-        log.trace("NO-OP CLOSE {}", filePath);
-    }
-
-    @Override
-    public void flush() {
-        try {
-            fileCache.getFileChannel(filePath).force(true);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to flush: " + filePath, e);
-        }
-    }
-
     int readMappedInt(long pos) {
         // TODO make thread local byte array?
         byte[] buf = new byte[4];
@@ -103,5 +90,17 @@ public class PageMappedFileIO  implements AutoCloseable, Flushable {
             bytesRead += readMappedOffset(pos + bytesRead, buf, offset + bytesRead);
         }
         return bytesRead;
+    }
+
+    @Override
+    public void flush() throws IOException {
+        FileChannel fileChannel = fileCache.getFileChannelIfPresent(filePath);
+        if (fileChannel != null) {
+            try {
+                fileChannel.force(true);
+            } catch (ClosedChannelException e) {
+                log.debug("Tried to flush a closed file {}", filePath);
+            }
+        }
     }
 }
