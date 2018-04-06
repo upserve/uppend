@@ -80,7 +80,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public void append(String partition, String key, byte[] value) {
         log.trace("appending for partition '{}', key '{}'", partition, key);
-
+        if (readOnly) throw new RuntimeException("Can not append to store opened in read only mode:" + dir);
         safeGet(partition).ifPresent(partitionObject -> partitionObject.append(key, value, blocks));
     }
 
@@ -118,7 +118,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     @Override
     public Stream<String> partitions() {
-        return partitionMap.keySet().stream();
+        return Partition.listPartitions(partionPath(dir));
     }
 
     @Override
@@ -137,9 +137,16 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public void clear() {
         // Consider using a ReadWrite lock for clear and close?
+        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + dir);
+
         log.trace("clearing");
         blocks.clear();
-        partitionMap.values().forEach(Partition::clear);
+
+        Partition.listPartitions(partionPath(dir))
+                .map(this::safeGet)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .forEach(Partition::clear);
         lookupCache.flush();
         blobPageCache.flush();
         fileCache.flush();
@@ -149,6 +156,8 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     protected void flushInternal() throws IOException {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
+        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
+
         blocks.flush();
         for (Partition partition: partitionMap.values()){
             partition.flush();
@@ -157,7 +166,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     @Override
     public void trimInternal() throws IOException {
-        flushInternal();
+        if (!readOnly) flushInternal();
         lookupCache.flush();
         blobPageCache.flush();
         fileCache.flush();

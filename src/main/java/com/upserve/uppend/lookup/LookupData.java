@@ -164,7 +164,7 @@ public class LookupData implements Flushable {
     }
 
     /**
-     * Inrement the value associated with this key by the given amount
+     * Increment the value associated with this key by the given amount
      *
      * @param key the key to be incremented
      * @param delta the amount to increment the value by
@@ -210,7 +210,7 @@ public class LookupData implements Flushable {
      * @param value the value to set for this key
      * @return the previous value associated with the key or null if it did not exist
      */
-    public long put(LookupKey key, final long value) {
+    public Long put(LookupKey key, final long value) {
         if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
 
         AtomicReference<Long> ref = new AtomicReference<>(); // faster to replace with a Long[] ?

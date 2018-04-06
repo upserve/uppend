@@ -85,22 +85,36 @@ public class LongLookup implements Flushable {
      * visible
      *
      * @param key the key to look up
-     * @return the long value for the key, or @{code Long.MIN_VALUE} if not found
+     * @return the long value for the key, or null if not found
      */
-    public long getLookupData(String key) {
+    public Long getLookupData(String key) {
         log.trace("getting from {}: {}", lookupsDir, key);
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
         return getLookupData(hashPath).get(lookupKey);
-        }
+    }
 
-    public long put(String key, long value) {
+
+    /**
+     * Set the value of this key.
+     *
+     * @param key the key to check or set
+     * @param value the value to set for this key
+     * @return the previous value associated with the key or null if it did not exist
+     */
+    public Long put(String key, long value) {
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
         return getLookupData(hashPath).put(lookupKey, value);
-
     }
 
+    /**
+     * Set the value of the key if it does not exist and return the new value. If it does exist, return the existing value.
+     *
+     * @param key the key to check or set
+     * @param allocateLongFunc the function to call to getLookupData the value if this is a new key
+     * @return the value associated with the key
+     */
     public long putIfNotExists(String key, LongSupplier allocateLongFunc) {
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
@@ -108,37 +122,44 @@ public class LongLookup implements Flushable {
         return getLookupData(hashPath).putIfNotExists(lookupKey, allocateLongFunc);
     }
 
+    /**
+     * Increment the value associated with this key by the given amount
+     *
+     * @param key the key to be incremented
+     * @param delta the amount to increment the value by
+     * @return the value new associated with the key
+     */
     public long increment(String key, long delta) {
         LookupKey lookupKey = new LookupKey(key);
         Path hashPath = hashPath(lookupKey);
         return getLookupData(hashPath).increment(lookupKey, delta);
     }
 
-    private Optional<LookupData> getLookupData(Path hashPath){
+    private LookupData getLookupData(Path hashPath) {
+        return lookups
+                .computeIfAbsent(
+                        hashPath,
+                        pathKey -> new LookupData(pathKey, partitionLookupCache)
+                );
+    }
+
+
+    private Optional<LookupData> safeGetLookupData(Path hashPath){
         if (readOnly) {
             LookupData result = lookups.get(hashPath);
             if (result == null && Files.exists(LookupData.metadataPath(hashPath))){
-                result = lookups
-                        .computeIfAbsent(
-                                hashPath,
-                                pathKey -> new LookupData(pathKey, partitionLookupCache)
-                        );
+                result = getLookupData(hashPath);
             }
             return Optional.ofNullable(result);
 
         } else {
-            return Optional.of(lookups
-                    .computeIfAbsent(
-                            hashPath,
-                            pathKey -> new LookupData(pathKey, partitionLookupCache)
-                    )
-            );
+            return Optional.of(getLookupData(hashPath));
         }
     }
 
     public Stream<String> keys() {
         return hashPaths()
-                .map(this::getLookupData)
+                .map(this::safeGetLookupData)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
                 .flatMap(LookupData::keys)
@@ -151,7 +172,11 @@ public class LongLookup implements Flushable {
      * @return a stream of entries of key and long value
      */
     public Stream<Map.Entry<String, Long>> scan() {
-        return hashPaths().map(this::getLookupData).flatMap(LookupData::scan);
+        return hashPaths()
+                .map(this::safeGetLookupData)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .flatMap(LookupData::scan);
     }
 
     /**
@@ -161,7 +186,9 @@ public class LongLookup implements Flushable {
      */
     public void scan(ObjLongConsumer<String> keyValueFunction) {
         hashPaths()
-                .map(this::getLookupData)
+                .map(this::safeGetLookupData)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
                 .forEach(lookupData -> {
                     lookupData.scan(keyValueFunction);
                 });

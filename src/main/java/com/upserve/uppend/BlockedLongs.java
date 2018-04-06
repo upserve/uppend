@@ -172,12 +172,18 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
-    public LongStream values(long pos) {
+    public LongStream values(Long pos) {
         log.trace("streaming values from {} at {}", file, pos);
 
-        if (pos < 0 || pos >= posMem.get()) {
+        if (pos == null) {
             return LongStream.empty();
         }
+
+        if (pos < 0 ){
+            log.error("Bad position value {} in file {}", pos, file);
+            return LongStream.empty();
+        }
+        
         ByteBuffer buf = readBlock(pos);
         if (buf == null) {
             return LongStream.empty();

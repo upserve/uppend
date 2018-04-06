@@ -28,14 +28,13 @@ public class Partition implements Flushable {
     }
 
     public static Stream<String> listPartitions(Path partitiondPath){
-
         try {
             return Files.list(partitiondPath).filter(path -> Files.exists(blobsFile(path))).map(path -> path.toFile().getName());
         } catch (IOException e){
-            log.error("Unable to list partitions in")
+            log.error("Unable to list partitions in {}", partitiondPath, e);
+            return Stream.empty();
         }
     }
-
 
     public static Partition createPartition(Path partentDir, String partition, int hashSize, PagedFileMapper blobPageCache, LookupCache lookupCache){
         Partition.validatePartition(partition);
