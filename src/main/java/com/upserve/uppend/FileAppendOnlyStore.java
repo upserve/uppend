@@ -52,7 +52,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         PagedFileMapper lookupPageCache = new PagedFileMapper(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
         lookupCache = new LookupCache(lookupPageCache);
 
-        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock);
+        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);
     }
 
     public static Path partionPath(Path dir){

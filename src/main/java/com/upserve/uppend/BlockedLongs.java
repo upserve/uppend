@@ -40,13 +40,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicLong posMem;
 
     private final AtomicInteger currentPage;
+    private final boolean readOnly;
 
-    public BlockedLongs(Path file, int valuesPerBlock) {
+    public BlockedLongs(Path file, int valuesPerBlock, boolean readOnly) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
         }
 
         this.file = file;
+        this.readOnly = readOnly;
 
         Path dir = file.getParent();
         try {
@@ -66,9 +68,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         // size | -next
         // prev | -last
+        StandardOpenOption[] openOptions;
+        if (readOnly){
+            openOptions = new StandardOpenOption[]{StandardOpenOption.READ};
+        } else {
+            openOptions = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
+        }
 
         try {
-            blocks = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blocks = FileChannel.open(file, openOptions);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks file: " + file, e);
         }
@@ -80,12 +88,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
 
         try {
-            blocksPos = FileChannel.open(posFile, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            blocksPos = FileChannel.open(posFile, openOptions);
             if (blocksPos.size() > 8) {
                 throw new IllegalStateException("bad (!= 8) size for block pos file: " + posFile);
             }
             try {
-                posBuf = blocksPos.map(FileChannel.MapMode.READ_WRITE, 0, 8);
+                posBuf = blocksPos.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, 0, 8);
             } catch (IOException e) {
                 throw new UncheckedIOException("unable to map pos buffer at in " + posFile, e);
             }
@@ -123,7 +131,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      * @return the number of bytes
      */
     public long size() {
-        return posMem.get();
+        if (readOnly){
+            return posBuf.getLong(0);
+        } else {
+            return posMem.get();
+        }
     }
 
     public void append(final long pos, final long val) {
@@ -176,14 +188,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.trace("streaming values from {} at {}", file, pos);
 
         if (pos == null) {
+            // pos will be null for missing keys
             return LongStream.empty();
         }
 
-        if (pos < 0 ){
-            log.error("Bad position value {} in file {}", pos, file);
+        if (pos < 0 || pos > size()){
+            log.error("Bad position value {} in file {} of size {}", pos, file, size());
             return LongStream.empty();
         }
-        
+
         ByteBuffer buf = readBlock(pos);
         if (buf == null) {
             return LongStream.empty();
