@@ -9,9 +9,10 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.stream.*;
+
+import static com.upserve.uppend.Partition.listPartitions;
 
 public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -32,7 +33,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     protected final BlockedLongs blocks;
 
-    private final Map<String, Partition> partitionMap;
+    private final Map<String, AppendStorePartition> partitionMap;
     private final PagedFileMapper blobPageCache;
     private final LookupCache lookupCache;
     private final FileCache fileCache;
@@ -55,33 +56,34 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);
     }
 
-    public static Path partionPath(Path dir){
+    private static Path partionPath(Path dir){
         return dir.resolve("partitions");
     }
 
-    private Optional<Partition> safeGet(String partition){
+    private Optional<AppendStorePartition> safeGet(String partition){
         if (readOnly){
             return Optional.ofNullable(
                     partitionMap.computeIfAbsent(
                             partition,
-                            partitionKey -> Partition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache))
+                            partitionKey -> AppendStorePartition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache))
             );
         } else {
-            return Optional.of(
-                    partitionMap.computeIfAbsent(
-                            partition,
-                            partitionKey -> Partition.createPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache))
-            );
+            return Optional.of(getOrCreate(partition));
         }
     }
 
-
+    private AppendStorePartition getOrCreate(String partition){
+        return partitionMap.computeIfAbsent(
+                partition,
+                partitionKey -> AppendStorePartition.createPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache)
+        );
+    }
 
     @Override
     public void append(String partition, String key, byte[] value) {
         log.trace("appending for partition '{}', key '{}'", partition, key);
         if (readOnly) throw new RuntimeException("Can not append to store opened in read only mode:" + dir);
-        safeGet(partition).ifPresent(partitionObject -> partitionObject.append(key, value, blocks));
+        getOrCreate(partition).append(key, value, blocks);
     }
 
     @Override
@@ -112,13 +114,13 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     public Stream<String> keys(String partition) {
         log.trace("getting keys in partition {}", partition);
         return safeGet(partition)
-                .map(Partition::keys)
+                .map(AppendStorePartition::keys)
                 .orElse(Stream.empty());
     }
 
     @Override
     public Stream<String> partitions() {
-        return Partition.listPartitions(partionPath(dir));
+        return listPartitions(partionPath(dir));
     }
 
     @Override
@@ -142,11 +144,9 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         log.trace("clearing");
         blocks.clear();
 
-        Partition.listPartitions(partionPath(dir))
-                .map(this::safeGet)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .forEach(Partition::clear);
+        listPartitions(partionPath(dir))
+                .map(this::getOrCreate)
+                .forEach(AppendStorePartition::clear);
         lookupCache.flush();
         blobPageCache.flush();
         fileCache.flush();
@@ -159,8 +159,8 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
         blocks.flush();
-        for (Partition partition: partitionMap.values()){
-            partition.flush();
+        for (AppendStorePartition appendStorePartition : partitionMap.values()){
+            appendStorePartition.flush();
         }
     }
 

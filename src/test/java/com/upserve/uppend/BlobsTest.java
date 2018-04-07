@@ -16,7 +16,8 @@ import static org.junit.Assert.assertEquals;
 public class BlobsTest {
     private Blobs blobs;
 
-    private PagedFileMapper pagedFileMapper = new PagedFileMapper(32);
+    private FileCache fileCache = new FileCache(256, 512, false);
+    private PagedFileMapper pagedFileMapper = new PagedFileMapper(256*1024,  64, 256, fileCache);
 
     @Before
     public void initialize() {
@@ -26,7 +27,9 @@ public class BlobsTest {
 
     @After
     public void uninitialize() throws IOException {
-        blobs.close();
+        blobs.flush();
+        pagedFileMapper.flush();
+        fileCache.flush();
         SafeDeleting.removeDirectory(Paths.get("build/test/blobs"));
     }
 
@@ -54,111 +57,11 @@ public class BlobsTest {
     }
 
     @Test
-    public void testClose(){
+    public void testClose() throws IOException {
         assertEquals(0, blobs.append("foo".getBytes()));
-        blobs.close();
-        blobs.close();
+        uninitialize();
+        uninitialize();
         blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
         assertEquals("foo", new String(blobs.read(0)));
-    }
-
-    @Test(expected = UncheckedIOException.class)
-    public void testCloseException() throws Exception {
-        resetFinal(blobs, "blobs", new FileChannel() {
-            @Override
-            public int read(ByteBuffer dst) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public long read(ByteBuffer[] dsts, int offset, int length) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public int write(ByteBuffer src) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public long write(ByteBuffer[] srcs, int offset, int length) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public long position() throws IOException {
-                return 0;
-            }
-
-            @Override
-            public FileChannel position(long newPosition) throws IOException {
-                return null;
-            }
-
-            @Override
-            public long size() throws IOException {
-                return 0;
-            }
-
-            @Override
-            public FileChannel truncate(long size) throws IOException {
-                return null;
-            }
-
-            @Override
-            public void force(boolean metaData) throws IOException {
-
-            }
-
-            @Override
-            public long transferTo(long position, long count, WritableByteChannel target) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public long transferFrom(ReadableByteChannel src, long position, long count) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public int read(ByteBuffer dst, long position) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public int write(ByteBuffer src, long position) throws IOException {
-                return 0;
-            }
-
-            @Override
-            public MappedByteBuffer map(MapMode mode, long position, long size) throws IOException {
-                return null;
-            }
-
-            @Override
-            public FileLock lock(long position, long size, boolean shared) throws IOException {
-                return null;
-            }
-
-            @Override
-            public FileLock tryLock(long position, long size, boolean shared) throws IOException {
-                return null;
-            }
-
-            @Override
-            protected void implCloseChannel() throws IOException {
-                throw new IOException("expected");
-            }
-        });
-        blobs.close();
-    }
-
-    private static void resetFinal(Object inst, String fieldName, Object val) throws Exception {
-        Field field = inst.getClass().getDeclaredField(fieldName);
-        field.setAccessible(true);
-        Field modifiersField = Field.class.getDeclaredField("modifiers");
-        modifiersField.setAccessible(true);
-        modifiersField.setInt(field, field.getModifiers() & ~Modifier.FINAL);
-        field.set(inst, val);
     }
 }

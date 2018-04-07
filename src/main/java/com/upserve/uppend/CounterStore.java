@@ -13,9 +13,9 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
      * @param key the key to increment under
      * @param value the value to set
      * @throws IllegalArgumentException if partition is invalid
-     * @return the old value of the counter or 0 if it was previously unset
+     * @return the old value of the counter or Null if it was previously unset
      */
-    long set(String partition, String key, long value);
+    Long set(String partition, String key, long value);
 
     /**
      * Increment by 1 the counter under a given partition and key, whose value

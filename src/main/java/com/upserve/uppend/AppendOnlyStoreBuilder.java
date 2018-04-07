@@ -10,7 +10,6 @@ import java.util.concurrent.ExecutorService;
 public class AppendOnlyStoreBuilder {
     private Path dir;
     private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
-    private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
     private int flushDelaySeconds = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
     private int blobsPerBlock = FileAppendOnlyStore.DEFAULT_BLOBS_PER_BLOCK;
     private int suggestedBufferSize = 0;
@@ -33,19 +32,8 @@ public class AppendOnlyStoreBuilder {
         return this;
     }
 
-    public AppendOnlyStoreBuilder withBufferedAppend(int maxBufferSize, ExecutorService executorService){
-        this.suggestedBufferSize = maxBufferSize;
-        this.executorService = executorService;
-        return this;
-    }
-
     public AppendOnlyStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
         this.longLookupHashSize = longLookupHashSize;
-        return this;
-    }
-
-    public AppendOnlyStoreBuilder withLongLookupWriteCacheSize(int longLookupWriteCacheSize) {
-        this.longLookupWriteCacheSize = longLookupWriteCacheSize;
         return this;
     }
 
@@ -63,11 +51,9 @@ public class AppendOnlyStoreBuilder {
         AppendOnlyStore store;
 
         if (readOnly) {
-            store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0, blobsPerBlock);
-        } else if (suggestedBufferSize > 0) {
-            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, blobsPerBlock, executorService);
+            store = new FileAppendOnlyStore(dir, -1, true, longLookupHashSize, blobsPerBlock);
         } else {
-            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize, blobsPerBlock);
+            store = new FileAppendOnlyStore(dir, flushDelaySeconds, false, longLookupHashSize, blobsPerBlock);
         }
 
         if (metrics != null) {
@@ -77,7 +63,7 @@ public class AppendOnlyStoreBuilder {
     }
 
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        AppendOnlyStore store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize,  0, blobsPerBlock);
+        AppendOnlyStore store = new FileAppendOnlyStore(dir, -1, true, longLookupHashSize, blobsPerBlock);
         if (metrics != null) {
             store = new AppendOnlyStoreWithMetrics(store, metrics);
         }
@@ -89,7 +75,6 @@ public class AppendOnlyStoreBuilder {
         return "AppendOnlyStoreBuilder{" +
                 "dir=" + dir +
                 ", longLookupHashSize=" + longLookupHashSize +
-                ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +
                 ", flushDelaySeconds=" + flushDelaySeconds +
                 ", blobsPerBlock=" + blobsPerBlock +
                 ", bufferedAppendSize=" + suggestedBufferSize +

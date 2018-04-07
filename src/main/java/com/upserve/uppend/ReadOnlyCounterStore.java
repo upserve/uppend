@@ -11,9 +11,9 @@ public interface ReadOnlyCounterStore extends AutoCloseable {
      * @param partition the partition to getLookupData
      * @param key the key to getLookupData
      * @throws IllegalArgumentException if partition is invalid
-     * @return the value for the given partition and key, or 0 if not found
+     * @return the value for the given partition and key, or Null if not found
      */
-    long get(String partition, String key);
+    Long get(String partition, String key);
 
     /**
      * Enumerate the keys for a given partition

@@ -82,46 +82,6 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     }
 
     /**
-     * Read objects that have been stored under a given partition and key in
-     * parallel, skipping the write cache so that unflushed data is not visible
-     *
-     * @param partition the key under which to retrieve
-     * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
-     * @return a stream of the stored objects
-     */
-    public Stream<T> readFlushed(String partition, String key) {
-        return store.readFlushed(partition, key).map(deserializer);
-    }
-
-    /**
-     * Read objects that have been stored under a given partition and key in
-     * the order they were stored, skipping the write cache so that unflushed
-     * data is not visible
-     *
-     * @param partition the partition under which to retrieve
-     * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
-     * @return a stream of the stored objects in storage order
-     */
-    public Stream<T> readSequentialFlushed(String partition, String key) {
-        return store.readSequentialFlushed(partition, key).map(deserializer);
-    }
-
-    /**
-     * Read the last object that was stored under a given partition and key,
-     * skipping the write cache so that unflushed data is not visible
-     *
-     * @param partition the partition under which to retrieve
-     * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
-     * @return the stored object, or null if none
-     */
-    public T readLastFlushed(String partition, String key) {
-        return deserializer.apply(store.readLastFlushed(partition, key));
-    }
-
-    /**
      * Enumerate the keys in the data store
      *
      * @param partition the key under which to retrieve

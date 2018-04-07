@@ -43,27 +43,27 @@ public class CounterStoreTest {
     @Test
     public void setTest() throws Exception {
         store.set("partition", "foo", 5);
-        assertEquals(5, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(5), store.get("partition", "foo"));
     }
 
     @Test
     public void incrTest() throws Exception {
         store.increment("partition", "foo", 1);
-        assertEquals(1, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(1), store.get("partition", "foo"));
     }
 
     @Test
     public void incrTwiceTest() throws Exception {
         store.increment("partition", "foo", 1);
         store.increment("partition", "foo", 1);
-        assertEquals(2, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(2), store.get("partition", "foo"));
     }
 
     @Test
     public void incrTwiceTwoTest() throws Exception {
         store.increment("partition", "foo", 1);
         store.increment("partition", "foo", 2);
-        assertEquals(3, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(3), store.get("partition", "foo"));
     }
 
 
@@ -78,16 +78,16 @@ public class CounterStoreTest {
         store.increment("partition", "bar", 3);
         store.close();
         store = newStore();
-        assertEquals(10, store.get("partition", "foo"));
-        assertEquals(3, store.get("partition", "bar"));
-        assertEquals(0, store.get("partition", "baz"));
+        assertEquals(Long.valueOf(10), store.get("partition", "foo"));
+        assertEquals(Long.valueOf(3), store.get("partition", "bar"));
+        assertEquals(Long.valueOf(0), store.get("partition", "baz"));
     }
 
     @Test
     public void testClear() throws Exception {
         store.set("partition", "foo", 7);
         store.clear();
-        assertEquals(0, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(0), store.get("partition", "foo"));
         assertEquals(0, store.partitions().count());
         assertEquals(0, store.keys("partition").count());
     }
@@ -102,9 +102,9 @@ public class CounterStoreTest {
     public void testPurge() throws Exception {
         store.set("partition", "foo", 7);
         store.trim();
-        assertEquals(7, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(7), store.get("partition", "foo"));
         store.increment("partition", "foo");
-        assertEquals(8, store.get("partition", "foo"));
+        assertEquals(Long.valueOf(8), store.get("partition", "foo"));
     }
 
     @Test
@@ -184,9 +184,9 @@ public class CounterStoreTest {
         store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
 
         assertArrayEquals(new String[] { "2017-11-30" }, store.partitions().toArray(String[]::new));
-        assertEquals(5, store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
-        assertEquals(1, store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
-        assertEquals(1, store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));
+        assertEquals(Long.valueOf(5), store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
+        assertEquals(Long.valueOf(1), store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
+        assertEquals(Long.valueOf(1), store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));
     }
 
     @Test
@@ -222,7 +222,7 @@ public class CounterStoreTest {
         for (int i = 0; i < vals.length; i++) {
             long val = vals[i];
             String key = String.format("k%010d", i);
-            assertEquals("expected value " + (i + 1) + "/" + vals.length + " to match", val, store.get("my_partition", key));
+            assertEquals("expected value " + (i + 1) + "/" + vals.length + " to match", Long.valueOf(val), store.get("my_partition", key));
         }
         log.info("parallel: done");
     }

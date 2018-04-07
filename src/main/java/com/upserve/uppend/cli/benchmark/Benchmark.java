@@ -45,9 +45,7 @@ public class Benchmark {
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withLongLookupHashSize(hashSize)
-                .withLongLookupWriteCacheSize(cachesize)
                 .withFlushDelaySeconds(flushDelaySeconds)
-                .withBufferedAppend(buffered, AutoFlusher.flushExecPool)
                 .withMetrics(metrics);
 
 

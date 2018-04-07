@@ -6,7 +6,7 @@ import java.util.OptionalLong;
 import java.util.function.*;
 
 /**
- * Partition level view of the store lookup cache
+ * AppendStorePartition level view of the store lookup cache
  */
 public class PartitionLookupCache {
 

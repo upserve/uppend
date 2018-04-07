@@ -39,7 +39,7 @@ public class CounterStoreWithMetrics implements CounterStore {
     }
 
     @Override
-    public long set(String partition, String key, long value) {
+    public Long set(String partition, String key, long value) {
         final Timer.Context context = metricsSetTimer.time();
         try {
             return store.set(partition, key, value);
@@ -69,7 +69,7 @@ public class CounterStoreWithMetrics implements CounterStore {
     }
 
     @Override
-    public long get(String partition, String key) {
+    public Long get(String partition, String key) {
         final Timer.Context context = metricsGetTimer.time();
         try {
             return store.get(partition, key);

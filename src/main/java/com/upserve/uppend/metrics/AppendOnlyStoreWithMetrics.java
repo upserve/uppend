@@ -112,41 +112,6 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public Stream<byte[]> readFlushed(String partition, String key) {
-        final Timer.Context context = readTimer.time();
-        try {
-            return store.readFlushed(partition, key)
-                    .peek(bytes -> readBytesMeter.mark(bytes.length));
-        } finally {
-            context.stop();
-        }
-    }
-
-    @Override
-    public Stream<byte[]> readSequentialFlushed(String partition, String key) {
-        final Timer.Context context = readTimer.time();
-        try {
-            return store.readSequentialFlushed(partition, key)
-                    .peek(bytes -> readBytesMeter.mark(bytes.length));
-        } finally {
-            context.stop();
-        }
-    }
-
-    @Override
-    public byte[] readLastFlushed(String partition, String key) {
-        final Timer.Context context = readTimer.time();
-        try {
-            byte[] bytes = store.readLastFlushed(partition, key);
-            readBytesMeter.mark(bytes.length);
-            return bytes;
-        } finally {
-            context.stop();
-        }
-    }
-
-
-    @Override
     public Stream<String> keys(String partition) {
         final Timer.Context context = keysTimer.time();
         try {
