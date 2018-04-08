@@ -248,7 +248,7 @@ public class LongLookup implements Flushable {
         // Also see hashPath method in this class
         Stream<String> paths = IntStream
                 .range(0, hashFinalByteMask + 1)
-                .mapToObj(i -> String.format("%02x/data", i));
+                .mapToObj(i -> String.format("%02x", i));
 
         for (int i = 1; i < hashBytes; i++) {
             paths = paths

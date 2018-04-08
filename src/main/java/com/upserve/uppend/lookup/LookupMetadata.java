@@ -51,7 +51,18 @@ public class LookupMetadata {
         bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public LookupMetadata(Path path, int metadataGeneration) {
+    public static LookupMetadata open(Path path, int metadataGeneration){
+        try {
+            return new LookupMetadata(path, metadataGeneration);
+        } catch (NoSuchFileException e) {
+            log.debug("No metadata found at path {}", path);
+            return new LookupMetadata(0, null, null, new int[0], metadataGeneration);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to load metadata from path:" + path, e);
+        }
+    }
+
+    public LookupMetadata(Path path, int metadataGeneration) throws IOException {
         log.trace("constructing metadata at path: {}", path);
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
             int compressedSize, minKeyLength, maxKeyLength;
@@ -80,8 +91,6 @@ public class LookupMetadata {
             if (keyStorageOrder.length != numKeys) {
                 throw new IllegalStateException("expected " + numKeys + " keys, got " + keyStorageOrder.length + " at path: " + path);
             }
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to construct metadata from path: " + path, e);
         }
 
         this.metadataGeneration = metadataGeneration;
@@ -99,6 +108,13 @@ public class LookupMetadata {
 
     public Long findLong(LookupData lookupData, LookupKey key) {
 
+        key.setMetaDataGeneration(metadataGeneration);
+
+        if (numKeys == 0){
+            key.setLookupBlockIndex(-1);
+            return null;
+        }
+
         int keyIndexLower = 0;
         int keyIndexUpper = numKeys - 1;
         LookupKey lowerKey = minKey;
@@ -109,7 +125,6 @@ public class LookupMetadata {
         LookupKey midpointKey;
         int midpointKeyIndex;
 
-        key.setMetaDataGeneration(metadataGeneration);
 
         int comparison = lowerKey.compareTo(key);
         if (comparison > 0 /* lowerKey is greater than key */) {

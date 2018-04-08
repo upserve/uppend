@@ -49,7 +49,7 @@ public class LookupDataTest {
             expected = e;
         }
         assertNotNull(expected);
-        assertTrue(expected.getMessage().contains("can't open file"));
+        assertTrue(expected.getMessage().contains("unable to make parent dir"));
 
         expected = null;
         notDirPath = notDirPath.resolve("sub").resolve("sub2");
@@ -60,18 +60,6 @@ public class LookupDataTest {
         }
         assertNotNull(expected);
         assertTrue(expected.getMessage().contains("unable to make parent dir"));
-
-        Files.write(lookupDir.resolve("data"), "short bad data".getBytes());
-        new LookupData(lookupDir, partitionLookupCache);
-
-        Files.write(lookupDir.resolve("data"), "bad data that is long enough to cross record".getBytes());
-        expected = null;
-        try {
-            new LookupData(lookupDir, partitionLookupCache);
-        } catch (BufferUnderflowException e) {
-            expected = e;
-        }
-        assertNotNull(expected);
 
         assertTrue(notDir.delete());
     }

@@ -67,7 +67,7 @@ public class LookupData implements Flushable {
             writeCache = new ConcurrentHashMap<>();
         }
 
-        if (!Files.exists(path) /* notExists() returns true erroneously */) {
+        if (!Files.exists(path) || !Files.isDirectory(path) /* notExists() returns true erroneously */) {
             try {
                 Files.createDirectories(path);
             } catch (IOException e) {
@@ -256,7 +256,8 @@ public class LookupData implements Flushable {
 
         LookupKey key = new LookupKey(keyBlobs.read(keyPos));
         key.setLookupBlockIndex(keyNumber);
-        partitionLookupCache.putLookup(key, value);
+        // TODO add caching for key iterator!
+        //partitionLookupCache.putLookup(key, value);
 
         return key;
     }
@@ -305,8 +306,7 @@ public class LookupData implements Flushable {
      * @return Long value or null if not present
      */
     private Long findValueFor(LookupKey key) {
-        LookupMetadata metadata = partitionLookupCache.getMetadata(this);
-        return metadata.findLong(this, key);
+        return partitionLookupCache.getMetadata(this).findLong(this, key);
     }
 
     /**
@@ -420,25 +420,29 @@ public class LookupData implements Flushable {
                 }
             }
 
-            for (int keyIndex: currentKeySortOrder) {
+            if (currentKeySortOrder.length == 0){
+                maxKey = newKeys.get(newKeys.size() - 1);
+            } else {
+                for (int keyIndex : currentKeySortOrder) {
 
-                newKeySortOrder[index] = keyIndex;
-                index++;
+                    newKeySortOrder[index] = keyIndex;
+                    index++;
 
-                if (newKeysGroupedBySortOrderIndex.containsKey((long) keyIndex)) {
-                    newKeys = newKeysGroupedBySortOrderIndex.get((long) keyIndex);
-                    newKeys.sort(LookupKey::compareTo);
+                    if (newKeysGroupedBySortOrderIndex.containsKey((long) keyIndex)) {
+                        newKeys = newKeysGroupedBySortOrderIndex.get((long) keyIndex);
+                        newKeys.sort(LookupKey::compareTo);
 
-                    for (LookupKey key : newKeys) {
-                        newKeySortOrder[index] = key.getLookupBlockIndex();
+                        for (LookupKey key : newKeys) {
+                            newKeySortOrder[index] = key.getLookupBlockIndex();
 
-                        if(index == newKeySortOrder.length) {
-                            maxKey = key;
+                            if (index == newKeySortOrder.length) {
+                                maxKey = key;
+                            }
+
+                            index++;
                         }
 
-                        index++;
                     }
-
                 }
             }
 

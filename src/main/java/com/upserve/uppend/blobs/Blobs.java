@@ -38,16 +38,16 @@ public class Blobs extends PageMappedFileIO {
         } catch (IOException e) {
             throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + filePath, e);
         }
-        log.trace("appended {} bytes to {} at pos {}", bytes.length, filePath, pos);
+        if (log.isTraceEnabled()) log.trace("appended {} bytes to {} at pos {}", bytes.length, filePath, pos);
         return pos;
     }
 
     public byte[] read(long pos) {
-        log.trace("read mapped from  {} @ {}", filePath, pos);
+        if (log.isTraceEnabled()) log.trace("read mapped from  {} @ {}", filePath, pos);
         int size = readMappedInt(pos);
         byte[] buf = new byte[size];
         readMapped(pos + 4, buf);
-        log.trace("read mapped {} bytes from {} @ {}", size, filePath, pos);
+        if (log.isTraceEnabled()) log.trace("read mapped {} bytes from {} @ {}", size, filePath, pos);
         return buf;
     }
 }

@@ -70,6 +70,7 @@ public class PageMappedFileIO implements Flushable {
     }
 
     void readMapped(long pos, byte[] buf){
+        if (buf.length == 0) return;
         final int result = readMappedOffset(pos, buf, 0);
         if (result != buf.length) {
             throw new RuntimeException("FOo");
@@ -86,7 +87,7 @@ public class PageMappedFileIO implements Flushable {
             throw new UncheckedIOException("Unable to read bytes in blob store", e);
         }
 
-        if (bytesRead < buf.length){
+        if (bytesRead < (buf.length - offset)){
             bytesRead += readMappedOffset(pos + bytesRead, buf, offset + bytesRead);
         }
         return bytesRead;

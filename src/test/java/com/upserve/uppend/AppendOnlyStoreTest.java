@@ -3,9 +3,11 @@ package com.upserve.uppend;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Longs;
 import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.*;
@@ -31,11 +33,13 @@ public class AppendOnlyStoreTest {
     }
 
     @After
-    public void cleanUp() {
+    public void cleanUp() throws IOException {
         try {
             store.close();
         } catch (Exception e) {
             throw new AssertionError("Should not raise: {}", e);
+        } finally {
+            SafeDeleting.removeDirectory(Paths.get("build/test/file-append-only-store"));
         }
     }
 
@@ -114,6 +118,11 @@ public class AppendOnlyStoreTest {
 
                         store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
 
+                        try {
+                            Thread.sleep(10);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                         assertArrayEquals(
                                 list.stream().mapToLong(v -> v).toArray(),
                                 store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
@@ -144,7 +153,7 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void fillTheCache() {
+    public void fillTheCache() throws Exception {
         int keys = LongLookup.DEFAULT_WRITE_CACHE_SIZE * 2;
 
         Random random = new Random(9876);
@@ -158,7 +167,7 @@ public class AppendOnlyStoreTest {
                 .parallel()
                 .forEach(uuid -> store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes()));
 
-        cleanUp();
+        store.close();
         store = newStore();
         String[] uuids2 = Arrays.copyOf(uuids, uuids.length);
         Collections.shuffle(Arrays.asList(uuids2));

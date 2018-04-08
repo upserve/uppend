@@ -26,7 +26,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     protected static final int DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE = 10_000;
     protected static final int DEFAULT_INITIAL_LOOKUP_CACHE_SIZE = 100;
 
-    protected static final int DEFAULT_MAXIMUM_FILE_CACHE_SIZE = 10_000;
+    protected static final int DEFAULT_MAXIMUM_FILE_CACHE_SIZE = 8_000;
     protected static final int DEFAULT_INITIAL_FILE_CACHE_SIZE = 1000;
 
     protected static final int DEFAULT_HASH_SIZE = 256;

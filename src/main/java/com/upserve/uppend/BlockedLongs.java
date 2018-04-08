@@ -81,9 +81,19 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to init blocks file: " + file, e);
         }
 
-        stripedLocks = Striped.lock(LOCK_SIZE);
+        if (readOnly) {
+            stripedLocks = null;
+            pages = null;
+            currentPage = null;
 
-        pages = new MappedByteBuffer[MAX_PAGES];
+        } else {
+            stripedLocks = Striped.lock(LOCK_SIZE);
+
+            pages = new MappedByteBuffer[MAX_PAGES];
+
+            ensurePage(0);
+            currentPage = new AtomicInteger(0);
+        }
 
         bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
 
@@ -106,8 +116,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             }
             posMem = new AtomicLong(pos);
 
-            ensurePage(0);
-            currentPage = new AtomicInteger(0);
+
         } catch (IOException e) {
             throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
         }
@@ -141,6 +150,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
 
+        if (readOnly) throw new RuntimeException("Can not append a read only blocked longs file: "+ file);
         // size | -next
         // prev | -last
 
@@ -294,6 +304,13 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void close() throws Exception {
         log.trace("closing {}", file);
+
+        if (readOnly){
+            blocks.close();
+            blocksPos.close();
+            return;
+        }
+        
         IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
             flush();
@@ -306,6 +323,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     @Override
     public void flush() {
+        if (readOnly) return;
         log.trace("flushing {}", file);
         posBuf.force();
         for (MappedByteBuffer page : pages) {

@@ -158,9 +158,13 @@ public class Benchmark {
         writerThread.join();
         readerThread.join();
 
+        log.info("Threads joined - cleanup and shutdown!");
+
         testInstance.trim();
 
         watcher.join(1500);
+
+        log.info("Finished trim - close and shutdown");
 
         try {
             testInstance.close();
