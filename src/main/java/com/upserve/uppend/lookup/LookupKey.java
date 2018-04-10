@@ -4,7 +4,9 @@ import java.nio.charset.StandardCharsets;
 
 public class LookupKey implements Comparable<LookupKey> {
     private final byte[] bytes;
+    // Lookup block index is immutable as the lookup blocks are append only
     private int lookupBlockIndex;
+    // Used to determine whether the sort order information is valid for this LookupKey during flush
     private int metaDataGeneration;
 
     public LookupKey(String stringValue) {
@@ -51,6 +53,7 @@ public class LookupKey implements Comparable<LookupKey> {
         return bytes.length;
     }
 
+    // TODO optimize compareTo, equals and hashCode using the byte[]
     @Override
     public int compareTo(LookupKey o) {
         return string().compareTo(o.string());

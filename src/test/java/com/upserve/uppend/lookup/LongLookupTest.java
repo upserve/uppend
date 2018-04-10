@@ -42,7 +42,7 @@ public class LongLookupTest {
         } catch (IllegalArgumentException e) {
             expected = e;
         }
-        assertNotNull(expected);
+        assertNull(expected);
 
         expected = null;
         try {
@@ -66,7 +66,7 @@ public class LongLookupTest {
         for (int hashSize : new int[] { 1, 2, 3, 4, 5, 6, 7, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536 }) {
             Path hashPath = path.resolve(String.format("byte-boundary-%d", hashSize));
             SafeDeleting.removeDirectory(hashPath);
-            LongLookup longLookup = new LongLookup(path, 8, partitionLookupCache);
+            LongLookup longLookup = new LongLookup(path, hashSize, partitionLookupCache);
             assertEquals(hashSize, IntStream
                     .range(0, hashSize)
                     .mapToObj(HashCode::fromInt)
@@ -112,6 +112,8 @@ public class LongLookupTest {
         longLookup.put("a2", 2);
         longLookup.put("b1", 1);
         longLookup.put("b2", 2);
+
+        longLookup.flush();
 
         longLookup = new LongLookup(path, 8, partitionLookupCache);
         Map<String, Long> results = new TreeMap<>();

@@ -19,6 +19,10 @@ public abstract class Partition {
     public static Stream<String> listPartitions(Path partitiondPath){
         try {
             return Files.list(partitiondPath).filter(path -> Files.exists(lookupsDir(path))).map(path -> path.toFile().getName());
+        } catch (NoSuchFileException e){
+            log.debug("Partitions director does not exist", e);
+            return Stream.empty();
+
         } catch (IOException e){
             log.error("Unable to list partitions in {}", partitiondPath, e);
             return Stream.empty();

@@ -246,18 +246,15 @@ public class LookupData implements Flushable {
     }
 
     /**
-     * Load the key and cache it for future use
+     * read the LookupKey by index
      * @param keyNumber the index into the block of long pairs that map key blob position to key's value
      * @return the cached lookup key
      */
     public LookupKey readKey(int keyNumber) {
         long keyPos = keyPosToBlockPos.getLeft(keyNumber);
-        long value = keyPosToBlockPos.getRight(keyNumber);
 
         LookupKey key = new LookupKey(keyBlobs.read(keyPos));
         key.setLookupBlockIndex(keyNumber);
-        // TODO add caching for key iterator!
-        //partitionLookupCache.putLookup(key, value);
 
         return key;
     }
@@ -273,7 +270,6 @@ public class LookupData implements Flushable {
 
         LookupKey key = new LookupKey(keyBlobs.read(keyPos));
         key.setLookupBlockIndex(keyNumber);
-        partitionLookupCache.putLookup(key, value);
 
         return Maps.immutableEntry(key.string(), value);
     }
@@ -421,6 +417,7 @@ public class LookupData implements Flushable {
             }
 
             if (currentKeySortOrder.length == 0){
+                if (newKeys == null) throw new RuntimeException("newKeys should never be null if currentKeysSortOrder is empty");
                 maxKey = newKeys.get(newKeys.size() - 1);
             } else {
                 for (int keyIndex : currentKeySortOrder) {
@@ -449,17 +446,15 @@ public class LookupData implements Flushable {
             partitionLookupCache.putMetadata(this,
                     LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataPath, metaDataGeneration.incrementAndGet())
             );
-
             keyBlobs.flush();
             keyPosToBlockPos.flush();
-
         }
     }
 
     Stream<LookupKey> keys() {
         KeyIterator iter;
         try {
-            readLock.lock();
+            readLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
             iter = new KeyIterator(this);
         } finally {
             readLock.unlock();
@@ -476,7 +471,7 @@ public class LookupData implements Flushable {
 
         KeyLongIterator iter;
         try {
-            readLock.lock();
+            readLock.lock(); // Read lock the WriteCache while initializing the KeyLongIterator
             iter = new KeyLongIterator(this);
         } finally {
             readLock.unlock();
@@ -494,7 +489,7 @@ public class LookupData implements Flushable {
         final int numKeys;
         final Map<LookupKey, Long> writeCacheCopy;
         try{
-            readLock.lock();
+            readLock.lock(); // Read lock the WriteCache while initializing the data to scan
             numKeys = keyPosToBlockPos.getMaxIndex();
 
             writeCacheCopy = writeCacheCopy();
@@ -502,9 +497,15 @@ public class LookupData implements Flushable {
             readLock.unlock();
         }
 
-        writeCacheCopy.forEach((key, value) -> keyValueFunction.accept(key.string(), value));
+        writeCacheCopy
+                .forEach((key, value) -> keyValueFunction.accept(key.string(), value));
 
-        IntStream.range(0, numKeys).mapToObj(this::readEntry).forEach(entry -> keyValueFunction.accept(entry.getKey(), entry.getValue()));
+        // Read but do not cache these keys - easy to add but is it helpful?
+        IntStream
+                .range(0, numKeys)
+                .mapToObj(this::readEntry)
+                .forEach(entry -> keyValueFunction
+                        .accept(entry.getKey(), entry.getValue()));
     }
 
     private static class KeyIterator implements Iterator<LookupKey> {
@@ -542,7 +543,7 @@ public class LookupData implements Flushable {
             LookupKey key;
 
             if (keyIndex < maxKeyIndex){
-                key = lookupData.readKey(keyIndex);
+                key = lookupData.readKey(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
             } else {
                 key = writeCacheKeyIterator.next();
             }
@@ -591,7 +592,7 @@ public class LookupData implements Flushable {
             Map.Entry<String, Long> result;
 
             if (keyIndex < maxKeyIndex){
-                result = lookupData.readEntry(keyIndex);
+                result = lookupData.readEntry(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
             } else {
                 result = writeCacheKeyIterator.next();
             }
@@ -599,6 +600,5 @@ public class LookupData implements Flushable {
             keyIndex++;
             return result;
         }
-
     }
 }
