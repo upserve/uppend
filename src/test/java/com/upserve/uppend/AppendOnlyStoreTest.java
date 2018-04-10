@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
     private AppendOnlyStore newStore() {
-        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).withLongLookupHashSize(8).build(false);
+        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).withLongLookupHashSize(4).build(false);
     }
 
     private AppendOnlyStore store;
@@ -94,7 +94,7 @@ public class AppendOnlyStoreTest {
 
         Thread flusherThread = new Thread(() -> {
             while (true) {
-                store.flush();
+//                store.flush();
                 try {
                     Thread.sleep(50);
                 } catch (InterruptedException e) {
@@ -105,7 +105,7 @@ public class AppendOnlyStoreTest {
         flusherThread.start();
 
         new Random(314159)
-                .longs(50_000, 0, 1000)
+                .longs(50_000, 0, 100)
                 .parallel()
                 .forEach(val -> {
                     String key = String.valueOf(val);
@@ -114,18 +114,26 @@ public class AppendOnlyStoreTest {
                         if (list == null) {
                             list = new ArrayList<>();
                         }
-                        list.add(val);
+                        list.add(val+5);
 
-                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
+                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val+5));
 
                         try {
-                            Thread.sleep(10);
+                            Thread.sleep(50);
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
+
+                        long[] expected = list.stream().mapToLong(v -> v).toArray();
+                        long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
+
+//                        if (expected.length != result.length){
+//                            fail("Array lenth does not match");
+//                        }
+
                         assertArrayEquals(
-                                list.stream().mapToLong(v -> v).toArray(),
-                                store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
+                                expected,
+                                result
                         );
 
                         return list;

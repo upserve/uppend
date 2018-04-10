@@ -39,6 +39,7 @@ public class BlockedLongPairs extends PageMappedFileIO {
         final long pos = position.getAndAdd(16);
         try {
             fileCache.getFileChannel(filePath).write(buf, pos);
+            fileCache.getFileChannelIfPresent(filePath).force(true);
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to append record to BlockedLongPairs: " + filePath, e);
         }

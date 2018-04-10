@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.google.common.primitives.Longs;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
@@ -9,7 +10,11 @@ import java.lang.reflect.*;
 import java.nio.*;
 import java.nio.channels.*;
 import java.nio.file.Paths;
+import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.LongStream;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 
@@ -59,9 +64,29 @@ public class BlobsTest {
     @Test
     public void testClose() throws IOException {
         assertEquals(0, blobs.append("foo".getBytes()));
-        uninitialize();
-        uninitialize();
+        blobs.flush();
+        pagedFileMapper.flush();
+        fileCache.flush();
         blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
         assertEquals("foo", new String(blobs.read(0)));
     }
+
+    @Test
+    public void testConcurrent() {
+
+        new Random(241898)
+                .longs(100_000, 0, 10_000)
+                .parallel()
+                .forEach(val -> {
+                    byte[] bytes = Longs.toByteArray(val);
+                    long pos = blobs.append(Longs.toByteArray(val));
+                    //testData.put(pos, val);
+
+                    System.out.println("Pos: " + pos + " val: " + val);
+                    assertArrayEquals(bytes, blobs.read(pos));
+
+                });
+
+    }
+
 }

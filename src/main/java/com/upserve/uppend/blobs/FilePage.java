@@ -11,7 +11,7 @@ public class FilePage {
     private final PageKey key;
     private final int pageSize;
     private final FileCache fileCache;
-    private int bytesRead;
+    private final AtomicInteger bytesRead;
 
     /**
      * Lazy loaded page of a file. The open file channel must be provided to read bytes but data can be cached regardless
@@ -24,10 +24,16 @@ public class FilePage {
         this.pageSize = pageSize;
         this.fileCache = fileCache;
         this.bytes = new byte[pageSize];
+
+        bytesRead = new AtomicInteger();
     }
 
     protected int get(long filePosition, byte[] dst, int bufferOffset) throws IOException {
         int result = getBytes(filePosition, dst, bufferOffset);
+        if (result > 0) return result;
+
+        loadMore();
+        result =  getBytes(filePosition, dst, bufferOffset);
         if (result > 0) return result;
 
         loadMore();
@@ -44,12 +50,12 @@ public class FilePage {
     private int getBytes(long filePosition, byte[] dst, int bufferOffset) throws IOException {
         final int pagePos = pagePosition(filePosition);
         final int desiredRead = dst.length - bufferOffset;
-        final int availableToRead = bytesRead - pagePos;
+        final int availableToRead = bytesRead.get() - pagePos;
 
         final int actualRead;
         if (availableToRead >= desiredRead) {
             actualRead = desiredRead;
-        } else if (bytesRead == pageSize){
+        } else if (bytesRead.get() == pageSize){
             // Read to end of page
             actualRead = availableToRead;
         } else {
@@ -70,17 +76,17 @@ public class FilePage {
 
     private void loadMore() throws IOException {
         synchronized (this) {
-            if (bytesRead < pageSize){
+            if (bytesRead.get() < pageSize){
                 loadBytes();
             }
         }
     }
 
     private void loadBytes() throws IOException {
-        long pos = (long) key.getPage() * pageSize + bytesRead;
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, bytesRead, pageSize - bytesRead);
+        long pos = (long) key.getPage() * pageSize + bytesRead.get();
+        ByteBuffer buffer = ByteBuffer.wrap(bytes, bytesRead.get(), pageSize - bytesRead.get());
         try {
-            bytesRead += fileCache.getFileChannel(key.getFilePath()).read(buffer, pos);
+            bytesRead.addAndGet(fileCache.getFileChannel(key.getFilePath()).read(buffer, pos));
         } catch (IOException e) {
             throw new IOException("Unable to read page " + key.getPage() + " at pos " + pos + " with Size " + pageSize + " in file " + key.getFilePath(), e);
         }

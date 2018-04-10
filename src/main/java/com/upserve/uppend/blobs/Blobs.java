@@ -9,6 +9,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class Blobs extends PageMappedFileIO {
@@ -30,10 +31,12 @@ public class Blobs extends PageMappedFileIO {
                 FileChannel chan = fileCache.getFileChannel(filePath);
                 chan.write(intBuf, pos);
                 chan.write(ByteBuffer.wrap(bytes), pos + 4);
+                chan.force(true);
             } catch (ClosedChannelException e) {
                 log.warn("Blob file was closed {} - retrying!", filePath, e);
                 fileCache.getFileChannel(filePath).write(intBuf, pos);
                 fileCache.getFileChannel(filePath).write(ByteBuffer.wrap(bytes), pos + 4);
+                fileCache.getFileChannel(filePath).force(true);
             }
         } catch (IOException e) {
             throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + filePath, e);
@@ -47,6 +50,7 @@ public class Blobs extends PageMappedFileIO {
         int size = readMappedInt(pos);
         byte[] buf = new byte[size];
         readMapped(pos + 4, buf);
+
         if (log.isTraceEnabled()) log.trace("read mapped {} bytes from {} @ {}", size, filePath, pos);
         return buf;
     }
