@@ -2,12 +2,15 @@ package com.upserve.uppend.blobs;
 
 import com.github.benmanes.caffeine.cache.*;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import org.slf4j.Logger;
 
 import java.io.*;
+import java.lang.invoke.MethodHandles;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 
 public class PagedFileMapper implements Flushable {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final int pageSize;
     private final FileCache fileCache;
@@ -20,7 +23,14 @@ public class PagedFileMapper implements Flushable {
                 .<PageKey, FilePage>newBuilder()
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
-                .<PageKey, FilePage>build(key -> new FilePage(key, pageSize, fileCache));
+                .<PageKey, FilePage>removalListener((key, value, cause) ->  {
+                    log.warn("Called removal on {} with {}", key, cause);
+                    if (value != null) value.flush();
+                })
+                .<PageKey, FilePage>build(key -> {
+                    log.warn("new FilePage from {}", key);
+                    return new FilePage(key, pageSize, fileCache);
+                });
     }
 
     FilePage getPage(Path filePath, long pos){

@@ -9,12 +9,12 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiConsumer;
+import java.util.function.*;
 import java.util.stream.*;
 
 import static com.upserve.uppend.Partition.listPartitions;
 
-public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
+public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     protected static final int DEFAULT_BLOBS_PER_BLOCK = 127;
@@ -33,20 +33,18 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     protected final BlockedLongs blocks;
 
-    private final Map<String, AppendStorePartition> partitionMap;
     private final PagedFileMapper blobPageCache;
     private final LookupCache lookupCache;
     private final FileCache fileCache;
     private final int longLookupHashSize;
-    private final boolean readOnly;
+
+    private final Function<String, AppendStorePartition> openPartitionFunction;
+    private final Function<String, AppendStorePartition> createPartitionFunction;
 
     FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean readOnly, int longLookupHashSize, int blobsPerBlock) {
-        super(dir, flushDelaySeconds, !readOnly);
+        super(dir, flushDelaySeconds, readOnly);
 
-        this.readOnly = readOnly;
         this.longLookupHashSize = longLookupHashSize;
-
-        partitionMap = new ConcurrentHashMap<>();
 
         fileCache = new FileCache(DEFAULT_INITIAL_FILE_CACHE_SIZE, DEFAULT_MAXIMUM_FILE_CACHE_SIZE, readOnly);
         blobPageCache = new PagedFileMapper(DEFAULT_BLOB_PAGE_SIZE, DEFAULT_INITIAL_BLOB_CACHE_SIZE, DEFAULT_MAXIMUM_BLOB_CACHE_SIZE, fileCache);
@@ -54,29 +52,14 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         lookupCache = new LookupCache(lookupPageCache);
 
         blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);
+
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache);
+
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache);
     }
 
     private static Path partionPath(Path dir){
         return dir.resolve("partitions");
-    }
-
-    private Optional<AppendStorePartition> safeGet(String partition){
-        if (readOnly){
-            return Optional.ofNullable(
-                    partitionMap.computeIfAbsent(
-                            partition,
-                            partitionKey -> AppendStorePartition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache))
-            );
-        } else {
-            return Optional.of(getOrCreate(partition));
-        }
-    }
-
-    private AppendStorePartition getOrCreate(String partition){
-        return partitionMap.computeIfAbsent(
-                partition,
-                partitionKey -> AppendStorePartition.createPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache)
-        );
     }
 
     @Override
@@ -90,7 +73,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     public Stream<byte[]> read(String partition, String key) {
         log.trace("reading in partition {} with key {}", partition, key);
 
-        return safeGet(partition)
+        return getIfPresent(partition)
                 .map(partitionObject -> partitionObject.read(key, blocks))
                 .orElse(Stream.empty());
     }
@@ -98,14 +81,14 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public Stream<byte[]> readSequential(String partition, String key) {
         log.trace("reading sequential in partition {} with key {}", partition, key);
-        return safeGet(partition)
+        return getIfPresent(partition)
                 .map(partitionObject -> partitionObject.readSequential(key, blocks))
                 .orElse(Stream.empty());
     }
 
     public byte[] readLast(String partition, String key) {
         log.trace("reading last in partition {} with key {}", partition, key);
-        return safeGet(partition)
+        return getIfPresent(partition)
                 .map(partitionObject -> partitionObject.readLast(key, blocks))
                 .orElse(null);
     }
@@ -113,7 +96,7 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
     @Override
     public Stream<String> keys(String partition) {
         log.trace("getting keys in partition {}", partition);
-        return safeGet(partition)
+        return getIfPresent(partition)
                 .map(AppendStorePartition::keys)
                 .orElse(Stream.empty());
     }
@@ -125,14 +108,14 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
 
     @Override
     public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
-        return safeGet(partition)
+        return getIfPresent(partition)
                 .map(partitionObject -> partitionObject.scan(blocks))
                 .orElse(Stream.empty());
     }
 
     @Override
     public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
-        safeGet(partition)
+        getIfPresent(partition)
                 .ifPresent(partitionObject -> partitionObject.scan(blocks, callback));
     }
 
@@ -145,11 +128,24 @@ public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
         blocks.clear();
 
         listPartitions(partionPath(dir))
-                .map(this::getOrCreate)
+                .map(this::getIfPresent)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
                 .forEach(AppendStorePartition::clear);
+        partitionMap.clear();
         lookupCache.flush();
         blobPageCache.flush();
         fileCache.flush();
+    }
+
+    @Override
+    Function<String, AppendStorePartition> getOpenPartitionFunction() {
+        return openPartitionFunction;
+    }
+
+    @Override
+    Function<String, AppendStorePartition> getCreatePartitionFunction() {
+        return createPartitionFunction;
     }
 
     @Override

@@ -47,8 +47,7 @@ public class LookupCache implements Flushable {
     }
 
     public void putLookup(PartitionLookupKey key, long val){
-        keyLongLookupCache.get(key, keyFun -> val);
-        //keyLongLookupCache.put(key, val);
+        keyLongLookupCache.put(key, val);
     }
 
     public Long getLong(PartitionLookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader){

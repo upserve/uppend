@@ -7,16 +7,23 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.ByteBuffer;
+import java.nio.*;
 import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 public class PageMappedFileIO implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
+    static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
+
     final Path filePath;
     final PagedFileMapper pagedFileMapper;
+
+    private final MappedByteBuffer posBuf;
+
 
     final FileCache fileCache;
     final AtomicLong position;
@@ -34,25 +41,82 @@ public class PageMappedFileIO implements Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
-        if (fileCache.readOnly()) {
-            position = new AtomicLong(Long.MIN_VALUE);
-        } else {
-            try {
-                position = new AtomicLong(fileCache.getFileChannel(filePath).size());
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to init blob filePath: " + file, e);
-            }
+        try {
+            posBuf = fileCache.getFileChannel(file).map(fileCache.readOnly() ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, 0, 8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to open paged file for path: " + file, e);
+        }
+
+        long pos = posBuf.getLong(0);
+        if (pos < 0) {
+            throw new IllegalStateException("file position is less than zero: " + pos);
+        } else if (pos == 0) {
+            pos = 8;
+        }
+
+        log.debug("Opening page mapped file with position {}", pos);
+        position = new AtomicLong(pos);
+    }
+
+    long appendPosition(int size) {
+        // return the position to write at
+        final long result = position.getAndAdd(size);
+        // record the position written too
+        posBuf.putLong(0, result+size);
+        return result;
+    }
+
+    public long getPosition(){
+        if (fileCache.readOnly()){
+            return posBuf.getLong(0);
+        } else{
+            return position.get();
         }
     }
 
     public void clear() {
         log.trace("clearing {}", filePath);
         try {
-            fileCache.getFileChannel(filePath).truncate(0);
-            position.set(0);
+            position.set(8);
+            posBuf.putLong(0,8);
+            fileCache.getFileChannel(filePath).truncate(8);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
         }
+    }
+
+    void writeMappedInt(long pos, int val){
+        ByteBuffer intBuf = LOCAL_INT_BUFFER.get();
+        intBuf.putInt(val).flip();
+        writeMapped(pos, intBuf.array());
+    }
+
+    void writeMappedLong(long pos, long val){
+        ByteBuffer longBuf = LOCAL_LONG_BUFFER.get();
+        longBuf.putLong(val).flip();
+        writeMapped(pos, longBuf.array());
+    }
+
+    void writeMapped(long pos, byte[] bytes){
+        if (bytes.length == 0) {
+            return;
+        }
+        final int result = writeMappedOffset(pos, bytes, 0);
+        if (result != bytes.length) {
+            throw new RuntimeException("Failed to write all the bytes: " + bytes.length + " != " + result);
+        }
+    }
+
+    private int writeMappedOffset(long pos, byte[] bytes, int offset) {
+        FilePage filePage = pagedFileMapper.getPage(filePath, pos);
+
+        int bytesWritten;
+        bytesWritten = filePage.put(pos, bytes, offset);
+
+        if (bytesWritten < (bytes.length - offset)){
+            bytesWritten += writeMappedOffset(pos + bytesWritten, bytes, offset + bytesWritten);
+        }
+        return bytesWritten;
     }
 
     int readMappedInt(long pos) {
@@ -81,11 +145,7 @@ public class PageMappedFileIO implements Flushable {
         FilePage filePage = pagedFileMapper.getPage(filePath, pos);
 
         int bytesRead;
-        try {
-            bytesRead = filePage.get(pos, buf, offset);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to read bytes in blob store", e);
-        }
+        bytesRead = filePage.get(pos, buf, offset);
 
         if (bytesRead < (buf.length - offset)){
             bytesRead += readMappedOffset(pos + bytesRead, buf, offset + bytesRead);
@@ -95,13 +155,6 @@ public class PageMappedFileIO implements Flushable {
 
     @Override
     public void flush() throws IOException {
-        FileChannel fileChannel = fileCache.getFileChannelIfPresent(filePath);
-        if (fileChannel != null) {
-            try {
-                fileChannel.force(true);
-            } catch (ClosedChannelException e) {
-                log.debug("Tried to flush a closed file {}", filePath);
-            }
-        }
+        posBuf.force();
     }
 }

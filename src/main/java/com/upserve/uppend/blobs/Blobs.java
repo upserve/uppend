@@ -21,26 +21,9 @@ public class Blobs extends PageMappedFileIO {
 
     public long append(byte[] bytes) {
         int writeSize = bytes.length + 4;
-        final long pos;
-        pos = position.getAndAdd(writeSize);
-        try {
-            ByteBuffer intBuf = ThreadLocalByteBuffers.LOCAL_INT_BUFFER.get();
-            intBuf.putInt(bytes.length).flip();
-            // File system will efficiently combine these write operations
-            try {
-                FileChannel chan = fileCache.getFileChannel(filePath);
-                chan.write(intBuf, pos);
-                chan.write(ByteBuffer.wrap(bytes), pos + 4);
-                chan.force(true);
-            } catch (ClosedChannelException e) {
-                log.warn("Blob file was closed {} - retrying!", filePath, e);
-                fileCache.getFileChannel(filePath).write(intBuf, pos);
-                fileCache.getFileChannel(filePath).write(ByteBuffer.wrap(bytes), pos + 4);
-                fileCache.getFileChannel(filePath).force(true);
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable write " + writeSize + " bytes at position " + pos + ": " + filePath, e);
-        }
+        final long pos = appendPosition(writeSize);
+        writeMappedInt(pos, bytes.length);
+        writeMapped(pos + 4, bytes);
         if (log.isTraceEnabled()) log.trace("appended {} bytes to {} at pos {}", bytes.length, filePath, pos);
         return pos;
     }

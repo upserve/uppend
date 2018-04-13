@@ -18,10 +18,6 @@ public class BlockedLongPairs extends PageMappedFileIO {
 
     public BlockedLongPairs(Path file, PagedFileMapper pagedFileMapper) {
         super(file, pagedFileMapper);
-
-        if ((position.get() % 16) != 0) {
-            throw new RuntimeException("File length " + position.get() + " should be divisible by 16");
-        }
     }
 
     /**
@@ -36,18 +32,13 @@ public class BlockedLongPairs extends PageMappedFileIO {
         buf.putLong(val1);
         buf.putLong(val2);
         buf.flip();
-        final long pos = position.getAndAdd(16);
-        try {
-            fileCache.getFileChannel(filePath).write(buf, pos);
-            fileCache.getFileChannelIfPresent(filePath).force(true);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to append record to BlockedLongPairs: " + filePath, e);
-        }
-        return pos / 16;
+        final long pos = appendPosition(16);
+        writeMapped(pos, buf.array());
+        return (pos - 8) / 16;
     }
 
     public int getMaxIndex(){
-        return (int) (position.get() / 16);
+        return (int) ((getPosition() - 8) / 16);
     }
 
     /**
@@ -56,7 +47,7 @@ public class BlockedLongPairs extends PageMappedFileIO {
      * @param val a long to be written
      */
     public void writeLeft(long index, long val){
-        write(index * 16, val);
+        write(index * 16 + 8 , val);
     }
 
     /**
@@ -65,19 +56,12 @@ public class BlockedLongPairs extends PageMappedFileIO {
      * @param val a long to be written
      */
     public void writeRight(long index, long val){
-        write(index * 16 + 8, val);
+        write((index +1) * 16 , val);
     }
 
     private void write(long pos, long val){
         if (fileCache.readOnly()) throw new RuntimeException("Can not append value to a read only file " + filePath);
-        ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
-        buf.putLong(val);
-        buf.flip();
-        try {
-            fileCache.getFileChannel(filePath).write(buf, pos);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to append record to BlockedLongPairs: " + filePath, e);
-        }
+        writeMappedLong(pos, val);
     }
 
     /**
@@ -86,7 +70,7 @@ public class BlockedLongPairs extends PageMappedFileIO {
      * @return the left long value at that index
      */
     public long getLeft(long index){
-        return readMappedLong(index * 16);
+        return readMappedLong(index * 16 + 8);
     }
 
     /**
@@ -95,6 +79,6 @@ public class BlockedLongPairs extends PageMappedFileIO {
      * @return the right long value at that index
      */
     public long getRight(long index){
-        return readMappedLong(index * 16 + 8);
+        return readMappedLong((index + 1) * 16);
     }
 }

@@ -80,14 +80,14 @@ public class CounterStoreTest {
         store = newStore();
         assertEquals(Long.valueOf(10), store.get("partition", "foo"));
         assertEquals(Long.valueOf(3), store.get("partition", "bar"));
-        assertEquals(Long.valueOf(0), store.get("partition", "baz"));
+        assertEquals(null, store.get("partition", "baz"));
     }
 
     @Test
     public void testClear() throws Exception {
-        store.set("partition", "foo", 7);
+        assertEquals(null, store.set("partition", "foo", 7));
         store.clear();
-        assertEquals(Long.valueOf(0), store.get("partition", "foo"));
+        assertEquals(null, store.get("partition", "foo"));
         assertEquals(0, store.partitions().count());
         assertEquals(0, store.keys("partition").count());
     }
@@ -100,10 +100,10 @@ public class CounterStoreTest {
 
     @Test
     public void testPurge() throws Exception {
-        store.set("partition", "foo", 7);
+        assertEquals(null, store.set("partition", "foo", 7));
         store.trim();
         assertEquals(Long.valueOf(7), store.get("partition", "foo"));
-        store.increment("partition", "foo");
+        assertEquals(8L, store.increment("partition", "foo"));
         assertEquals(Long.valueOf(8), store.get("partition", "foo"));
     }
 
@@ -170,7 +170,7 @@ public class CounterStoreTest {
     @Test
     public void testExample() throws Exception {
         store.close();
-        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, true, 1, 1);
+        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, false, 1, 1);
         store.clear();
 
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
@@ -192,7 +192,7 @@ public class CounterStoreTest {
     @Test
     public void testParallel() throws Exception {
         store.close();
-        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, true, 1, 1);
+        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, false, 1, 1);
         store.clear();
 
         final int numKeys = 1000;

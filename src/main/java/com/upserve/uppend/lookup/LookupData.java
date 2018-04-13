@@ -442,12 +442,14 @@ public class LookupData implements Flushable {
                     }
                 }
             }
+            keyBlobs.flush();
+            keyPosToBlockPos.flush();
 
             partitionLookupCache.putMetadata(this,
                     LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataPath, metaDataGeneration.incrementAndGet())
             );
-            keyBlobs.flush();
-            keyPosToBlockPos.flush();
+
+            log.debug("flushed {}", hashPath);
         }
     }
 

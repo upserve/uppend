@@ -1,18 +1,15 @@
 package com.upserve.uppend;
 
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.primitives.Longs;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
-import java.io.*;
-import java.lang.reflect.*;
-import java.nio.*;
-import java.nio.channels.*;
+import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.Random;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.LongStream;
+import java.util.concurrent.*;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -21,18 +18,19 @@ import static org.junit.Assert.assertEquals;
 public class BlobsTest {
     private Blobs blobs;
 
+
     private FileCache fileCache = new FileCache(256, 512, false);
     private PagedFileMapper pagedFileMapper = new PagedFileMapper(256*1024,  64, 256, fileCache);
 
     @Before
     public void initialize() {
+
         blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
         blobs.clear();
     }
 
     @After
     public void uninitialize() throws IOException {
-        blobs.flush();
         pagedFileMapper.flush();
         fileCache.flush();
         SafeDeleting.removeDirectory(Paths.get("build/test/blobs"));
@@ -41,34 +39,38 @@ public class BlobsTest {
     @Test
     public void testSimple() {
         long pos = blobs.append("foo".getBytes());
-        assertEquals(0, pos);
+        assertEquals(8, pos);
         pos = blobs.append("bar".getBytes());
-        assertEquals(7, pos);
-        byte[] bytes = blobs.read(0);
+        assertEquals(15, pos);
+        byte[] bytes = blobs.read(8);
         assertEquals("foo", new String(bytes));
-        bytes = blobs.read(7);
+        bytes = blobs.read(15);
         assertEquals("bar", new String(bytes));
     }
 
     @Test
     public void testClear(){
         long pos = blobs.append("foo".getBytes());
-        assertEquals(0, pos);
+        assertEquals(8, pos);
         pos = blobs.append("bar".getBytes());
-        assertEquals(7, pos);
+        assertEquals(15, pos);
         blobs.clear();
+        pagedFileMapper.flush();
         pos = blobs.append("baz".getBytes());
-        assertEquals(0, pos);
+        assertEquals(8, pos);
     }
 
     @Test
     public void testClose() throws IOException {
-        assertEquals(0, blobs.append("foo".getBytes()));
+        assertEquals(8, blobs.append("foo".getBytes()));
+        assertEquals(15, blobs.append("foobar".getBytes()));
         blobs.flush();
         pagedFileMapper.flush();
         fileCache.flush();
         blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
-        assertEquals("foo", new String(blobs.read(0)));
+        assertEquals(25, blobs.getPosition());
+        assertEquals("foo", new String(blobs.read(8)));
+        assertEquals("foobar", new String(blobs.read(15)));
     }
 
     @Test
@@ -81,10 +83,7 @@ public class BlobsTest {
                     byte[] bytes = Longs.toByteArray(val);
                     long pos = blobs.append(Longs.toByteArray(val));
                     //testData.put(pos, val);
-
-                    System.out.println("Pos: " + pos + " val: " + val);
                     assertArrayEquals(bytes, blobs.read(pos));
-
                 });
 
     }

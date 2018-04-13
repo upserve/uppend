@@ -6,9 +6,12 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.*;
 import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.*;
 
-abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
+abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     /**
@@ -20,15 +23,16 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
     protected final Path dir;
 
     private final int flushDelaySeconds;
+    protected final Map<String, T> partitionMap;
 
-    private final boolean doLock;
+    protected final boolean readOnly;
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
 
     private final AtomicBoolean isClosed;
 
-    FileStore(Path dir, int flushDelaySeconds, boolean doLock) {
+    FileStore(Path dir, int flushDelaySeconds, boolean readOnly) {
         this.dir = dir;
         try {
             Files.createDirectories(dir);
@@ -41,8 +45,8 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
             AutoFlusher.register(flushDelaySeconds, this);
         }
 
-        this.doLock = doLock;
-        if (doLock) {
+        this.readOnly = readOnly;
+        if (!readOnly) {
             lockPath = dir.resolve("lock");
             try {
                 lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -58,8 +62,36 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
             lock = null;
         }
 
+        partitionMap = new ConcurrentHashMap<>();
+
         isClosed = new AtomicBoolean(false);
     }
+
+    abstract Function<String, T> getOpenPartitionFunction();
+    abstract Function<String, T> getCreatePartitionFunction();
+
+    Optional<T> safeGet(String partition){
+        if (readOnly){
+            return getIfPresent(partition);
+        } else {
+            return Optional.of(getOrCreate(partition));
+        }
+    }
+
+    Optional<T> getIfPresent(String partition){
+        return Optional.ofNullable( partitionMap.computeIfAbsent(
+                partition,
+                getOpenPartitionFunction()
+        ));
+    }
+
+    T getOrCreate(String partition){
+        return partitionMap.computeIfAbsent(
+                partition,
+                getCreatePartitionFunction()
+        );
+    }
+
 
     protected abstract void flushInternal() throws IOException;
 
@@ -106,7 +138,7 @@ abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
             log.error("unable to close {}", dir, e);
         }
 
-        if (doLock) {
+        if (!readOnly) {
             try {
                 lock.release();
             } catch (IOException e) {

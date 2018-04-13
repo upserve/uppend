@@ -114,6 +114,7 @@ public class LongLookupTest {
         longLookup.put("b2", 2);
 
         longLookup.flush();
+        lookupCache.flush();
 
         longLookup = new LongLookup(path, 8, partitionLookupCache);
         Map<String, Long> results = new TreeMap<>();

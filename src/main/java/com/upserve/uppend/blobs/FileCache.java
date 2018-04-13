@@ -7,6 +7,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
+import java.util.concurrent.*;
 
 /**
  * A cache of open file handles.
@@ -33,9 +34,12 @@ public class FileCache implements Flushable {
 
         this.fileCache = Caffeine
                 .<Path, FileChannel>newBuilder()
+//                .executor(Executors.newCachedThreadPool())
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
+                .expireAfterAccess(300, TimeUnit.DAYS)
                 .<Path, FileChannel>removalListener((key, value, cause) ->  {
+                    log.warn("Called removal on {} with {}", key, cause);
                     if (value != null && value.isOpen()) {
                         try {
                             value.close();
@@ -44,7 +48,10 @@ public class FileCache implements Flushable {
                         }
                     }
                 })
-                .<Path, FileChannel>build(path -> FileChannel.open(path, openOptions));
+                .<Path, FileChannel>build(path -> {
+                    log.warn("opening {}", path);
+                    return FileChannel.open(path, openOptions);
+                });
     }
 
     public boolean readOnly(){

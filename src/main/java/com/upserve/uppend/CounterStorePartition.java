@@ -47,7 +47,7 @@ public class CounterStorePartition extends Partition implements Flushable {
         this.lookups = longLookup;
     }
 
-    public long set(String key, long value) {
+    public Long set(String key, long value) {
         return lookups.put(key, value);
     }
 

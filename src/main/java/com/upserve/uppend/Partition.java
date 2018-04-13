@@ -20,7 +20,7 @@ public abstract class Partition {
         try {
             return Files.list(partitiondPath).filter(path -> Files.exists(lookupsDir(path))).map(path -> path.toFile().getName());
         } catch (NoSuchFileException e){
-            log.debug("Partitions director does not exist", e);
+            log.debug("Partitions director does not exist: {}", partitiondPath);
             return Stream.empty();
 
         } catch (IOException e){

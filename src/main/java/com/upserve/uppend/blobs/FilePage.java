@@ -5,13 +5,13 @@ import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class FilePage {
+public class FilePage implements Flushable {
 
     private final byte[] bytes;
+
+    private final MappedByteBuffer buffer;
     private final PageKey key;
     private final int pageSize;
-    private final FileCache fileCache;
-    private final AtomicInteger bytesRead;
 
     /**
      * Lazy loaded page of a file. The open file channel must be provided to read bytes but data can be cached regardless
@@ -22,73 +22,55 @@ public class FilePage {
     public FilePage(PageKey key, int pageSize, FileCache fileCache) throws IOException {
         this.key = key;
         this.pageSize = pageSize;
-        this.fileCache = fileCache;
         this.bytes = new byte[pageSize];
 
-        bytesRead = new AtomicInteger();
+        long pos = (long) pageSize * (long) key.getPage();
+        buffer = fileCache
+                .getFileChannel(key.getFilePath())
+                .map(fileCache.readOnly() ? FileChannel.MapMode.READ_ONLY: FileChannel.MapMode.READ_WRITE, pos, pageSize);
+
     }
 
-    protected int get(long filePosition, byte[] dst, int bufferOffset) throws IOException {
-        int result = getBytes(filePosition, dst, bufferOffset);
-        if (result > 0) return result;
+    protected int get(long filePosition, byte[] dst, int bufferOffset) {
+        final int pagePos = pagePosition(filePosition);
+        final int desiredRead = dst.length - bufferOffset;
+        final int availableToRead = pageSize - pagePos;
 
-        loadMore();
-        result =  getBytes(filePosition, dst, bufferOffset);
-        if (result > 0) return result;
+        final int actualRead = (availableToRead >= desiredRead) ? desiredRead : availableToRead;
 
-        loadMore();
-        result =  getBytes(filePosition, dst, bufferOffset);
-        if (result > 0) return result;
+        // Make a local buffer with local position
+        ByteBuffer localBuffer = buffer.duplicate();
 
-        throw new IOException("Unable to read " + (dst.length - bufferOffset) + " bytes at pos " + filePosition + ": Past end of file: " + key.getFilePath());
+        localBuffer.position(pagePos);
+
+        localBuffer.get(dst, bufferOffset, actualRead);
+
+        return  actualRead;
+    }
+
+    protected int put(long filePosition, byte[] src, int bufferOffset) {
+        final int pagePos = pagePosition(filePosition);
+
+        final int desiredWrite = src.length - bufferOffset;
+        final int availableToWrite = pageSize - pagePos;
+        final int actualWrite = (availableToWrite >= desiredWrite) ? desiredWrite : availableToWrite;
+
+        // Make a local buffer with local position
+        ByteBuffer localBuffer = buffer.duplicate();
+
+        localBuffer.position(pagePos);
+
+        localBuffer.put(src, bufferOffset, actualWrite);
+
+        return actualWrite;
     }
 
     private int pagePosition(long pos){
         return (int) (pos % (long) pageSize);
     }
 
-    private int getBytes(long filePosition, byte[] dst, int bufferOffset) throws IOException {
-        final int pagePos = pagePosition(filePosition);
-        final int desiredRead = dst.length - bufferOffset;
-        final int availableToRead = bytesRead.get() - pagePos;
-
-        final int actualRead;
-        if (availableToRead >= desiredRead) {
-            actualRead = desiredRead;
-        } else if (bytesRead.get() == pageSize){
-            // Read to end of page
-            actualRead = availableToRead;
-        } else {
-            return -1;
-        }
-
-        try {
-            System.arraycopy(bytes,
-                    pagePos,
-                    dst,
-                    bufferOffset,
-                    actualRead);
-        } catch (RuntimeException e) {
-            throw new IOException("Unable to read " + desiredRead + " bytes from page " + key.getPage() + " at pos " + filePosition + " in file " + key.getFilePath(), e);
-        }
-        return actualRead;
-    }
-
-    private void loadMore() throws IOException {
-        synchronized (this) {
-            if (bytesRead.get() < pageSize){
-                loadBytes();
-            }
-        }
-    }
-
-    private void loadBytes() throws IOException {
-        long pos = (long) key.getPage() * pageSize + bytesRead.get();
-        ByteBuffer buffer = ByteBuffer.wrap(bytes, bytesRead.get(), pageSize - bytesRead.get());
-        try {
-            bytesRead.addAndGet(fileCache.getFileChannel(key.getFilePath()).read(buffer, pos));
-        } catch (IOException e) {
-            throw new IOException("Unable to read page " + key.getPage() + " at pos " + pos + " with Size " + pageSize + " in file " + key.getFilePath(), e);
-        }
+    @Override
+    public void flush() {
+        buffer.force();
     }
 }

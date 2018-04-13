@@ -35,4 +35,12 @@ public class PageKey {
     int getPage() {
         return page;
     }
+
+    @Override
+    public String toString() {
+        return "PageKey{" +
+                "filePath=" + filePath +
+                ", page=" + page +
+                '}';
+    }
 }

@@ -94,8 +94,8 @@ public class AppendOnlyStoreTest {
 
         Thread flusherThread = new Thread(() -> {
             while (true) {
-//                store.flush();
                 try {
+                    store.flush();
                     Thread.sleep(50);
                 } catch (InterruptedException e) {
                     break;
@@ -105,7 +105,7 @@ public class AppendOnlyStoreTest {
         flusherThread.start();
 
         new Random(314159)
-                .longs(50_000, 0, 100)
+                .longs(500_000, 0, 1000)
                 .parallel()
                 .forEach(val -> {
                     String key = String.valueOf(val);
@@ -118,18 +118,12 @@ public class AppendOnlyStoreTest {
 
                         store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val+5));
 
-                        try {
-                            Thread.sleep(50);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-
                         long[] expected = list.stream().mapToLong(v -> v).toArray();
                         long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
 
-//                        if (expected.length != result.length){
-//                            fail("Array lenth does not match");
-//                        }
+                        if (expected.length != result.length){
+                            fail("Array lenth does not match");
+                        }
 
                         assertArrayEquals(
                                 expected,
