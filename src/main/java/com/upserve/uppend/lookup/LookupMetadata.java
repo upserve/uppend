@@ -28,7 +28,6 @@ public class LookupMetadata {
     public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, Path path, int metadataGeneration) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
-                keyStorageOrder.length,
                 minKey,
                 maxKey,
                 keyStorageOrder,
@@ -41,8 +40,8 @@ public class LookupMetadata {
     }
 
 
-    public LookupMetadata(int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
-        this.numKeys = numKeys;
+    public LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
+        this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
@@ -56,7 +55,7 @@ public class LookupMetadata {
             return new LookupMetadata(path, metadataGeneration);
         } catch (NoSuchFileException e) {
             log.debug("No metadata found at path {}", path);
-            return new LookupMetadata(0, null, null, new int[0], metadataGeneration);
+            return new LookupMetadata(null, null, new int[0], metadataGeneration);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to load metadata from path:" + path, e);
         }
@@ -81,7 +80,8 @@ public class LookupMetadata {
             long pos = 16 + minKeyLength + maxKeyLength;
             int mapSize = 4 * compressedSize;
             ByteBuffer bbuf = ByteBuffer.allocate(mapSize);
-            chan.read(bbuf, pos);
+            int bytesRead = chan.read(bbuf, pos);
+            if (bytesRead != mapSize) throw new IllegalStateException("expected compressed key storage order size " + mapSize + " but got " + bytesRead);
             bbuf.rewind();
             IntBuffer ibuf = bbuf.asIntBuffer();
             int[] compressedOrdering = new int[compressedSize];
@@ -145,6 +145,11 @@ public class LookupMetadata {
             keyNumber = keyStorageOrder[keyIndexUpper];
             key.setLookupBlockIndex(keyNumber); // This is the key index in the data file
             return lookupData.getKeyValue(keyNumber);
+        }
+
+        if (numKeys == 2) { // There are no other values keys besides upper and lower
+            key.setLookupBlockIndex(keyStorageOrder[keyIndexLower]);
+            return null;
         }
 
         // bisect till we find the key or return null
