@@ -1,4 +1,4 @@
-package com.upserve.uppend;
+package com.upserve.uppend.blobs;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.google.common.primitives.Longs;

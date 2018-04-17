@@ -1,6 +1,7 @@
 package com.upserve.uppend.blobs;
 
 import com.github.benmanes.caffeine.cache.*;
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -38,8 +39,9 @@ public class FileCache implements Flushable {
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
                 .expireAfterAccess(300, TimeUnit.DAYS)
+                .recordStats()
                 .<Path, FileChannel>removalListener((key, value, cause) ->  {
-                    log.warn("Called removal on {} with {}", key, cause);
+                    log.debug("Called removal on {} with cause {}", key, cause);
                     if (value != null && value.isOpen()) {
                         try {
                             value.close();
@@ -49,7 +51,7 @@ public class FileCache implements Flushable {
                     }
                 })
                 .<Path, FileChannel>build(path -> {
-                    log.warn("opening {}", path);
+                    log.debug("opening {} in file cache", path);
                     return FileChannel.open(path, openOptions);
                 });
     }
@@ -67,5 +69,9 @@ public class FileCache implements Flushable {
     @Override
     public void flush(){
         fileCache.invalidateAll();
+    }
+
+    public CacheStats stats(){
+        return fileCache.stats();
     }
 }
