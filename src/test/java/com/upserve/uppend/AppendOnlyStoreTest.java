@@ -11,8 +11,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.*;
 
@@ -87,16 +87,13 @@ public class AppendOnlyStoreTest {
 
     @Test
     public void testAppendWhileFlushing() throws Exception {
-        // This test is currently slow but it works.
-        // If you purge instead of flush it locks
-        // Concurrent implementation of LongLookup will fix this issue
         ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
 
         Thread flusherThread = new Thread(() -> {
             while (true) {
                 try {
                     store.flush();
-                    Thread.sleep(50);
+                    Thread.sleep(100);
                 } catch (InterruptedException e) {
                     break;
                 }
@@ -104,41 +101,44 @@ public class AppendOnlyStoreTest {
         });
         flusherThread.start();
 
-        new Random(314159)
-                .longs(500_000, 0, 1000)
-                .parallel()
-                .forEach(val -> {
-                    String key = String.valueOf(val);
+        ExecutorService executor = new ForkJoinPool();
+        Future future = executor.submit(() -> {
+                    new Random(314159)
+                            .longs(500_000, 0, 10_000)
+                            .parallel()
+                            .forEach(val -> {
+                                String key = String.valueOf(val);
 
-                    testData.compute(key, (k, list) -> {
-                        if (list == null) {
-                            list = new ArrayList<>();
-                        }
-                        list.add(val+5);
+                                testData.compute(key, (k, list) -> {
+                                    if (list == null) {
+                                        list = new ArrayList<>();
+                                    }
+                                    list.add(val + 5);
 
-                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val+5));
+                                    store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val + 5));
 
-                        long[] expected = list.stream().mapToLong(v -> v).toArray();
-                        long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
+                                    long[] expected = list.stream().mapToLong(v -> v).toArray();
+                                    long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
 
-                        if (expected.length != result.length){
-                            fail("Array lenth does not match");
-                        }
+                                    if (expected.length != result.length) {
+                                        fail("Array lenth does not match");
+                                    }
 
-                        assertArrayEquals(
-                                expected,
-                                result
-                        );
+                                    assertArrayEquals(
+                                            expected,
+                                            result
+                                    );
 
-                        return list;
-                    });
+                                    return list;
+                                });
 
+                            });
                 });
 
-        Thread.sleep(100);
+        future.get(20_000, TimeUnit.MILLISECONDS);
 
         flusherThread.interrupt();
-        flusherThread.join();
+        flusherThread.join(200);
     }
 
     @Test

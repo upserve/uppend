@@ -7,7 +7,7 @@ import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
 import java.io.IOException;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.Random;
 import java.util.concurrent.*;
 
@@ -18,22 +18,24 @@ import static org.junit.Assert.assertEquals;
 public class BlobsTest {
     private Blobs blobs;
 
+    Path rootPath = Paths.get("build/test/blobs");
+    Path blobsPath = rootPath.resolve("blobs_test");
 
     private FileCache fileCache = new FileCache(256, 512, false);
     private PagedFileMapper pagedFileMapper = new PagedFileMapper(256*1024,  64, 256, fileCache);
 
     @Before
-    public void initialize() {
+    public void initialize() throws IOException {
 
-        blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
+        SafeDeleting.removeDirectory(rootPath);
+        blobs = new Blobs(blobsPath, pagedFileMapper);
         blobs.clear();
     }
 
     @After
-    public void uninitialize() throws IOException {
+    public void uninitialize() {
         pagedFileMapper.flush();
         fileCache.flush();
-        SafeDeleting.removeDirectory(Paths.get("build/test/blobs"));
     }
 
     @Test
@@ -67,7 +69,7 @@ public class BlobsTest {
         blobs.flush();
         pagedFileMapper.flush();
         fileCache.flush();
-        blobs = new Blobs(Paths.get("build/test/blobs"), pagedFileMapper);
+        blobs = new Blobs(blobsPath, pagedFileMapper);
         assertEquals(25, blobs.getPosition());
         assertEquals("foo", new String(blobs.read(8)));
         assertEquals("foobar", new String(blobs.read(15)));

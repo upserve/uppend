@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
+import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 
@@ -23,13 +24,18 @@ public class PagedFileMapper implements Flushable {
                 .<PageKey, FilePage>newBuilder()
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
+                .recordStats()
                 .<PageKey, FilePage>removalListener((key, value, cause) ->  {
-                    log.warn("Called removal on {} with {}", key, cause);
+                    log.debug("Called removal on {} with cause {}", key, cause);
                     if (value != null) value.flush();
                 })
                 .<PageKey, FilePage>build(key -> {
-                    log.warn("new FilePage from {}", key);
-                    return new FilePage(key, pageSize, fileCache);
+                    log.debug("new FilePage from {}", key);
+                    final long pos = (long) pageSize * (long) key.getPage() ;
+                    MappedByteBuffer buffer = fileCache
+                            .getFileChannel(key.getFilePath())
+                            .map(fileCache.readOnly() ? FileChannel.MapMode.READ_ONLY: FileChannel.MapMode.READ_WRITE, pos, pageSize);
+                    return new FilePage(key, pageSize, buffer);
                 });
     }
 

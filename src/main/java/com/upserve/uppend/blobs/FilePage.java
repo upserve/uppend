@@ -7,8 +7,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class FilePage implements Flushable {
 
-    private final byte[] bytes;
-
     private final MappedByteBuffer buffer;
     private final PageKey key;
     private final int pageSize;
@@ -19,16 +17,10 @@ public class FilePage implements Flushable {
      * @param pageSize
      * @throws IOException
      */
-    public FilePage(PageKey key, int pageSize, FileCache fileCache) throws IOException {
+    public FilePage(PageKey key, int pageSize, MappedByteBuffer buffer) {
         this.key = key;
         this.pageSize = pageSize;
-        this.bytes = new byte[pageSize];
-
-        long pos = (long) pageSize * (long) key.getPage();
-        buffer = fileCache
-                .getFileChannel(key.getFilePath())
-                .map(fileCache.readOnly() ? FileChannel.MapMode.READ_ONLY: FileChannel.MapMode.READ_WRITE, pos, pageSize);
-
+        this.buffer = buffer;
     }
 
     protected int get(long filePosition, byte[] dst, int bufferOffset) {
