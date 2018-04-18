@@ -37,8 +37,11 @@ public class FileCacheTest {
     }
 
     @After
-    public void after() {
-        if (instance != null) instance.flush();
+    public void after() throws InterruptedException {
+        if (instance != null) {
+            instance.flush();
+            Thread.sleep(100); // TODO fix executors for cache so we don't need this
+        }
     }
 
     @Test
