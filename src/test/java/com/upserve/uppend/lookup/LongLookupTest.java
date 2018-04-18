@@ -19,7 +19,7 @@ public class LongLookupTest {
     private final Path path = Paths.get("build/test/long-lookup-test");
 
     private final FileCache fileCache = new FileCache(64, 256, false);
-    private final PagedFileMapper pageCache = new PagedFileMapper(256*1024, 16, 64, fileCache);
+    private final PageCache pageCache = new PageCache(256*1024, 16, 64, fileCache);
     private final LookupCache lookupCache = new LookupCache(pageCache);
     private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
 

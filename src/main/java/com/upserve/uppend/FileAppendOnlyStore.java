@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.*;
 import java.util.stream.*;
 
@@ -33,7 +32,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
     protected final BlockedLongs blocks;
 
-    private final PagedFileMapper blobPageCache;
+    private final PageCache blobPageCache;
     private final LookupCache lookupCache;
     private final FileCache fileCache;
     private final int longLookupHashSize;
@@ -47,8 +46,8 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         this.longLookupHashSize = longLookupHashSize;
 
         fileCache = new FileCache(DEFAULT_INITIAL_FILE_CACHE_SIZE, DEFAULT_MAXIMUM_FILE_CACHE_SIZE, readOnly);
-        blobPageCache = new PagedFileMapper(DEFAULT_BLOB_PAGE_SIZE, DEFAULT_INITIAL_BLOB_CACHE_SIZE, DEFAULT_MAXIMUM_BLOB_CACHE_SIZE, fileCache);
-        PagedFileMapper lookupPageCache = new PagedFileMapper(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
+        blobPageCache = new PageCache(DEFAULT_BLOB_PAGE_SIZE, DEFAULT_INITIAL_BLOB_CACHE_SIZE, DEFAULT_MAXIMUM_BLOB_CACHE_SIZE, fileCache);
+        PageCache lookupPageCache = new PageCache(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
         lookupCache = new LookupCache(lookupPageCache);
 
         blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);

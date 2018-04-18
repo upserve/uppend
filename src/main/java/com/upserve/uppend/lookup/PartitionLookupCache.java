@@ -1,8 +1,7 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.blobs.PagedFileMapper;
+import com.upserve.uppend.blobs.PageCache;
 
-import java.util.OptionalLong;
 import java.util.function.*;
 
 /**
@@ -23,7 +22,7 @@ public class PartitionLookupCache {
         this.lookupCache = lookupCache;
     }
 
-    public PagedFileMapper getPageCache(){
+    public PageCache getPageCache(){
         return lookupCache.getPageCache();
     }
 

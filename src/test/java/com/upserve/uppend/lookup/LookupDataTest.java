@@ -5,8 +5,6 @@ import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
 import java.io.*;
-import java.nio.BufferUnderflowException;
-import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 
@@ -16,7 +14,7 @@ public class LookupDataTest {
     private Path lookupDir = Paths.get("build/test/tmp/lookup-data");
 
     private final FileCache fileCache = new FileCache(64, 256, false);
-    private final PagedFileMapper pageCache = new PagedFileMapper(256*1024, 16, 64, fileCache);
+    private final PageCache pageCache = new PageCache(256*1024, 16, 64, fileCache);
     private final LookupCache lookupCache = new LookupCache(pageCache);
     private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
     @Before

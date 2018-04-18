@@ -6,7 +6,6 @@ import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
-import org.mockito.internal.verification.Times;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.IOException;
@@ -399,7 +398,7 @@ public class LookupMetadataTest {
         SafeDeleting.removeDirectory(path);
 
         FileCache fileCache = new FileCache(64, 256, false);
-        PagedFileMapper pageCache = new PagedFileMapper(256*1024, 16, 64, fileCache);
+        PageCache pageCache = new PageCache(256*1024, 16, 64, fileCache);
         LookupCache lookupCache = new LookupCache(pageCache);
         PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
 

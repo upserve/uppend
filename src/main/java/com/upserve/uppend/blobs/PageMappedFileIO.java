@@ -1,7 +1,6 @@
 package com.upserve.uppend.blobs;
 
 import com.google.common.primitives.*;
-import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
@@ -20,7 +19,7 @@ public class PageMappedFileIO implements Flushable {
     static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
 
     final Path filePath;
-    final PagedFileMapper pagedFileMapper;
+    final PageCache pageCache;
 
     private final MappedByteBuffer posBuf;
 
@@ -28,11 +27,11 @@ public class PageMappedFileIO implements Flushable {
     final FileCache fileCache;
     final AtomicLong position;
 
-    PageMappedFileIO(Path file, PagedFileMapper pagedFileMapper) {
+    PageMappedFileIO(Path file, PageCache pageCache) {
         this.filePath = file;
-        this.pagedFileMapper = pagedFileMapper;
+        this.pageCache = pageCache;
 
-        this.fileCache = pagedFileMapper.getFileCache();
+        this.fileCache = pageCache.getFileCache();
 
         Path dir = file.getParent();
         try {
@@ -108,10 +107,10 @@ public class PageMappedFileIO implements Flushable {
     }
 
     private int writeMappedOffset(long pos, byte[] bytes, int offset) {
-        FilePage filePage = pagedFileMapper.getPage(filePath, pos);
+        FilePage filePage = pageCache.getPage(filePath, pos);
 
         int bytesWritten;
-        bytesWritten = filePage.put(pos, bytes, offset);
+        bytesWritten = filePage.put(pageCache.pagePosition(pos), bytes, offset);
 
         if (bytesWritten < (bytes.length - offset)){
             bytesWritten += writeMappedOffset(pos + bytesWritten, bytes, offset + bytesWritten);
@@ -142,10 +141,10 @@ public class PageMappedFileIO implements Flushable {
     }
 
     private int readMappedOffset(long pos, byte[] buf, int offset) {
-        FilePage filePage = pagedFileMapper.getPage(filePath, pos);
+        FilePage filePage = pageCache.getPage(filePath, pos);
 
         int bytesRead;
-        bytesRead = filePage.get(pos, buf, offset);
+        bytesRead = filePage.get(pageCache.pagePosition(pos), buf, offset);
 
         if (bytesRead < (buf.length - offset)){
             bytesRead += readMappedOffset(pos + bytesRead, buf, offset + bytesRead);

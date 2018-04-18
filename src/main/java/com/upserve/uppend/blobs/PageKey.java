@@ -6,9 +6,9 @@ import java.util.Objects;
 
 public class PageKey {
     private final Path filePath;
-    private final int page;
+    private final long page;
 
-    PageKey(Path filePath, int page){
+    PageKey(Path filePath, long page){
         this.filePath = filePath;
         this.page = page;
     }
@@ -32,7 +32,7 @@ public class PageKey {
         return filePath;
     }
 
-    int getPage() {
+    long getPage() {
         return page;
     }
 

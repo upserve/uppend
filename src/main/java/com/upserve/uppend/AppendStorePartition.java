@@ -23,7 +23,7 @@ public class AppendStorePartition extends Partition implements Flushable {
         return partitiondDir.resolve("blobs");
     }
 
-    public static AppendStorePartition createPartition(Path partentDir, String partition, int hashSize, PagedFileMapper blobPageCache, LookupCache lookupCache){
+    public static AppendStorePartition createPartition(Path partentDir, String partition, int hashSize, PageCache blobPageCache, LookupCache lookupCache){
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
         return new AppendStorePartition(
@@ -33,7 +33,7 @@ public class AppendStorePartition extends Partition implements Flushable {
                 );
     }
 
-    public static AppendStorePartition openPartition(Path partentDir, String partition, int hashSize, PagedFileMapper blobPageCache, LookupCache lookupCache) {
+    public static AppendStorePartition openPartition(Path partentDir, String partition, int hashSize, PageCache blobPageCache, LookupCache lookupCache) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
         Path blobsFile = blobsFile(partitiondDir);

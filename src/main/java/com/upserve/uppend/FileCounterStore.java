@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.*;
 import java.util.stream.Stream;
 
@@ -30,7 +29,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         this.longLookupHashSize = longLookupHashSize;
 
         fileCache = new FileCache(DEFAULT_INITIAL_FILE_CACHE_SIZE, DEFAULT_MAXIMUM_FILE_CACHE_SIZE, readOnly);
-        PagedFileMapper lookupPageCache = new PagedFileMapper(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
+        PageCache lookupPageCache = new PageCache(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
         lookupCache = new LookupCache(lookupPageCache);
 
         openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, lookupCache);

@@ -1,22 +1,15 @@
 package com.upserve.uppend.blobs;
 
-import com.google.common.primitives.Ints;
-import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
-import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.ByteBuffer;
-import java.nio.channels.*;
 import java.nio.file.*;
-import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicLong;
 
 public class Blobs extends PageMappedFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public Blobs(Path file, PagedFileMapper pagedFileMapper) {
-        super(file, pagedFileMapper);
+    public Blobs(Path file, PageCache pageCache) {
+        super(file, pageCache);
     }
 
     public long append(byte[] bytes) {

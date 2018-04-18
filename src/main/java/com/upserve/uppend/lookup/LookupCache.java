@@ -1,12 +1,11 @@
 package com.upserve.uppend.lookup;
 
 import com.github.benmanes.caffeine.cache.*;
-import com.upserve.uppend.blobs.PagedFileMapper;
+import com.upserve.uppend.blobs.PageCache;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.util.concurrent.TimeUnit;
 import java.util.function.*;
 
 public class LookupCache implements Flushable {
@@ -18,9 +17,9 @@ public class LookupCache implements Flushable {
     private final LoadingCache<LookupData, LookupMetadata> lookupMetaDataCache;
 
     // Pages loaded from LookupData files
-    private final PagedFileMapper pageCache;
+    private final PageCache pageCache;
 
-    public LookupCache(PagedFileMapper pagecache) {
+    public LookupCache(PageCache pagecache) {
         this.pageCache = pagecache;
 
         keyLongLookupCache = Caffeine
@@ -42,7 +41,7 @@ public class LookupCache implements Flushable {
                 ));
     }
 
-    public PagedFileMapper getPageCache(){
+    public PageCache getPageCache(){
         return pageCache;
     }
 
