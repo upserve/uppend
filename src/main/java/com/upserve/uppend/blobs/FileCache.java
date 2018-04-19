@@ -11,9 +11,9 @@ import java.nio.file.*;
 import java.util.concurrent.*;
 
 /**
- * A cache of open file handles.
- * If it is desirable to explicitly manage file close - we can add a method to invalidate a path and make all
- * the objects using Files closable but it seems better to just close the cache when everything is done.
+ * A cache of file handles.
+ *
+ * TODO Removal is async and when the cache is under heavy load, files get closed while still in use
  */
 public class FileCache implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());

@@ -2,7 +2,6 @@ package com.upserve.uppend.blobs;
 
 import com.github.benmanes.caffeine.cache.*;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.sun.javaws.exceptions.InvalidArgumentException;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -12,6 +11,13 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Path;
 import java.util.concurrent.ForkJoinPool;
 
+/**
+ * A cache of memory mapped file pages
+ *
+ * TODO Concurrent writes to random new pages cause the JVM to crash
+ * Attempted solution to force the buffer when it extends the file failed to fix the issue. See testHammerPageCache
+ * Uppend should not make concurrent writes to multiple pages in normal operation - unless blobs are larger than a page
+ */
 public class PageCache implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 

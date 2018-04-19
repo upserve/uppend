@@ -124,25 +124,11 @@ public class PageCacheTest {
     }
 
     @Test
-    public void testReadOnlyNoPath() {
-        fileCache = new FileCache(64, 256, true);
-        instance = new PageCache(512, 128, 512, fileCache);
-
-        assertTrue(instance.readOnly());
-
-        final long position = 1284;
-
-        thrown.expect(CompletionException.class);
-        thrown.expectCause(any(NoSuchFileException.class));
-        instance.getPage(pathDoesNotExist, position);
-    }
-
-    @Test
     public void testHammerPageCache(){
         fileCache = new FileCache(64, 256, false);
         instance = new PageCache(512, 128, 256, fileCache);
 
-        instance.getPage(existingFile, 1000*512).flush();
+        instance.getPage(existingFile, 1000*512).flush(); // Must extend the file before concurrent writes begin
 
         final int requests = 1_000_000;
 
