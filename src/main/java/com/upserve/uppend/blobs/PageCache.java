@@ -10,6 +10,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
+import java.util.concurrent.ForkJoinPool;
 
 public class PageCache implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -25,6 +26,7 @@ public class PageCache implements Flushable {
                 .<PageKey, FilePage>newBuilder()
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
+                .executor(new ForkJoinPool())
                 .recordStats()
                 .<PageKey, FilePage>removalListener((key, value, cause) ->  {
                     log.debug("Called removal on {} with cause {}", key, cause);
@@ -56,7 +58,7 @@ public class PageCache implements Flushable {
 
     public boolean readOnly() { return fileCache.readOnly(); }
 
-    public CacheStats cacheStats(){
+    public CacheStats stats(){
         return pageCache.stats();
     }
 
