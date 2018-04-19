@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
+import java.util.concurrent.*;
 import java.util.function.*;
 
 public class LookupCache implements Flushable {
@@ -19,21 +20,27 @@ public class LookupCache implements Flushable {
     // Pages loaded from LookupData files
     private final PageCache pageCache;
 
-    public LookupCache(PageCache pagecache) {
+    public LookupCache(PageCache pagecache, int initialKeyCapacity, long maximumKeyWeight, int intialMetaDataCapacity, long maximumMetaDataWeight) {
+        this(pagecache, initialKeyCapacity, maximumKeyWeight, intialMetaDataCapacity, maximumMetaDataWeight, ForkJoinPool.commonPool(), ForkJoinPool.commonPool());
+    }
+
+    public LookupCache(PageCache pagecache, int initialKeyCapacity, long maximumKeyWeight, int intialMetaDataCapacity, long maximumMetaDataWeight, ExecutorService executorServiceKeyCache, ExecutorService executorServiceMetaDataCache) {
         this.pageCache = pagecache;
 
         keyLongLookupCache = Caffeine
                 .<PartitionLookupKey, Long>newBuilder()
-                .initialCapacity(10_000)
-                .maximumWeight(100_000_000)  // bytes
+                .executor(executorServiceKeyCache)
+                .initialCapacity(initialKeyCapacity)
+                .maximumWeight(maximumKeyWeight)  // bytes
                 .<PartitionLookupKey, Long>weigher((k ,v)-> k.weight())
                 .<PartitionLookupKey, Long>build();
 
 
         lookupMetaDataCache = Caffeine
                 .<LookupData, LookupMetadata>newBuilder()
-                .initialCapacity(10_000)
-                .maximumWeight(100_000_000)
+                .executor(executorServiceMetaDataCache)
+                .initialCapacity(intialMetaDataCapacity)
+                .maximumWeight(maximumMetaDataWeight)
                 .<LookupData, LookupMetadata>weigher((k ,v) -> v.weight())
                 .<LookupData, LookupMetadata>build(lookupData -> LookupMetadata.open(
                         lookupData.getMetadataPath(),

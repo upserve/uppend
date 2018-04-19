@@ -18,7 +18,7 @@ import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
     private AppendOnlyStore newStore() {
-        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).withLongLookupHashSize(4).build(false);
+        return AppendOnlyStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build(false);
     }
 
     private AppendOnlyStore store;
@@ -156,7 +156,7 @@ public class AppendOnlyStoreTest {
 
     @Test
     public void fillTheCache() throws Exception {
-        int keys = LongLookup.DEFAULT_WRITE_CACHE_SIZE * 2;
+        int keys = AppendOnlyStoreBuilder.getDefaultTestBuilder().getInitialLookupKeyCacheSize() * 2;
 
         Random random = new Random(9876);
         Set<String> uuidSet = new HashSet<>();

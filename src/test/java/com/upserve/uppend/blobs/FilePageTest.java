@@ -2,6 +2,7 @@ package com.upserve.uppend.blobs;
 
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
+import org.junit.rules.ExpectedException;
 
 import java.io.IOException;
 import java.nio.channels.FileChannel;
@@ -17,9 +18,13 @@ public class FilePageTest {
     Path rootPath = Paths.get("build/test/blobs/filepage");
 
     Path filePath = rootPath.resolve("testfile");
+    Path readOnlyFilePath = rootPath.resolve("readOnlyTestfile");
 
     FilePage rwPage;
     FilePage roPage;
+
+    @Rule
+    public ExpectedException thrown = ExpectedException.none();
 
     private final int pageSize = 1024;
 
@@ -29,7 +34,19 @@ public class FilePageTest {
         Files.createDirectories(rootPath);
         try(FileChannel file = FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ)){
             rwPage =  new FilePage(file.map(FileChannel.MapMode.READ_WRITE, 0, pageSize));
-            roPage =  new FilePage(file.map(FileChannel.MapMode.READ_WRITE, 0, pageSize));
+            roPage =  new FilePage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
+        }
+
+    }
+
+    @Test
+    public void testReadOnlyPastFileSize() throws IOException {
+        Files.createFile(readOnlyFilePath);
+        final FilePage page;
+        thrown.expect(IOException.class);
+        thrown.expectMessage("Channel not open for writing - cannot extend file to required size");
+        try(FileChannel file = FileChannel.open(readOnlyFilePath, StandardOpenOption.READ)){
+            page =  new FilePage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
         }
     }
 

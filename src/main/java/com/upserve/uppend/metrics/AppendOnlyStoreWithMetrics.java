@@ -1,6 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
+import com.google.common.collect.Maps;
 import com.upserve.uppend.AppendOnlyStore;
 
 import java.util.Map;
@@ -20,6 +21,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
 
     public static final String WRITE_BYTES_METER_METRIC_NAME = "writeBytesMeter";
     public static final String READ_BYTES_METER_METRIC_NAME = "readBytesMeter";
+    public static final String SCAN_BYTES_METER_METRIC_NAME = "scanBytesMeter";
+    public static final String SCAN_KEYS_METER_METRIC_NAME = "scanKeysMeter";
 
     private final AppendOnlyStore store;
     private final MetricRegistry metrics;
@@ -36,6 +39,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
 
     private final Meter writeBytesMeter;
     private final Meter readBytesMeter;
+    private final Meter scanBytesMeter;
+    private final Meter scanKeysMeter;
 
     public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics) {
         this.store = store;
@@ -53,6 +58,9 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
 
         writeBytesMeter = metrics.meter(WRITE_BYTES_METER_METRIC_NAME);
         readBytesMeter = metrics.meter(READ_BYTES_METER_METRIC_NAME);
+        scanBytesMeter = metrics.meter(SCAN_BYTES_METER_METRIC_NAME);
+        scanKeysMeter = metrics.meter(SCAN_KEYS_METER_METRIC_NAME);
+
     }
 
     @Override
@@ -135,7 +143,9 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
         final Timer.Context context = scanTimer.time();
         try {
-            return store.scan(partition);
+            return store.scan(partition)
+                    .peek(entry -> scanKeysMeter.mark(1))
+                    .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().peek(bytes -> scanBytesMeter.mark(bytes.length))));
         } finally {
             context.stop();
         }

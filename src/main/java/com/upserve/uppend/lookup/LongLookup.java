@@ -16,22 +16,12 @@ public class LongLookup implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     /**
-     * DEFAULT_HASH_SIZE is the number of hash elements per partition. Key
+     * hash size is the number of hash elements per partition. Key
      * values hashed and modded by this number will be represented as paths
      * of hexits representing the value, where each two hexits of a prefix
      * will be a directory and the final one or two hexits will be a file.
      */
-    public static final int DEFAULT_HASH_SIZE = 4096;
     private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
-
-    /**
-     * DEFAULT_WRITE_CACHE_SIZE is the maximum number of open
-     * {@link LookupData} entries in the write cache. It should be a multiple
-     * of DEFAULT_HASH_SIZE so that we can write complete partitions without
-     * thrashing the cache.
-     */
-    @SuppressWarnings("PointlessArithmeticExpression")
-    public static final int DEFAULT_WRITE_CACHE_SIZE = DEFAULT_HASH_SIZE * 1;
 
     private final Path lookupsDir;
     private final boolean readOnly;

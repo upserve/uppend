@@ -16,45 +16,29 @@ import static com.upserve.uppend.Partition.listPartitions;
 public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    protected static final int DEFAULT_BLOBS_PER_BLOCK = 127;
-    protected static final int DEFAULT_BLOB_PAGE_SIZE = 1024 * 1024;
-    protected static final int DEFAULT_MAXIMUM_BLOB_CACHE_SIZE = 10_000;
-    protected static final int DEFAULT_INITIAL_BLOB_CACHE_SIZE = 100;
-
-    protected static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 *1024;
-    protected static final int DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE = 10_000;
-    protected static final int DEFAULT_INITIAL_LOOKUP_CACHE_SIZE = 100;
-
-    protected static final int DEFAULT_MAXIMUM_FILE_CACHE_SIZE = 8_000;
-    protected static final int DEFAULT_INITIAL_FILE_CACHE_SIZE = 1000;
-
-    protected static final int DEFAULT_HASH_SIZE = 256;
-
-    protected final BlockedLongs blocks;
+    private final BlockedLongs blocks;
 
     private final PageCache blobPageCache;
     private final LookupCache lookupCache;
     private final FileCache fileCache;
-    private final int longLookupHashSize;
 
     private final Function<String, AppendStorePartition> openPartitionFunction;
     private final Function<String, AppendStorePartition> createPartitionFunction;
 
-    FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean readOnly, int longLookupHashSize, int blobsPerBlock) {
-        super(dir, flushDelaySeconds, readOnly);
+    FileAppendOnlyStore(boolean readOnly, AppendOnlyStoreBuilder builder) {
+        super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
 
-        this.longLookupHashSize = longLookupHashSize;
 
-        fileCache = new FileCache(DEFAULT_INITIAL_FILE_CACHE_SIZE, DEFAULT_MAXIMUM_FILE_CACHE_SIZE, readOnly);
-        blobPageCache = new PageCache(DEFAULT_BLOB_PAGE_SIZE, DEFAULT_INITIAL_BLOB_CACHE_SIZE, DEFAULT_MAXIMUM_BLOB_CACHE_SIZE, fileCache);
-        PageCache lookupPageCache = new PageCache(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
-        lookupCache = new LookupCache(lookupPageCache);
+        fileCache = new FileCache(builder.getIntialFileCacheSize(), builder.getMaximumFileCacheSize(), readOnly, builder.getFileCacheExecutorService());
+        blobPageCache = new PageCache(builder.getBlobPageSize(), builder.getInitialBlobCacheSize(), builder.getMaximumBlobCacheSize(), fileCache, builder.getBlobCacheExecutorService());
+        PageCache lookupPageCache = new PageCache(builder.getLookupPageSize(), builder.getInitialLookupPageCacheSize(), builder.getMaximumLookupPageCacheSize(), fileCache, builder.getLookupPageCacheExecutorService());
+        lookupCache = new LookupCache(lookupPageCache, builder.getInitialLookupKeyCacheSize(), builder.getMaximumLookupKeyCacheWeight(), builder.getInitialMetaDataCacheSize(), builder.getMaximumMetaDataCacheWeight(), builder.getLookupKeyCacheExecutorService(), builder.getLookupMetaDataCacheExecutorService());
 
-        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock, readOnly);
+        blocks = new BlockedLongs(builder.getDir().resolve("blocks"), builder.getBlobsPerBlock(), readOnly);
 
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache);
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), blobPageCache, lookupCache);
 
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(dir), partitionKey, longLookupHashSize, blobPageCache, lookupCache);
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), blobPageCache, lookupCache);
     }
 
     private static Path partionPath(Path dir){

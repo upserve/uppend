@@ -17,24 +17,21 @@ import static com.upserve.uppend.Partition.listPartitions;
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final int longLookupHashSize;
-
     private final FileCache fileCache;
     private final LookupCache lookupCache;
     private final Function<String, CounterStorePartition> openPartitionFunction;
     private final Function<String, CounterStorePartition> createPartitionFunction;
 
-    FileCounterStore(Path dir, int flushDelaySeconds, boolean readOnly, int longLookupHashSize, int longLookupWriteCacheSize) {
-        super(dir, flushDelaySeconds, readOnly);
-        this.longLookupHashSize = longLookupHashSize;
+    FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
+        super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
 
-        fileCache = new FileCache(DEFAULT_INITIAL_FILE_CACHE_SIZE, DEFAULT_MAXIMUM_FILE_CACHE_SIZE, readOnly);
-        PageCache lookupPageCache = new PageCache(DEFAULT_LOOKUP_PAGE_SIZE, DEFAULT_INITIAL_LOOKUP_CACHE_SIZE, DEFAULT_MAXIMUM_LOOKUP_CACHE_SIZE, fileCache);
-        lookupCache = new LookupCache(lookupPageCache);
+        fileCache = new FileCache(builder.getIntialFileCacheSize(), builder.getMaximumFileCacheSize(), readOnly);
+        PageCache lookupPageCache = new PageCache(builder.getLookupPageSize(), builder.getInitialLookupPageCacheSize(), builder.getMaximumLookupPageCacheSize(), fileCache, builder.getLookupPageCacheExecutorService());
+        lookupCache = new LookupCache(lookupPageCache, builder.getInitialLookupKeyCacheSize(), builder.getMaximumLookupKeyCacheWeight(), builder.getInitialMetaDataCacheSize(), builder.getMaximumMetaDataCacheWeight(), builder.getLookupKeyCacheExecutorService(), builder.getLookupMetaDataCacheExecutorService());
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, longLookupHashSize, lookupCache);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partionPath(dir), partitionKey, longLookupHashSize, lookupCache);
 
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), lookupCache);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), lookupCache);
     }
 
     private static Path partionPath(Path dir){

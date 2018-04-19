@@ -14,12 +14,6 @@ import java.util.function.*;
 abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    /**
-     * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
-     * automatically flushing writes.
-     */
-    public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
-
     protected final Path dir;
 
     private final int flushDelaySeconds;
@@ -41,13 +35,14 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
         }
 
         this.flushDelaySeconds = flushDelaySeconds;
-        if (flushDelaySeconds > 0) {
-            AutoFlusher.register(flushDelaySeconds, this);
-        }
 
         this.readOnly = readOnly;
         if (!readOnly) {
             lockPath = dir.resolve("lock");
+
+            if (flushDelaySeconds < 0) throw new IllegalArgumentException("Flush delay can not be negative: " + flushDelaySeconds);
+            AutoFlusher.register(flushDelaySeconds, this);
+
             try {
                 lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
                 lock = lockChan.lock();

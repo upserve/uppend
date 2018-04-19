@@ -9,16 +9,21 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
+import java.util.stream.LongStream;
 
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
 public class Benchmark {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private BenchmarkWriter writer;
-    private BenchmarkReader reader;
+    private Runnable writer;
+    private Runnable reader;
 
     private final Random random = new Random();
+
+    private BenchmarkMode mode;
 
     private long range;
     private int count;
@@ -31,7 +36,8 @@ public class Benchmark {
 
     private volatile boolean isDone = false;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int cachesize, int flushDelaySeconds, int buffered) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int openFileCacheSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds) {
+        this.mode = mode;
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
@@ -45,6 +51,16 @@ public class Benchmark {
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withLongLookupHashSize(hashSize)
+                .withIntialFileCacheSize(openFileCacheSize)
+                .withMaximumFileCacheSize(openFileCacheSize)
+                .withInitialLookupKeyCacheSize(keyCachesize)
+                .withMaximumLookupKeyCacheWeight(keyCachesize * 8) // based on key size
+                .withInitialBlobCacheSize(blobPageCacheSize)
+                .withMaximumBlobCacheSize(blobPageCacheSize)
+                .withInitialLookupPageCacheSize(keyPageCacheSize)
+                .withMaximumLookupPageCacheSize(keyPageCacheSize)
+                .withInitialMetaDataCacheSize(metadataCacheSize)
+                .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
                 .withFlushDelaySeconds(flushDelaySeconds)
                 .withMetrics(metrics);
 
@@ -71,6 +87,11 @@ public class Benchmark {
                 writer = simpleWriter();
                 reader = BenchmarkReader.noop();
                 break;
+            case scan:
+                testInstance = builder.build(true);
+                writer = BenchmarkWriter.noop();
+                reader = scanReader(testInstance);
+                break;
             default:
                 throw new RuntimeException("Unknown mode: " + mode);
         }
@@ -96,6 +117,20 @@ public class Benchmark {
         );
     }
 
+    private Runnable scanReader(AppendOnlyStore appendOnlyStore) {
+        return () -> {
+            LongStream
+                    .range(0, maxPartitions)
+                    .parallel()
+                    .mapToObj(val -> partition(val, maxPartitions))
+                    .flatMapToLong(parition -> {
+                        log.info("reading partition: {}", parition);
+                        return appendOnlyStore.scan(parition).parallel().mapToLong(entry -> entry.getValue().count());
+                    })
+                    .count();
+        };
+    }
+
     public static String key(long integer, int maxKeys) {
         return String.format("%08X", integer % maxKeys);
     }
@@ -116,27 +151,36 @@ public class Benchmark {
 
         Thread writerThread = new Thread(writer);
         Thread readerThread = new Thread(reader);
+        Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
+        Meter writeBytesMeter = metrics.getMeters().get(WRITE_BYTES_METER_METRIC_NAME);
+
+        Meter readBytesMeter;
+        Supplier<Long>  readCounter;
+
+        if (mode.equals(BenchmarkMode.scan)) {
+            readCounter = () -> metrics.getMeters().get(SCAN_KEYS_METER_METRIC_NAME).getCount();
+            readBytesMeter = metrics.getMeters().get(SCAN_BYTES_METER_METRIC_NAME);
+        } else {
+            readCounter = () -> metrics.getTimers().get(READ_TIMER_METRIC_NAME).getCount();
+            readBytesMeter = metrics.getMeters().get(READ_BYTES_METER_METRIC_NAME);
+        }
 
         Thread watcher = new Thread(() -> {
             Runtime runtime = Runtime.getRuntime();
             while (!isDone) {
                 try {
-                    Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
-                    Meter writeBytesMeter = metrics.getMeters().get(WRITE_BYTES_METER_METRIC_NAME);
-                    Timer readTimer = metrics.getTimers().get(READ_TIMER_METRIC_NAME);
-                    Meter readBytesMeter = metrics.getMeters().get(READ_BYTES_METER_METRIC_NAME);
 
                     long written = writeBytesMeter.getCount();
                     long writeCount = writeTimer.getCount();
                     long read = readBytesMeter.getCount();
-                    long readCount = readTimer.getCount();
+                    long readCount = readCounter.get();
 
                     Thread.sleep(1000);
 
                     double writeRate = (writeBytesMeter.getCount() - written) / (1024.0 * 1024.0);
                     long appendsPerSecond = writeTimer.getCount() - writeCount;
                     double readRate = (readBytesMeter.getCount() - read) / (1024.0 * 1024.0);
-                    long keysReadPerSecond = readTimer.getCount() - readCount;
+                    long keysReadPerSecond = readCounter.get() - readCount;
                     double total = runtime.totalMemory() / (1024.0 * 1024.0);
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
 

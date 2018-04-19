@@ -9,7 +9,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
-import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.*;
 
 /**
  * A cache of memory mapped file pages
@@ -26,13 +26,17 @@ public class PageCache implements Flushable {
     private final LoadingCache<PageKey, FilePage> pageCache;
 
     public PageCache(int pageSize, int initialCacheSize, int maximumCacheSize, FileCache fileCache) {
+        this(pageSize, initialCacheSize, maximumCacheSize, fileCache, ForkJoinPool.commonPool());
+    }
+
+    public PageCache(int pageSize, int initialCacheSize, int maximumCacheSize, FileCache fileCache, ExecutorService executorService) {
         this.pageSize = pageSize;
         this.fileCache = fileCache;
         this.pageCache = Caffeine
                 .<PageKey, FilePage>newBuilder()
+                .executor(executorService)
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
-                .executor(new ForkJoinPool())
                 .recordStats()
                 .<PageKey, FilePage>removalListener((key, value, cause) ->  {
                     log.debug("Called removal on {} with cause {}", key, cause);

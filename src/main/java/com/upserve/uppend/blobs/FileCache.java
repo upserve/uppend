@@ -22,7 +22,11 @@ public class FileCache implements Flushable {
 
     private final boolean readOnly;
 
-    public FileCache(int initialCacheSize, int maximumCacheSize, boolean readOnly){
+    public FileCache(int initialCacheSize, int maximumCacheSize, boolean readOnly) {
+        this(initialCacheSize, maximumCacheSize, readOnly, ForkJoinPool.commonPool());
+    }
+
+    public FileCache(int initialCacheSize, int maximumCacheSize, boolean readOnly, ExecutorService executorService){
 
         this.readOnly = readOnly;
 
@@ -35,7 +39,7 @@ public class FileCache implements Flushable {
 
         this.fileCache = Caffeine
                 .<Path, FileChannel>newBuilder()
-//                .executor(Executors.newCachedThreadPool())
+                .executor(executorService)
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
                 .expireAfterAccess(300, TimeUnit.DAYS)

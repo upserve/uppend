@@ -17,7 +17,7 @@ public class CounterStoreTest {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private CounterStore newStore() {
-        return new CounterStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
+        return CounterStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
     }
 
     private CounterStore store;
@@ -170,7 +170,7 @@ public class CounterStoreTest {
     @Test
     public void testExample() throws Exception {
         store.close();
-        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, false, 1, 1);
+        store = CounterStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
         store.clear();
 
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
@@ -192,7 +192,7 @@ public class CounterStoreTest {
     @Test
     public void testParallel() throws Exception {
         store.close();
-        store = new FileCounterStore(Paths.get("build/test/file-append-only-store"), 10, false, 1, 1);
+        store = CounterStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
         store.clear();
 
         final int numKeys = 1000;

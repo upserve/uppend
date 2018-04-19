@@ -1,6 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.primitives.Ints;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
@@ -397,9 +398,11 @@ public class LookupMetadataTest {
         Path path = Paths.get("build/test/lookup-metadata-test/testMetadataLookup");
         SafeDeleting.removeDirectory(path);
 
-        FileCache fileCache = new FileCache(64, 256, false);
-        PageCache pageCache = new PageCache(256*1024, 16, 64, fileCache);
-        LookupCache lookupCache = new LookupCache(pageCache);
+        AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
+
+        FileCache fileCache = new FileCache(defaults.getIntialFileCacheSize(), defaults.getMaximumFileCacheSize(), false);
+        PageCache pageCache = new PageCache(defaults.getLookupPageSize(), defaults.getInitialLookupPageCacheSize(), defaults.getMaximumLookupPageCacheSize(), fileCache);
+        LookupCache lookupCache = new LookupCache(pageCache, defaults.getInitialLookupKeyCacheSize(), defaults.getMaximumLookupKeyCacheWeight(), defaults.getInitialMetaDataCacheSize(), defaults.getMaximumMetaDataCacheWeight());
         PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
 
         LookupData lookupData = new LookupData(path, partitionLookupCache);

@@ -6,7 +6,7 @@
         </console>
     </appenders>
     <loggers>
-        <logger name="com.upserve.uppend" level="debug" additivity="false">
+        <logger name="com.upserve.uppend" level="info" additivity="false">
             <appender-ref ref="stdout"/>
         </logger>
         <root level="info">

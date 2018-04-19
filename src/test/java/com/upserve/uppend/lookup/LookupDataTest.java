@@ -1,5 +1,6 @@
 package com.upserve.uppend.lookup;
 
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
@@ -13,9 +14,11 @@ import static org.junit.Assert.*;
 public class LookupDataTest {
     private Path lookupDir = Paths.get("build/test/tmp/lookup-data");
 
-    private final FileCache fileCache = new FileCache(64, 256, false);
-    private final PageCache pageCache = new PageCache(256*1024, 16, 64, fileCache);
-    private final LookupCache lookupCache = new LookupCache(pageCache);
+    AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
+
+    private final FileCache fileCache = new FileCache(defaults.getIntialFileCacheSize(), defaults.getMaximumFileCacheSize(), false);
+    private final PageCache pageCache = new PageCache(defaults.getLookupPageSize(), defaults.getInitialLookupPageCacheSize(), defaults.getMaximumLookupPageCacheSize(), fileCache);
+    private final LookupCache lookupCache = new LookupCache(pageCache, defaults.getInitialLookupKeyCacheSize(), defaults.getMaximumLookupKeyCacheWeight(), defaults.getInitialMetaDataCacheSize(), defaults.getMaximumMetaDataCacheWeight());
     private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
     @Before
     public void initialize() throws Exception {
