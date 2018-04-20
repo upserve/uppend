@@ -22,18 +22,20 @@ import static org.mockito.Mockito.*;
 @RunWith(MockitoJUnitRunner.class)
 public class LookupMetadataTest {
 
+    private final String name = "lookupMetadata-test";
+    private final Path rootPath = Paths.get("build/test/lookup/lookupMetadata");
+    private final Path path = rootPath.resolve(name);
+
     @Mock
     LookupData mockLookupData;
 
     @Before
     public void before() throws IOException {
-        SafeDeleting.removeDirectory(Paths.get("build/test/lookup-metadata-test"));
+        SafeDeleting.removeDirectory(rootPath);
     }
 
     @Test
     public void testCtorCorruptOrder() throws Exception{
-        Path path = Paths.get("build/test/lookup-metadata-test/testCtorCorruptOrder/meta");
-
         buildSimpleTestData(path);
 
         // Corrupt the expected sort order size
@@ -53,8 +55,6 @@ public class LookupMetadataTest {
 
     @Test
     public void testCtorCorruptCompressedSize() throws Exception{
-        Path path = Paths.get("build/test/lookup-metadata-test/testCtorCorruptOrder/meta");
-
         buildSimpleTestData(path);
 
         // Corrupt the expected compressed size
@@ -75,7 +75,6 @@ public class LookupMetadataTest {
 
     @Test
     public void testCorrectReadWrite() throws Exception{
-        Path path = Paths.get("build/test/lookup-metadata-test/testCorrectReadWrite/meta");
 
         LookupKey keyA = new LookupKey("a");
         LookupKey keyB = new LookupKey("b");
@@ -92,7 +91,6 @@ public class LookupMetadataTest {
 
     @Test
     public void testOpen() throws Exception{
-        Path path = Paths.get("build/test/lookup-metadata-test/testOpen/meta");
         Files.createDirectories(path.getParent());
         LookupMetadata initialMetadata = LookupMetadata.open(path, 2);
 
@@ -395,15 +393,14 @@ public class LookupMetadataTest {
 
     @Test
     public void testMetadataLookup() throws IOException {
-        Path path = Paths.get("build/test/lookup-metadata-test/testMetadataLookup");
-        SafeDeleting.removeDirectory(path);
-
         AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
 
-        FileCache fileCache = new FileCache(defaults.getIntialFileCacheSize(), defaults.getMaximumFileCacheSize(), false);
-        PageCache pageCache = new PageCache(defaults.getLookupPageSize(), defaults.getInitialLookupPageCacheSize(), defaults.getMaximumLookupPageCacheSize(), fileCache);
-        LookupCache lookupCache = new LookupCache(pageCache, defaults.getInitialLookupKeyCacheSize(), defaults.getMaximumLookupKeyCacheWeight(), defaults.getInitialMetaDataCacheSize(), defaults.getMaximumMetaDataCacheWeight());
+        FileCache fileCache = defaults.buildFileCache(false, name);
+        PageCache pageCache = defaults.buildLookupPageCache(fileCache, name);
+        LookupCache lookupCache = defaults.buildLookupCache(pageCache, name);
+
         PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
+
 
         LookupData lookupData = new LookupData(path, partitionLookupCache);
         List<Integer> keys = Ints.asList(IntStream.range(0, 4000).map(i -> i*2).toArray());

@@ -2,14 +2,13 @@ package com.upserve.uppend;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Longs;
-import com.upserve.uppend.lookup.LongLookup;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -17,8 +16,12 @@ import java.util.stream.Collectors;
 import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
+
+    private final Path path = Paths.get("build/test/file-append-only-store");
+
+
     private AppendOnlyStore newStore() {
-        return AppendOnlyStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build(false);
+        return AppendOnlyStoreBuilder.getDefaultTestBuilder().withDir(path).build(false);
     }
 
     private AppendOnlyStore store;

@@ -5,10 +5,10 @@ import org.slf4j.Logger;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 
-public class Blobs extends PageMappedFileIO {
+public class BlobStore extends PageMappedFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public Blobs(Path file, PageCache pageCache) {
+    public BlobStore(Path file, PageCache pageCache) {
         super(file, pageCache);
     }
 

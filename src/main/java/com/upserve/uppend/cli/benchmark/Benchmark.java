@@ -2,14 +2,15 @@ package com.upserve.uppend.cli.benchmark;
 
 import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import org.slf4j.Logger;
 
-import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
@@ -62,8 +63,10 @@ public class Benchmark {
                 .withInitialMetaDataCacheSize(metadataCacheSize)
                 .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
                 .withFlushDelaySeconds(flushDelaySeconds)
-                .withMetrics(metrics);
+                .withStoreMetrics(metrics);
 
+
+        log.info(builder.toString());
 
         range = (long) maxPartitions * (long) maxKeys * 199;
 
@@ -146,58 +149,97 @@ public class Benchmark {
         return bytes;
     }
 
+    private TimerTask watcherTimer() {
+
+        final Timer writeTimer = metrics.getTimers().get(testInstance.getName() + "." + WRITE_TIMER_METRIC_NAME);
+        final Meter writeBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + WRITE_BYTES_METER_METRIC_NAME);
+
+        final Meter readBytesMeter;
+        final Supplier<Long>  readCounter;
+
+        if (mode.equals(BenchmarkMode.scan)) {
+            readCounter = () -> metrics.getMeters().get(testInstance.getName() + "." + SCAN_KEYS_METER_METRIC_NAME).getCount();
+            readBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + SCAN_BYTES_METER_METRIC_NAME);
+        } else {
+            readCounter = () -> metrics.getTimers().get(testInstance.getName() + "." + READ_TIMER_METRIC_NAME).getCount();
+            readBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + READ_BYTES_METER_METRIC_NAME);
+        }
+
+
+        final Runtime runtime = Runtime.getRuntime();
+
+        AtomicLong tic = new AtomicLong(System.currentTimeMillis());
+        AtomicLong written = new AtomicLong(writeBytesMeter.getCount());
+        AtomicLong writeCount = new AtomicLong(writeTimer.getCount());
+        AtomicLong read = new AtomicLong(readBytesMeter.getCount());
+        AtomicLong readCount = new AtomicLong(readCounter.get());
+
+        AtomicReference<CacheStats> blobPageCacheStats = new AtomicReference<CacheStats>(testInstance.getBlobPageCacheStats());
+        AtomicReference<CacheStats> keyPageCacheStats = new AtomicReference<CacheStats>(testInstance.getKeyPageCacheStats());
+        AtomicReference<CacheStats> fileCacheStats = new AtomicReference<CacheStats>(testInstance.getFileCacheStats());
+        AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<CacheStats>(testInstance.getLookupKeyCacheStats());
+        AtomicReference<CacheStats> metadataCacheStats = new AtomicReference<CacheStats>(testInstance.getMetadataCacheStats());
+
+        return new TimerTask() {
+            @Override
+            public void run() {
+                long val;
+                CacheStats stats;
+                try {
+                    val = System.currentTimeMillis();
+                    double elapsed = (val - tic.getAndSet(val)) / 1000D;
+
+                    val = writeBytesMeter.getCount();
+                    double writeRate = (val - written.getAndSet(val)) / (1024.0 * 1024.0) / elapsed;
+
+                    val = writeTimer.getCount();
+                    double appendsPerSecond = (val - writeCount.getAndSet(val)) / elapsed;
+
+                    val = readBytesMeter.getCount();
+                    double readRate = (val - read.getAndSet(val)) / (1024.0 * 1024.0) / elapsed;
+
+                    val = readCounter.get();
+                    double keysReadPerSecond = (val - readCount.getAndSet(val)) / elapsed;
+
+                    double total = runtime.totalMemory() / (1024.0 * 1024.0);
+                    double free = runtime.freeMemory() / (1024.0 * 1024.0);
+
+                    log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
+
+                    stats = testInstance.getFileCacheStats();
+                    log.info("File Cache: {}", stats.minus(fileCacheStats.getAndSet(stats)));
+
+                    stats = testInstance.getBlobPageCacheStats();
+                    log.info("Blob Page Cache: {}", stats.minus(blobPageCacheStats.getAndSet(stats)));
+
+                    stats = testInstance.getKeyPageCacheStats();
+                    log.info("Key Page Cache: {}", stats.minus(keyPageCacheStats.getAndSet(stats)));
+
+                    stats = testInstance.getLookupKeyCacheStats();
+                    log.info("Lookup Key Cache: {}", stats.minus(lookupKeyCacheStats.getAndSet(stats)));
+
+                    stats = testInstance.getMetadataCacheStats();
+                    log.info("Metadata Cache: {}", stats.minus(metadataCacheStats.getAndSet(stats)));
+
+                } catch (Exception e) {
+                    log.info("logTimer failed with ", e);
+                }
+            }
+        };
+    }
     public void run() throws InterruptedException {
         log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
 
         Thread writerThread = new Thread(writer);
         Thread readerThread = new Thread(reader);
-        Timer writeTimer = metrics.getTimers().get(WRITE_TIMER_METRIC_NAME);
-        Meter writeBytesMeter = metrics.getMeters().get(WRITE_BYTES_METER_METRIC_NAME);
-
-        Meter readBytesMeter;
-        Supplier<Long>  readCounter;
-
-        if (mode.equals(BenchmarkMode.scan)) {
-            readCounter = () -> metrics.getMeters().get(SCAN_KEYS_METER_METRIC_NAME).getCount();
-            readBytesMeter = metrics.getMeters().get(SCAN_BYTES_METER_METRIC_NAME);
-        } else {
-            readCounter = () -> metrics.getTimers().get(READ_TIMER_METRIC_NAME).getCount();
-            readBytesMeter = metrics.getMeters().get(READ_BYTES_METER_METRIC_NAME);
-        }
-
-        Thread watcher = new Thread(() -> {
-            Runtime runtime = Runtime.getRuntime();
-            while (!isDone) {
-                try {
-
-                    long written = writeBytesMeter.getCount();
-                    long writeCount = writeTimer.getCount();
-                    long read = readBytesMeter.getCount();
-                    long readCount = readCounter.get();
-
-                    Thread.sleep(1000);
-
-                    double writeRate = (writeBytesMeter.getCount() - written) / (1024.0 * 1024.0);
-                    long appendsPerSecond = writeTimer.getCount() - writeCount;
-                    double readRate = (readBytesMeter.getCount() - read) / (1024.0 * 1024.0);
-                    long keysReadPerSecond = readCounter.get() - readCount;
-                    double total = runtime.totalMemory() / (1024.0 * 1024.0);
-                    double free = runtime.freeMemory() / (1024.0 * 1024.0);
-
-                    log.info(String.format("Read: %7.2fmb/s %6dr/s; Write %7.2fmb/s %6da/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond,  writeRate, appendsPerSecond, free, total));
-
-                } catch (InterruptedException e) {
-                    log.info("Interrupted - Stopping...");
-                    break;
-                }
-
-            }
-        });
 
         writerThread.start();
         Thread.sleep(sleep * 1000); // give the writer a head start...
         readerThread.start();
-        watcher.start();
+        Thread.sleep(100);
+
+        java.util.Timer watcherTimer = new java.util.Timer();
+        watcherTimer.schedule(watcherTimer(), 5000, 5000);
 
         writerThread.join();
         readerThread.join();
@@ -206,9 +248,9 @@ public class Benchmark {
 
         testInstance.trim();
 
-        watcher.join(1500);
-
         log.info("Finished trim - close and shutdown");
+
+        watcherTimer.cancel();
 
         try {
             testInstance.close();

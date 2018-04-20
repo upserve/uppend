@@ -17,12 +17,14 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 
 public class LongLookupTest {
-    private final Path path = Paths.get("build/test/long-lookup-test");
-    AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
+    private final String name = "long-lookup-test";
+    private final Path rootPath = Paths.get("build/test/lookup/longLookup");
+    private final Path path = rootPath.resolve(name);
+    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
 
-    private final FileCache fileCache = new FileCache(defaults.getIntialFileCacheSize(), defaults.getMaximumFileCacheSize(), false);
-    private final PageCache pageCache = new PageCache(defaults.getLookupPageSize(), defaults.getInitialLookupPageCacheSize(), defaults.getMaximumLookupPageCacheSize(), fileCache);
-    private final LookupCache lookupCache = new LookupCache(pageCache, defaults.getInitialLookupKeyCacheSize(), defaults.getMaximumLookupKeyCacheWeight(), defaults.getInitialMetaDataCacheSize(), defaults.getMaximumMetaDataCacheWeight());
+    private final FileCache fileCache = defaults.buildFileCache(false, name);
+    private final PageCache pageCache = defaults.buildLookupPageCache(fileCache, name);
+    private final LookupCache lookupCache = defaults.buildLookupCache(pageCache, name);
 
     private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
 

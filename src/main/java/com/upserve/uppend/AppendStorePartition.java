@@ -17,10 +17,10 @@ public class AppendStorePartition extends Partition implements Flushable {
 
     private final Path partitiondDir;
     private final LongLookup lookups;
-    private final Blobs blobs;
+    private final BlobStore blobStore;
 
     private static Path blobsFile(Path partitiondDir){
-        return partitiondDir.resolve("blobs");
+        return partitiondDir.resolve("blobStore");
     }
 
     public static AppendStorePartition createPartition(Path partentDir, String partition, int hashSize, PageCache blobPageCache, LookupCache lookupCache){
@@ -29,7 +29,7 @@ public class AppendStorePartition extends Partition implements Flushable {
         return new AppendStorePartition(
                 partitiondDir,
                 new LongLookup(lookupsDir(partitiondDir), hashSize, PartitionLookupCache.create(partition, lookupCache)),
-                new Blobs(blobsFile(partitiondDir), blobPageCache)
+                new BlobStore(blobsFile(partitiondDir), blobPageCache)
                 );
     }
 
@@ -43,21 +43,21 @@ public class AppendStorePartition extends Partition implements Flushable {
             return new AppendStorePartition(
                     partitiondDir,
                     new LongLookup(lookupsDir, hashSize, PartitionLookupCache.create(partition, lookupCache)),
-                    new Blobs(blobsFile, blobPageCache)
+                    new BlobStore(blobsFile, blobPageCache)
             );
         } else {
             return null;
         }
     }
 
-    private AppendStorePartition(Path partentDir, LongLookup longLookup, Blobs blobs){
+    private AppendStorePartition(Path partentDir, LongLookup longLookup, BlobStore blobStore){
         partitiondDir = partentDir;
         this.lookups = longLookup;
-        this.blobs = blobs;
+        this.blobStore = blobStore;
     }
 
     void append(String key, byte[] blob, BlockedLongs blocks){
-        long blobPos = blobs.append(blob);
+        long blobPos = blobStore.append(blob);
         long blockPos = lookups.putIfNotExists(key, blocks::allocate);
         blocks.append(blockPos, blobPos);
         log.trace("appending {} bytes (blob pos {}, block pos {}) for path '{}', key '{}'", blob.length, blobPos, blockPos, partitiondDir, key);
@@ -65,28 +65,32 @@ public class AppendStorePartition extends Partition implements Flushable {
 
     Stream<byte[]> read(String key, BlockedLongs blocks){
         // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
-        return blocks.values(lookups.getLookupData(key)).parallel().mapToObj(blobs::read);
+        return blocks.values(lookups.getLookupData(key)).parallel().mapToObj(blobStore::read);
     }
 
     Stream<byte[]> readSequential(String key, BlockedLongs blocks){
         // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
-        return blocks.values(lookups.getLookupData(key)).mapToObj(blobs::read);
+        return blocks.values(lookups.getLookupData(key)).mapToObj(blobStore::read);
     }
 
     byte[] readLast(String key, BlockedLongs blocks) {
-        return blobs.read(blocks.lastValue(lookups.getLookupData(key)));
+        return blobStore.read(blocks.lastValue(lookups.getLookupData(key)));
     }
 
     Stream<Map.Entry<String, Stream<byte[]>>> scan(BlockedLongs blocks){
         return lookups.scan()
                 .map(entry -> Maps.immutableEntry(
                         entry.getKey(),
-                        blocks.values(entry.getValue()).mapToObj(blobs::read)
+                        blocks.values(entry.getValue()).mapToObj(blobStore::read)
                 ));
     }
 
+    long size() {
+        return blobStore.getPosition();
+    }
+
     void scan(BlockedLongs blocks, BiConsumer<String, Stream<byte[]>> callback){
-        lookups.scan((s, value) -> callback.accept(s, blocks.values(value).mapToObj(blobs::read)));
+        lookups.scan((s, value) -> callback.accept(s, blocks.values(value).mapToObj(blobStore::read)));
     }
 
     Stream<String> keys(){
@@ -96,11 +100,11 @@ public class AppendStorePartition extends Partition implements Flushable {
     @Override
     public void flush() throws IOException {
         lookups.flush();
-        blobs.flush();
+        blobStore.flush();
     }
 
     void clear(){
         lookups.clear();
-        blobs.clear();
+        blobStore.clear();
     }
 }

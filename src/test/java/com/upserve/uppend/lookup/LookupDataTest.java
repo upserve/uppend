@@ -12,17 +12,20 @@ import java.util.*;
 import static org.junit.Assert.*;
 
 public class LookupDataTest {
-    private Path lookupDir = Paths.get("build/test/tmp/lookup-data");
 
-    AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
+    private final String name = "lookupdata-test";
+    private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
+    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
 
-    private final FileCache fileCache = new FileCache(defaults.getIntialFileCacheSize(), defaults.getMaximumFileCacheSize(), false);
-    private final PageCache pageCache = new PageCache(defaults.getLookupPageSize(), defaults.getInitialLookupPageCacheSize(), defaults.getMaximumLookupPageCacheSize(), fileCache);
-    private final LookupCache lookupCache = new LookupCache(pageCache, defaults.getInitialLookupKeyCacheSize(), defaults.getMaximumLookupKeyCacheWeight(), defaults.getInitialMetaDataCacheSize(), defaults.getMaximumMetaDataCacheWeight());
+    private final FileCache fileCache = defaults.buildFileCache(false, name);
+    private final PageCache pageCache = defaults.buildLookupPageCache(fileCache, name);
+    private final LookupCache lookupCache = defaults.buildLookupCache(pageCache, name);
+
     private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
+
     @Before
     public void initialize() throws Exception {
-        SafeDeleting.removeTempPath(lookupDir);
+        SafeDeleting.removeDirectory(lookupDir);
     }
 
     @After
@@ -103,6 +106,63 @@ public class LookupDataTest {
         data = new LookupData(lookupDir, partitionLookupCache);
         assertEquals(Long.valueOf(80), data.get(key));
     }
+
+    @Test
+    public void testCachePutFlush() throws IOException, InterruptedException {
+        LookupData data = new LookupData(lookupDir, partitionLookupCache);
+
+        final LookupKey key = new LookupKey("mykey");
+        assertEquals(null, data.put(key, 80));
+
+        assertEquals(Long.valueOf(80), data.writeCache.get(key));
+
+        assertEquals(1, lookupCache.keyStats().missCount());
+        assertEquals(0, lookupCache.keyStats().hitCount());
+
+        assertEquals(0, lookupCache.pageStats().requestCount());
+
+        assertEquals(1, lookupCache.metadataStats().missCount());
+        assertEquals(0, lookupCache.metadataStats().hitCount());
+
+        // Updating the value while still in the write cache changes nothing else
+        assertEquals(Long.valueOf(80), data.put(key, 81));
+
+        assertEquals(1, lookupCache.keyStats().missCount());
+        assertEquals(0, lookupCache.keyStats().hitCount());
+
+        assertEquals(0, lookupCache.pageStats().requestCount());
+
+        assertEquals(1, lookupCache.metadataStats().missCount());
+        assertEquals(0, lookupCache.metadataStats().hitCount());
+
+        // Flush the key to disk and more the key/value to the read cache
+        data.flush();
+
+        assertEquals(1, lookupCache.keyStats().requestCount()); // unchanged
+
+        assertEquals(2, lookupCache.pageStats().missCount()); // Keys blob store and LongLongStore
+        assertEquals(1, lookupCache.pageStats().hitCount());
+
+        assertEquals(1, lookupCache.metadataStats().missCount());
+        assertEquals(1, lookupCache.metadataStats().hitCount()); // Metadata is loaded during flush
+
+        assertEquals(null, data.writeCache.get(key)); // the key has been written and moved from the write cache to the read cache
+
+        // put a new value and see which cache entries change
+        assertEquals(Long.valueOf(81), data.put(key, 82));
+
+        assertEquals(null, data.writeCache.get(key)); // Write cache is only for new keys.
+
+        assertEquals(1, lookupCache.keyStats().hitCount()); // Should be a hit!
+        assertEquals(1, lookupCache.keyStats().missCount());
+
+        assertEquals(2, lookupCache.pageStats().hitCount()); // writing the new value is a hit
+        assertEquals(2, lookupCache.pageStats().missCount()); // miss count unchanged
+
+        assertEquals(1, lookupCache.metadataStats().missCount()); // metadata is untouched.
+        assertEquals(1, lookupCache.metadataStats().hitCount());
+    }
+
 
     @Test
     public void testScan() throws Exception {

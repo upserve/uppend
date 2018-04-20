@@ -1,6 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.AppendOnlyStore;
 
@@ -46,21 +47,25 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         this.store = store;
         this.metrics = metrics;
 
-        writeTimer = metrics.timer(WRITE_TIMER_METRIC_NAME);
-        flushTimer = metrics.timer(FLUSH_TIMER_METRIC_NAME);
-        readTimer = metrics.timer(READ_TIMER_METRIC_NAME);
-        keysTimer = metrics.timer(KEYS_TIMER_METRIC_NAME);
-        partitionsTimer = metrics.timer(PARTITIONS_TIMER_METRIC_NAME);
-        scanTimer = metrics.timer(SCAN_TIMER_METRIC_NAME);
-        clearTimer = metrics.timer(CLEAR_TIMER_METRIC_NAME);
-        closeTimer = metrics.timer(CLOSE_TIMER_METRIC_NAME);
-        trimTimer = metrics.timer(PURGE_TIMER_METRIC_NAME);
+        writeTimer = metrics.timer(getFullMetricName(store, WRITE_TIMER_METRIC_NAME));
+        flushTimer = metrics.timer(getFullMetricName(store, FLUSH_TIMER_METRIC_NAME));
+        readTimer = metrics.timer(getFullMetricName(store, READ_TIMER_METRIC_NAME));
+        keysTimer = metrics.timer(getFullMetricName(store, KEYS_TIMER_METRIC_NAME));
+        partitionsTimer = metrics.timer(getFullMetricName(store, PARTITIONS_TIMER_METRIC_NAME));
+        scanTimer = metrics.timer(getFullMetricName(store, SCAN_TIMER_METRIC_NAME));
+        clearTimer = metrics.timer(getFullMetricName(store, CLEAR_TIMER_METRIC_NAME));
+        closeTimer = metrics.timer(getFullMetricName(store, CLOSE_TIMER_METRIC_NAME));
+        trimTimer = metrics.timer(getFullMetricName(store, PURGE_TIMER_METRIC_NAME));
 
-        writeBytesMeter = metrics.meter(WRITE_BYTES_METER_METRIC_NAME);
-        readBytesMeter = metrics.meter(READ_BYTES_METER_METRIC_NAME);
-        scanBytesMeter = metrics.meter(SCAN_BYTES_METER_METRIC_NAME);
-        scanKeysMeter = metrics.meter(SCAN_KEYS_METER_METRIC_NAME);
+        writeBytesMeter = metrics.meter(getFullMetricName(store, WRITE_BYTES_METER_METRIC_NAME));
+        readBytesMeter = metrics.meter(getFullMetricName(store, READ_BYTES_METER_METRIC_NAME));
+        scanBytesMeter = metrics.meter(getFullMetricName(store, SCAN_BYTES_METER_METRIC_NAME));
+        scanKeysMeter = metrics.meter(getFullMetricName(store, SCAN_KEYS_METER_METRIC_NAME));
 
+    }
+
+    public static String getFullMetricName(AppendOnlyStore store, String metricName) {
+        return String.join(".", store.getName(), metricName);
     }
 
     @Override
@@ -169,6 +174,34 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         } finally {
             context.stop();
         }
+    }
+
+    @Override
+    public String getName() {
+        return store.getName();
+    }
+
+    @Override
+    public CacheStats getFileCacheStats() {
+        return store.getFileCacheStats();
+    }
+
+    @Override
+    public CacheStats getBlobPageCacheStats() { return store.getBlobPageCacheStats(); }
+
+    @Override
+    public CacheStats getKeyPageCacheStats() {
+        return store.getKeyPageCacheStats();
+    }
+
+    @Override
+    public CacheStats getLookupKeyCacheStats() {
+        return store.getLookupKeyCacheStats();
+    }
+
+    @Override
+    public CacheStats getMetadataCacheStats() {
+        return store.getMetadataCacheStats();
     }
 
     @Override

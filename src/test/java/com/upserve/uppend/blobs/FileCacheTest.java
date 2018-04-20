@@ -1,6 +1,7 @@
 package com.upserve.uppend.blobs;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.github.benmanes.caffeine.cache.stats.*;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
@@ -10,7 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.Random;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 import static org.hamcrest.core.IsInstanceOf.any;
@@ -20,12 +21,15 @@ import static org.junit.Assert.assertTrue;
 
 public class FileCacheTest {
 
-    Path rootPath = Paths.get("build/test/blobs/file_cache");
-    Path existingFile = rootPath.resolve("existing_file");
-    Path fileDoesNotExist = rootPath.resolve("file_does_not_exist");
-    Path pathDoesNotExist = rootPath.resolve("path_does_not_exist/file");
+    private final String name = "file_cache";
+    private Path rootPath = Paths.get("build/test/blobs").resolve(name);
+    private Path existingFile = rootPath.resolve("existing_file");
+    private Path fileDoesNotExist = rootPath.resolve("file_does_not_exist");
+    private Path pathDoesNotExist = rootPath.resolve("path_does_not_exist/file");
 
-    FileCache instance;
+    private FileCache instance;
+
+    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -47,7 +51,7 @@ public class FileCacheTest {
 
     @Test
     public void testReadOnlyNonExistentFile(){
-        instance = new FileCache(64, 256, true);
+        instance = defaults.buildFileCache(true, name);
         assertTrue(instance.readOnly());
 
         assertEquals(null, instance.getFileChannelIfPresent(fileDoesNotExist));
@@ -75,7 +79,7 @@ public class FileCacheTest {
     }
 
     public void testHelper(Path path, boolean readOnly) throws InterruptedException {
-        instance = new FileCache(64, 256, readOnly);
+        instance = defaults.buildFileCache(readOnly, name);
         assertEquals(readOnly, instance.readOnly());
 
         assertEquals(null, instance.getFileChannelIfPresent(path));
@@ -98,7 +102,7 @@ public class FileCacheTest {
 
     @Test
     public void testReadWritePathDoesNotExist() {
-        instance = new FileCache(64, 256, false);
+        instance = defaults.buildFileCache(false, name);
         assertFalse(instance.readOnly());
 
         thrown.expect(CompletionException.class);
@@ -110,7 +114,7 @@ public class FileCacheTest {
 
     @Test
     public void testHammerFileCache(){
-        instance = new FileCache(64, 256, false);
+        instance = defaults.buildFileCache(false, name);
 
         final int requests = 1024 * 1024;
 

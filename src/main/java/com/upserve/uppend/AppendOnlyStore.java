@@ -1,5 +1,7 @@
 package com.upserve.uppend;
 
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
+
 import java.io.Flushable;
 import java.util.stream.Stream;
 
@@ -37,4 +39,21 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, Aut
      * Remove all keys and values from the store.
      */
     void clear();
+
+    /**
+     * Get the name of this store - the last element in the path
+     * @return the name
+     */
+    String getName();
+
+    CacheStats getFileCacheStats();
+    CacheStats getBlobPageCacheStats();
+    CacheStats getKeyPageCacheStats();
+    CacheStats getLookupKeyCacheStats();
+    CacheStats getMetadataCacheStats();
+
+
+
+
+
 }

@@ -16,7 +16,6 @@ import static org.junit.Assert.assertEquals;
 
 public class FilePageTest {
     Path rootPath = Paths.get("build/test/blobs/filepage");
-
     Path filePath = rootPath.resolve("testfile");
     Path readOnlyFilePath = rootPath.resolve("readOnlyTestfile");
 

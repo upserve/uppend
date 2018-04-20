@@ -129,6 +129,11 @@ public class CounterStoreWithMetrics implements CounterStore {
     }
 
     @Override
+    public String getName() {
+        return store.getName();
+    }
+
+    @Override
     public void trim() {
         final Timer.Context context = metricsTrimTimer.time();
         try {

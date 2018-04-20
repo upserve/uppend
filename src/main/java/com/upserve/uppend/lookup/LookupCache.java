@@ -1,7 +1,10 @@
 package com.upserve.uppend.lookup;
 
+import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.*;
+import com.github.benmanes.caffeine.cache.stats.*;
 import com.upserve.uppend.blobs.PageCache;
+import com.upserve.uppend.metrics.MetricsStatsCounter;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -20,32 +23,39 @@ public class LookupCache implements Flushable {
     // Pages loaded from LookupData files
     private final PageCache pageCache;
 
-    public LookupCache(PageCache pagecache, int initialKeyCapacity, long maximumKeyWeight, int intialMetaDataCapacity, long maximumMetaDataWeight) {
-        this(pagecache, initialKeyCapacity, maximumKeyWeight, intialMetaDataCapacity, maximumMetaDataWeight, ForkJoinPool.commonPool(), ForkJoinPool.commonPool());
-    }
-
-    public LookupCache(PageCache pagecache, int initialKeyCapacity, long maximumKeyWeight, int intialMetaDataCapacity, long maximumMetaDataWeight, ExecutorService executorServiceKeyCache, ExecutorService executorServiceMetaDataCache) {
+    public LookupCache(PageCache pagecache, int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
         this.pageCache = pagecache;
 
-        keyLongLookupCache = Caffeine
+        Caffeine<PartitionLookupKey, Long> keyCacheBuilder = Caffeine
                 .<PartitionLookupKey, Long>newBuilder()
                 .executor(executorServiceKeyCache)
                 .initialCapacity(initialKeyCapacity)
                 .maximumWeight(maximumKeyWeight)  // bytes
-                .<PartitionLookupKey, Long>weigher((k ,v)-> k.weight())
-                .<PartitionLookupKey, Long>build();
+                .<PartitionLookupKey, Long>weigher((k ,v)-> k.weight());
+
+        if (keyCacheMetricsSupplier != null) {
+            keyCacheBuilder = keyCacheBuilder.recordStats(keyCacheMetricsSupplier);
+        }
+
+        keyLongLookupCache = keyCacheBuilder.<PartitionLookupKey, Long>build();
 
 
-        lookupMetaDataCache = Caffeine
+         Caffeine<LookupData, LookupMetadata> metadataCacheBuilder = Caffeine
                 .<LookupData, LookupMetadata>newBuilder()
                 .executor(executorServiceMetaDataCache)
                 .initialCapacity(intialMetaDataCapacity)
                 .maximumWeight(maximumMetaDataWeight)
-                .<LookupData, LookupMetadata>weigher((k ,v) -> v.weight())
+                .<LookupData, LookupMetadata>weigher((k ,v) -> v.weight());
+
+        if (metadataCacheMetricsSupplier != null) {
+            metadataCacheBuilder = metadataCacheBuilder.recordStats(metadataCacheMetricsSupplier);
+        }
+
+        lookupMetaDataCache = metadataCacheBuilder
                 .<LookupData, LookupMetadata>build(lookupData -> LookupMetadata.open(
-                        lookupData.getMetadataPath(),
-                        lookupData.getMetaDataGeneration()
-                ));
+                lookupData.getMetadataPath(),
+                lookupData.getMetaDataGeneration()
+        ));
     }
 
     public PageCache getPageCache(){
@@ -68,6 +78,17 @@ public class LookupCache implements Flushable {
         lookupMetaDataCache.put(key, value);
     }
 
+    public CacheStats pageStats() {
+        return pageCache.stats();
+    }
+
+    public CacheStats keyStats() {
+        return keyLongLookupCache.stats();
+    }
+
+    public CacheStats metadataStats() {
+        return lookupMetaDataCache.stats();
+    }
 
     @Override
     public void flush() {

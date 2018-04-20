@@ -149,4 +149,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     public void trim() {
         store.trim();
     }
+
+    public String getName() {
+        return store.getName();
+    }
 }

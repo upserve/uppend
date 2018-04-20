@@ -1,8 +1,7 @@
 package com.upserve.uppend.cli;
 
-import com.upserve.uppend.*;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.cli.benchmark.*;
-import com.upserve.uppend.lookup.LongLookup;
 import picocli.CommandLine.*;
 
 import java.nio.file.Path;
@@ -43,7 +42,7 @@ public class CommandBenchmark implements Callable<Void> {
     int openFileCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_FILE_CACHE_SIZE;
 
     @Option(names = {"-m", "--key-metadata-cache-size"}, description = "Metadata Cache size")
-    int metadataCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_METADATA_CACHE_SIZE * 100;
+    int metadataCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_METADATA_CACHE_SIZE;
 
     @Option(names = {"-b", "--blob-page-cache-size"}, description = "Blob Page Cache size")
     int blobPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_BLOB_CACHE_SIZE;

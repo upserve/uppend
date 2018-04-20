@@ -2,12 +2,10 @@ package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
 import com.upserve.uppend.blobs.*;
-import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.channels.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,7 +20,7 @@ public class LookupData implements Flushable {
     private final PartitionLookupCache partitionLookupCache;
 
     // The container for stuff we need to write
-    private final ConcurrentHashMap<LookupKey, Long> writeCache; // Only new keys can be in the write cache
+    protected final ConcurrentHashMap<LookupKey, Long> writeCache; // Only new keys can be in the write cache
 
     private final Path hashPath;
     private final Path dataPath;
@@ -31,8 +29,8 @@ public class LookupData implements Flushable {
 
     private final boolean readOnly;
 
-    private final Blobs keyBlobs;
-    private final BlockedLongPairs keyPosToBlockPos;
+    private final BlobStore keyBlobs;
+    private final LongLongStore keyPosToBlockPos;
 
     private final ReadWriteLock flushLock;
     private final Lock readLock;
@@ -75,9 +73,9 @@ public class LookupData implements Flushable {
             }
         }
 
-        keyBlobs = new Blobs(keyPath, partitionLookupCache.getPageCache());
+        keyBlobs = new BlobStore(keyPath, partitionLookupCache.getPageCache());
 
-        keyPosToBlockPos = new BlockedLongPairs(dataPath, partitionLookupCache.getPageCache());
+        keyPosToBlockPos = new LongLongStore(dataPath, partitionLookupCache.getPageCache());
 
         metaDataGeneration = new AtomicInteger();
 
@@ -211,7 +209,7 @@ public class LookupData implements Flushable {
      * @return the previous value associated with the key or null if it did not exist
      */
     public Long put(LookupKey key, final long value) {
-        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
+        if (readOnly) throw new RuntimeException("Can not put in read only LookupData: " + hashPath);
 
         AtomicReference<Long> ref = new AtomicReference<>(); // faster to replace with a Long[] ?
         writeCache.compute(key, (k, val) -> {

@@ -1,7 +1,9 @@
 package com.upserve.uppend.blobs;
 
 import com.github.benmanes.caffeine.cache.*;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.github.benmanes.caffeine.cache.stats.*;
+import com.upserve.uppend.*;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -9,6 +11,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.concurrent.*;
+import java.util.function.*;
 
 /**
  * A cache of file handles.
@@ -22,11 +25,7 @@ public class FileCache implements Flushable {
 
     private final boolean readOnly;
 
-    public FileCache(int initialCacheSize, int maximumCacheSize, boolean readOnly) {
-        this(initialCacheSize, maximumCacheSize, readOnly, ForkJoinPool.commonPool());
-    }
-
-    public FileCache(int initialCacheSize, int maximumCacheSize, boolean readOnly, ExecutorService executorService){
+    public FileCache(int initialCacheSize, int maximumCacheSize, ExecutorService executorService, Supplier<StatsCounter> metricsSupplier, boolean readOnly){
 
         this.readOnly = readOnly;
 
@@ -37,13 +36,12 @@ public class FileCache implements Flushable {
             openOptions = new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
         }
 
-        this.fileCache = Caffeine
+        Caffeine<Path, FileChannel> cacheBuilder = Caffeine
                 .<Path, FileChannel>newBuilder()
                 .executor(executorService)
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
-                .expireAfterAccess(300, TimeUnit.DAYS)
-                .recordStats()
+                .expireAfterAccess(2, TimeUnit.HOURS)
                 .<Path, FileChannel>removalListener((key, value, cause) ->  {
                     log.debug("Called removal on {} with cause {}", key, cause);
                     if (value != null && value.isOpen()) {
@@ -53,11 +51,17 @@ public class FileCache implements Flushable {
                             log.error("Unable to close file {}", key, e);
                         }
                     }
-                })
-                .<Path, FileChannel>build(path -> {
-                    log.debug("opening {} in file cache", path);
-                    return FileChannel.open(path, openOptions);
                 });
+
+
+        if (metricsSupplier != null) {
+            cacheBuilder = cacheBuilder.recordStats(metricsSupplier);
+        }
+
+        this.fileCache = cacheBuilder.<Path, FileChannel>build(path -> {
+            log.debug("opening {} in file cache", path);
+            return FileChannel.open(path, openOptions);
+        });
     }
 
     public boolean readOnly(){

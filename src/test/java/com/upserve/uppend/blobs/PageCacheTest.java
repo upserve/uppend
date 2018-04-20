@@ -1,7 +1,8 @@
 package com.upserve.uppend.blobs;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.github.benmanes.caffeine.cache.stats.*;
 import com.google.common.primitives.Longs;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
@@ -10,16 +11,20 @@ import java.io.*;
 import java.nio.*;
 import java.nio.file.*;
 import java.util.Random;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.*;
 
 import static org.hamcrest.core.IsInstanceOf.any;
 import static org.junit.Assert.*;
 
 public class PageCacheTest {
-    Path rootPath = Paths.get("build/test/blobs/page_cache");
+    private final String name = "page_cache_test";
+    Path rootPath = Paths.get("build/test/blobs").resolve(name);
     Path existingFile = rootPath.resolve("existing_file");
     Path fileDoesNotExist = rootPath.resolve("file_does_not_exist");
     Path pathDoesNotExist = rootPath.resolve("path_does_not_exist/file");
+
+    ExecutorService testService = new ForkJoinPool();
+    private AppendOnlyStoreBuilder defaults;
 
     PageCache instance;
     FileCache fileCache;
@@ -34,18 +39,38 @@ public class PageCacheTest {
         Files.createFile(existingFile);
     }
 
+    private void setup(boolean readOnly) {
+        testService = new ForkJoinPool();
+
+        defaults = AppendOnlyStoreBuilder
+                .getDefaultTestBuilder(testService)
+                .withBlobPageSize(512)
+                .withInitialBlobCacheSize(128)
+                .withMaximumBlobCacheSize(512);
+
+        fileCache = defaults.buildFileCache(readOnly, name);
+        instance = defaults.buildBlobPageCache(fileCache, name);
+    }
+
     @After
-    public void after() throws InterruptedException {
+    public void shutdown() throws InterruptedException {
         if (instance != null) {
             instance.flush();
-            Thread.sleep(100); // TODO fix executors for cache so we don't need this
+        }
+
+        if (fileCache != null){
+            fileCache.flush();
+        }
+
+        if (testService != null) {
+            testService.shutdown();
+            testService.awaitTermination(1000, TimeUnit.MILLISECONDS);
         }
     }
 
     @Test
     public void testGetPageFlush(){
-        fileCache = new FileCache(64, 256, false);
-        instance = new PageCache(512, 128, 512, fileCache);
+        setup(false);
 
         final long position = 1284;
         FilePage page;
@@ -65,25 +90,20 @@ public class PageCacheTest {
 
     @Test
     public void testGetPageSize(){
-        fileCache = new FileCache(64, 256, false);
-        instance = new PageCache(512, 128, 512, fileCache);
-
+        setup(false);
         assertEquals(512, instance.getPageSize());
     }
 
     @Test
     public void testGetFileCache(){
-        fileCache = new FileCache(64, 256, false);
-        instance = new PageCache(512, 128, 512, fileCache);
+        setup(false);
 
         assertEquals(fileCache, instance.getFileCache());
     }
 
     @Test
-    public void testReadOnly(){
-        fileCache = new FileCache(64, 256, false);
-        instance = new PageCache(512, 128, 512, fileCache);
-
+    public void testReadOnly() throws InterruptedException {
+        setup(false);
         assertFalse(instance.readOnly());
 
         final long position = 1284;
@@ -94,25 +114,30 @@ public class PageCacheTest {
         page.put(0, expected, 0);
 
 
-        fileCache = new FileCache(64, 256, true);
-        instance = new PageCache(512, 128, 512, fileCache);
+        FileCache readOnlyFileCache = defaults.buildFileCache(true, name);
+        PageCache secondInstance = defaults.buildBlobPageCache(readOnlyFileCache, name);
 
-        assertTrue(instance.readOnly());
+        assertTrue(secondInstance.readOnly());
 
-        page = instance.getPage(existingFile, position);
+        page = secondInstance.getPage(existingFile, position);
         byte[] result = new byte[3];
         page.get(0, result, 0);
 
         assertArrayEquals(expected, result);
 
         thrown.expect(ReadOnlyBufferException.class);
-        page.put(0, result, 0); // can't put to the readonly buffer
+
+        try {
+            page.put(0, result, 0); // can't put to the readonly buffer}
+        } finally {
+            secondInstance.flush();
+            readOnlyFileCache.flush();
+        }
     }
 
     @Test
     public void testReadOnlyNoFile() {
-        fileCache = new FileCache(64, 256, true);
-        instance = new PageCache(512, 128, 512, fileCache);
+        setup(true);
 
         assertTrue(instance.readOnly());
 
@@ -125,8 +150,7 @@ public class PageCacheTest {
 
     @Test
     public void testHammerPageCache(){
-        fileCache = new FileCache(64, 256, false);
-        instance = new PageCache(512, 128, 256, fileCache);
+        setup(false);
 
         instance.getPage(existingFile, 1000*512).flush(); // Must extend the file before concurrent writes begin
 
@@ -140,5 +164,4 @@ public class PageCacheTest {
         assertEquals(requests+1, stats.requestCount());
         assertEquals(256D/1000, stats.hitRate(), 25);
     }
-
 }

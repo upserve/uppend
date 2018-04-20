@@ -1,5 +1,8 @@
 package com.upserve.uppend;
 
+import com.codahale.metrics.MetricRegistry;
+import com.github.benmanes.caffeine.cache.stats.*;
+import com.upserve.uppend.metrics.MetricsStatsCounter;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -20,6 +23,7 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     protected final Map<String, T> partitionMap;
 
     protected final boolean readOnly;
+    protected final String name;
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
@@ -34,13 +38,16 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
+        name = dir.getFileName().toString();
+
         this.flushDelaySeconds = flushDelaySeconds;
 
         this.readOnly = readOnly;
         if (!readOnly) {
             lockPath = dir.resolve("lock");
 
-            if (flushDelaySeconds < 0) throw new IllegalArgumentException("Flush delay can not be negative: " + flushDelaySeconds);
+            if (flushDelaySeconds < 0)
+                throw new IllegalArgumentException("Flush delay can not be negative: " + flushDelaySeconds);
             AutoFlusher.register(flushDelaySeconds, this);
 
             try {
@@ -63,24 +70,25 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     }
 
     abstract Function<String, T> getOpenPartitionFunction();
+
     abstract Function<String, T> getCreatePartitionFunction();
 
-    Optional<T> safeGet(String partition){
-        if (readOnly){
+    Optional<T> safeGet(String partition) {
+        if (readOnly) {
             return getIfPresent(partition);
         } else {
             return Optional.of(getOrCreate(partition));
         }
     }
 
-    Optional<T> getIfPresent(String partition){
-        return Optional.ofNullable( partitionMap.computeIfAbsent(
+    Optional<T> getIfPresent(String partition) {
+        return Optional.ofNullable(partitionMap.computeIfAbsent(
                 partition,
                 getOpenPartitionFunction()
         ));
     }
 
-    T getOrCreate(String partition){
+    T getOrCreate(String partition) {
         return partitionMap.computeIfAbsent(
                 partition,
                 getCreatePartitionFunction()
@@ -95,15 +103,17 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     protected abstract void trimInternal() throws IOException;
 
     @Override
-    public void trim(){
+    public void trim() {
         log.info("Triming {}", dir);
         try {
             trimInternal();
-        } catch (Exception e){
+        } catch (Exception e) {
             log.error("unable to trim {}", dir, e);
         }
         log.info("Trimed {}", dir);
-    };
+    }
+
+    ;
 
     @Override
     public void flush() {
@@ -123,7 +133,7 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
             return;
         }
 
-        if (flushDelaySeconds > 0) {
+        if (!readOnly) {
             AutoFlusher.deregister(this);
         }
 

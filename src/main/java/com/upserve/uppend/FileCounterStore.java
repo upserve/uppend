@@ -11,7 +11,6 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
-import static com.upserve.uppend.FileAppendOnlyStore.*;
 import static com.upserve.uppend.Partition.listPartitions;
 
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
@@ -25,16 +24,20 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
         super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
 
-        fileCache = new FileCache(builder.getIntialFileCacheSize(), builder.getMaximumFileCacheSize(), readOnly);
-        PageCache lookupPageCache = new PageCache(builder.getLookupPageSize(), builder.getInitialLookupPageCacheSize(), builder.getMaximumLookupPageCacheSize(), fileCache, builder.getLookupPageCacheExecutorService());
-        lookupCache = new LookupCache(lookupPageCache, builder.getInitialLookupKeyCacheSize(), builder.getMaximumLookupKeyCacheWeight(), builder.getInitialMetaDataCacheSize(), builder.getMaximumMetaDataCacheWeight(), builder.getLookupKeyCacheExecutorService(), builder.getLookupMetaDataCacheExecutorService());
-
+        fileCache = builder.buildFileCache(readOnly, getName());
+        PageCache lookupPageCache = builder.buildLookupPageCache(fileCache, getName());
+        lookupCache = builder.buildLookupCache(lookupPageCache, getName());
 
         openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), lookupCache);
         createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), lookupCache);
     }
 
-    private static Path partionPath(Path dir){
+    @Override
+    public String getName() {
+        return name;
+    }
+
+    private static Path partionPath(Path dir) {
         return dir.resolve("partitions");
     }
 
@@ -48,7 +51,8 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     @Override
     public long increment(String partition, String key, long delta) {
         log.trace("incrementing by {} key '{}' in partition '{}'", delta, key, partition);
-        if (readOnly) throw new RuntimeException("Can not increment value of counter store opened in read only mode:" + dir);
+        if (readOnly)
+            throw new RuntimeException("Can not increment value of counter store opened in read only mode:" + dir);
         return getOrCreate(partition).increment(key, delta);
     }
 
@@ -120,7 +124,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
         // Only need to flush open partitions
-        for (CounterStorePartition counterStorePartition : partitionMap.values()){
+        for (CounterStorePartition counterStorePartition : partitionMap.values()) {
             counterStorePartition.flush();
         }
     }

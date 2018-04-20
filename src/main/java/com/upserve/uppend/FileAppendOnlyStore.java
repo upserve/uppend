@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.github.benmanes.caffeine.cache.stats.*;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
 import org.slf4j.Logger;
@@ -29,16 +30,49 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
 
 
-        fileCache = new FileCache(builder.getIntialFileCacheSize(), builder.getMaximumFileCacheSize(), readOnly, builder.getFileCacheExecutorService());
-        blobPageCache = new PageCache(builder.getBlobPageSize(), builder.getInitialBlobCacheSize(), builder.getMaximumBlobCacheSize(), fileCache, builder.getBlobCacheExecutorService());
-        PageCache lookupPageCache = new PageCache(builder.getLookupPageSize(), builder.getInitialLookupPageCacheSize(), builder.getMaximumLookupPageCacheSize(), fileCache, builder.getLookupPageCacheExecutorService());
-        lookupCache = new LookupCache(lookupPageCache, builder.getInitialLookupKeyCacheSize(), builder.getMaximumLookupKeyCacheWeight(), builder.getInitialMetaDataCacheSize(), builder.getMaximumMetaDataCacheWeight(), builder.getLookupKeyCacheExecutorService(), builder.getLookupMetaDataCacheExecutorService());
+        fileCache = builder.buildFileCache(readOnly, getName());
+
+        blobPageCache = builder.buildBlobPageCache(fileCache, getName());
+
+        PageCache lookupPageCache = builder.buildLookupPageCache(fileCache, getName());
+
+        lookupCache = builder.buildLookupCache(lookupPageCache, getName());
 
         blocks = new BlockedLongs(builder.getDir().resolve("blocks"), builder.getBlobsPerBlock(), readOnly);
 
         openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), blobPageCache, lookupCache);
 
         createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), blobPageCache, lookupCache);
+    }
+
+    @Override
+    public String getName(){
+        return name;
+    }
+
+    @Override
+    public CacheStats getFileCacheStats(){
+        return fileCache.stats();
+    }
+
+    @Override
+    public CacheStats getBlobPageCacheStats() {
+        return blobPageCache.stats();
+    }
+
+    @Override
+    public CacheStats getKeyPageCacheStats() {
+        return lookupCache.pageStats();
+    }
+
+    @Override
+    public CacheStats getLookupKeyCacheStats() {
+        return lookupCache.keyStats();
+    }
+
+    @Override
+    public CacheStats getMetadataCacheStats() {
+        return lookupCache.metadataStats();
     }
 
     private static Path partionPath(Path dir){

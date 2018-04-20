@@ -8,12 +8,12 @@ import java.nio.ByteBuffer;
 import java.nio.file.*;
 import java.util.function.Supplier;
 
-public class BlockedLongPairs extends PageMappedFileIO {
+public class LongLongStore extends PageMappedFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final Supplier<ByteBuffer> recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(16);
 
-    public BlockedLongPairs(Path file, PageCache pageCache) {
+    public LongLongStore(Path file, PageCache pageCache) {
         super(file, pageCache);
     }
 

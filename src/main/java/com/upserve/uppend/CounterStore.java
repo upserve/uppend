@@ -60,4 +60,10 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
      * Remove all keys and values from the store.
      */
     void clear();
+
+    /**
+     * get the name of the counter store - the last element in the path
+     * @return
+     */
+    String getName();
 }
