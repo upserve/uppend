@@ -108,26 +108,26 @@ public class LookupData implements Flushable {
     public long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
         if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
 
-        AtomicReference<Long> ref = new AtomicReference<>();
+        long[] ref = new long[1];
         writeCache.compute(key, (k, value) -> {
             if (value == null){
                 Long existingValue = getCached(k);
                 if (existingValue == null) {
                     long val = allocateLongFunc.getAsLong();
-                    ref.set(val);
+                    ref[0] = val;
                     return val;
 
                 } else {
-                    ref.set(existingValue);
+                    ref[0] = existingValue;
                     return null;
                 }
             } else {
-                ref.set(value);
+                ref[0] = value;
                 return value;
             }
         });
 
-        return ref.get();
+        return ref[0];
     }
 
     /**
@@ -140,25 +140,25 @@ public class LookupData implements Flushable {
     public long putIfNotExists(LookupKey key, long value) {
         if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
 
-        AtomicReference<Long> ref = new AtomicReference<>();
+        long[] ref = new long[1];
         writeCache.compute(key, (k, val) -> {
             if (val == null){
                 Long existingValue = getCached(k);
                 if (existingValue == null) {
-                    ref.set(value);
+                    ref[0] = value;
                     return value;
 
                 } else {
-                    ref.set(existingValue);
+                    ref[0] = existingValue;
                     return null;
                 }
             } else {
-                ref.set(val);
+                ref[0] = val;
                 return val;
             }
         });
 
-        return ref.get();
+        return ref[0];
     }
 
     /**
@@ -171,17 +171,17 @@ public class LookupData implements Flushable {
     public long increment(LookupKey key, long delta) {
         if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
 
-        AtomicReference<Long> ref = new AtomicReference<>();
+        long[] ref = new long[1];
         writeCache.compute(key, (k, value) -> {
             if (value == null){
                 Long existingValue = getCached(k);
                 if (existingValue == null) {
-                    ref.set(delta);
+                    ref[0] = delta;
                     return delta; // must write a new key with delta as the value when we flush
 
                 } else {
                     existingValue += delta;
-                    ref.set(existingValue);
+                    ref[0] = existingValue;
 
                     partitionLookupCache.putLookup(key, existingValue); // Update the read cache
                     keyPosToBlockPos.writeRight(key.getLookupBlockIndex(), existingValue); // Update the value on disk
@@ -192,14 +192,13 @@ public class LookupData implements Flushable {
             } else {
                 // This value is only in the write cache!
                 value += delta;
-                ref.set(value);
+                ref[0] = value;
                 return value;
             }
         });
 
-        return ref.get();
+        return ref[0];
     }
-
 
     /**
      * Set the value of this key.
@@ -211,16 +210,16 @@ public class LookupData implements Flushable {
     public Long put(LookupKey key, final long value) {
         if (readOnly) throw new RuntimeException("Can not put in read only LookupData: " + hashPath);
 
-        AtomicReference<Long> ref = new AtomicReference<>(); // faster to replace with a Long[] ?
+        Long[] ref = new Long[1];
         writeCache.compute(key, (k, val) -> {
             if (val == null){
                 Long existingValue = getCached(k);
                 if (existingValue == null) {
-                    ref.set(null);
-                    return value; // must write a new key with delta as the value when we flush
+                    ref[0] = null;
+                    return value; // must write a new key with the value when we flush
 
                 } else {
-                    ref.set(existingValue);
+                    ref[0] = existingValue;
 
                     partitionLookupCache.putLookup(key, value); // Update the read cache
                     keyPosToBlockPos.writeRight(key.getLookupBlockIndex(), value); // Update the value on disk
@@ -230,14 +229,13 @@ public class LookupData implements Flushable {
                 }
             } else {
                 // This value is only in the write cache!
-                ref.set(val);
+                ref[0] = val;
                 return value;
             }
         });
 
-        return ref.get();
+        return ref[0];
     }
-
 
     private Long getCached(LookupKey key) {
         return partitionLookupCache.getLong(key, this::findValueFor);
@@ -440,6 +438,7 @@ public class LookupData implements Flushable {
                     }
                 }
             }
+            // TODO this forces the position but not the other pages we wrote too???
             keyBlobs.flush();
             keyPosToBlockPos.flush();
 
