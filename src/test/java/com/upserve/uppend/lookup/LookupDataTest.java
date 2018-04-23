@@ -10,6 +10,7 @@ import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.LongStream;
 
 import static org.junit.Assert.*;
 
@@ -21,7 +22,11 @@ public class LookupDataTest {
 
     private final String name = "lookupdata-test";
     private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
-    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
+    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder
+            .getDefaultTestBuilder()
+            .withLookupPageSize(32*1024)
+            .withMaximumLookupKeyCacheWeight(1024 * 1024)
+            ;
 
     private final FileCache fileCache = defaults.buildFileCache(false, name);
     private final PageCache pageCache = defaults.buildLookupPageCache(fileCache, name);
@@ -270,7 +275,7 @@ public class LookupDataTest {
     }
 
     @Test
-    public void testCacheIncrementFlush() throws IOException, InterruptedException {
+    public void testCacheIncrementFlush() throws IOException {
         LookupData data = new LookupData(lookupDir, partitionLookupCache);
 
         final LookupKey key = new LookupKey("mykey");
@@ -348,6 +353,44 @@ public class LookupDataTest {
         assertEquals(name + " Cache Load Success Count", loadSuccessCount, stats.loadSuccessCount());
         assertEquals(name + " Cache Load Failure Count", loadFailureCount, stats.loadFailureCount());
     }
+
+    @Test
+    public void testWriteCacheUnderLoad() throws IOException {
+        LookupData data = new LookupData(lookupDir, partitionLookupCache);
+
+        LongStream.range(0, 100_000)
+                .forEach(val -> {
+                    data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
+                });
+
+
+        assertEquals(100_000, data.writeCache.size());
+
+        assertLookupKeyCache(0, 100_000, 0, 100_000);
+        assertLookupPagesCache(0, 0, 0, 0);
+        assertLookupMetadataCache(99_999, 1, 1, 0);
+
+        data.flush();
+
+        assertEquals(0, data.writeCache.size());
+
+        assertLookupKeyCache(0, 0, 0, 0);
+//        assertLookupPagesCache(299994, 77, 77, 0); // Hit count is not stable in parallel execution
+        lookupPageCacheStats.set(lookupCache.getPageCache().stats());
+        assertLookupMetadataCache(1, 0, 0, 0);
+
+
+        LongStream.range(0, 100_000)
+                .forEach(val -> {
+                    data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
+                });
+
+        assertLookupKeyCache(100_000, 0, 0,  0);
+        assertLookupPagesCache(0, 0, 0, 0);
+        assertLookupMetadataCache(0, 0, 0, 0);
+    }
+
+
 
     @Test
     public void testScan() throws Exception {
