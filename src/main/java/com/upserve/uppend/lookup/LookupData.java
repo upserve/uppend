@@ -40,7 +40,9 @@ public class LookupData implements Flushable {
     private AtomicInteger metaDataGeneration;
 
     /**
-     *     Use this file to decide if the LookupData is present for a hashPath
+     * Use this path to decide if the LookupData is present for a hashPath
+     * @param hashPath the hashpath to build a metadata path for.
+     * @return the path for the metadata file
      */
     public static Path metadataPath(Path hashPath){
         return hashPath.resolve("meta");
@@ -256,9 +258,9 @@ public class LookupData implements Flushable {
     }
 
     /**
-     * Used in iterators return an entry containing the key as a string and the value
-     * @param keyNumber the index into the long data
-     * @return
+     * Used in iterators to return an entry containing the key as a string and the value
+     * @param keyNumber the index into the long data to lookup
+     * @return the key and the long value associated with it
      */
     public Map.Entry<String, Long> readEntry(int keyNumber) {
         long keyPos = keyPosToBlockPos.getLeft(keyNumber);

@@ -67,83 +67,99 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
 
     // Long lookup Cache Options
+    @SuppressWarnings("unchecked")
     public T withLongLookupHashSize(int longLookupHashSize) {
         this.lookupHashSize = longLookupHashSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withLookupPageSize(int lookupPageSize) {
         this.lookupPageSize = lookupPageSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withInitialLookupPageCacheSize(int initialLookupPageCacheSize) {
         this.initialLookupPageCacheSize = initialLookupPageCacheSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withMaximumLookupPageCacheSize(int maximumLookupPageCacheSize) {
         this.maximumLookupPageCacheSize = maximumLookupPageCacheSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withMaximumLookupKeyCacheWeight(int maximumLookupKeyCacheWeight) {
         this.maximumLookupKeyCacheWeight = maximumLookupKeyCacheWeight;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withInitialLookupKeyCacheSize(int initialLookupKeyCacheSize) {
         this.initialLookupKeyCacheSize = initialLookupKeyCacheSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withMaximumMetaDataCacheWeight(int maximumMetaDataCacheWeight) {
         this.maximumMetaDataCacheWeight = maximumMetaDataCacheWeight;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withInitialMetaDataCacheSize(int initialMetaDataCacheSize) {
         this.initialMetaDataCacheSize = initialMetaDataCacheSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withLookupKeyCacheExecutorService(ExecutorService lookupKeyCacheExecutorService){
         this.lookupKeyCacheExecutorService = lookupKeyCacheExecutorService;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withLookupMetaDataCacheExecutorService(ExecutorService lookupMetaDataCacheExecutorService){
         this.lookupMetaDataCacheExecutorService = lookupMetaDataCacheExecutorService;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withLookupPageCacheExecutorService(ExecutorService lookupPageCacheExecutorService){
         this.lookupPageCacheExecutorService = lookupPageCacheExecutorService;
         return (T) this;
     }
 
     // File Cache Options
+    @SuppressWarnings("unchecked")
     public T withMaximumFileCacheSize(int maximumFileCacheSize) {
         this.maximumFileCacheSize = maximumFileCacheSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withIntialFileCacheSize(int intialFileCacheSize) {
         this.intialFileCacheSize = intialFileCacheSize;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withFileCacheExecutorService(ExecutorService fileCacheExecutorService){
         this.fileCacheExecutorService = fileCacheExecutorService;
         return (T) this;
     }
 
     // Append Store Options
+    @SuppressWarnings("unchecked")
     public T withFlushDelaySeconds(int flushDelaySeconds) {
         this.flushDelaySeconds = flushDelaySeconds;
         return (T) this;
     }
 
+    @SuppressWarnings("unchecked")
     public T withDir(Path dir) {
         this.dir = dir;
         return (T) this;
@@ -154,6 +170,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
      * @param metrics a CodaHale storeMetrics registry
      * @return the builder
      */
+    @SuppressWarnings("unchecked")
     public T withStoreMetrics(MetricRegistry metrics) {
         this.storeMetricsRegistry = metrics;
         this.storeMetrics = true;
@@ -164,6 +181,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
      * Apply a MetricsCounter to the Caffeine Caches used by the store
      * @return the builder
      */
+    @SuppressWarnings("unchecked")
     public T withCacheMetrics() {
         this.cacheMetrics = true;
         return (T) this;
@@ -174,6 +192,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
      * @param metrics a CodaHale storeMetrics registry
      * @return the builder
      */
+    @SuppressWarnings("unchecked")
     public T withCacheMetrics(MetricRegistry metrics) {
         this.cacheMetricsRegistry = metrics;
         this.cacheMetrics = true;
