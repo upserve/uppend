@@ -38,7 +38,7 @@ public class PageCache implements Flushable {
                 .maximumSize(maximumCacheSize)
                 .<PageKey, FilePage>removalListener((key, value, cause) -> {
                     log.debug("Called removal on {} with cause {}", key, cause);
-                    if (value != null) value.flush();
+//                    if (value != null) value.flush();
                 });
 
         if (metricsSupplier != null) {

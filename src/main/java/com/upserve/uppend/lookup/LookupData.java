@@ -373,13 +373,13 @@ public class LookupData implements Flushable {
 
                                     long insertSortedAfterKeyAtIndex = key.getLookupBlockIndex();
 
-                                    writeCache.computeIfPresent(key, (k, value) -> {
-                                        long pos = keyBlobs.append(k.bytes());
-                                        key.setLookupBlockIndex((int) keyPosToBlockPos.append(pos, value));
+                                    Long value = writeCache.get(key);
+                                    partitionLookupCache.putLookup(key, value); // put it in the read cache and remove from the write cache
 
-                                        partitionLookupCache.putLookup(key, value); // put it in the read cache and remove from the write cache
-                                        return null;
-                                    });
+                                    writeCache.remove(key, value);
+
+                                    long pos = keyBlobs.append(key.bytes());
+                                    key.setLookupBlockIndex((int) keyPosToBlockPos.append(pos, value));
 
                                     return Maps.immutableEntry(insertSortedAfterKeyAtIndex, key);
                                 }
@@ -448,7 +448,7 @@ public class LookupData implements Flushable {
                     LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataPath, metaDataGeneration.incrementAndGet())
             );
 
-            log.debug("flushed {}", hashPath);
+            log.info("flushed {}", hashPath);
         }
     }
 

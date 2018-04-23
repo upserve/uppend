@@ -166,15 +166,13 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     }
 
     @Override
-    protected void flushInternal() throws IOException {
+    protected void flushInternal() {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
         blocks.flush();
-        for (AppendStorePartition appendStorePartition : partitionMap.values()){
-            appendStorePartition.flush();
-        }
+        partitionMap.values().parallelStream().forEach(AppendStorePartition::flush);
     }
 
     @Override

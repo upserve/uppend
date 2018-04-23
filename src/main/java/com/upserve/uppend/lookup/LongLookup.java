@@ -1,6 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.hash.*;
+import com.upserve.uppend.AutoFlusher;
 import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
@@ -186,10 +187,16 @@ public class LongLookup implements Flushable {
 
 
     @Override
-    public void flush() throws IOException{
-        for (LookupData lookup: lookups.values()){
-            lookup.flush();
-        }
+    public void flush() {
+
+        lookups.values().parallelStream().forEach(lookupData -> {
+            try {
+                lookupData.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to flush lookupData for: " + lookupData.getHashPath(), e);
+            }
+        });
+
         log.trace("flushed {}", lookupsDir);
     }
 

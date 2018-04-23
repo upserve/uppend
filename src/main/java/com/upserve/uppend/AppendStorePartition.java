@@ -98,7 +98,7 @@ public class AppendStorePartition extends Partition implements Flushable {
     }
 
     @Override
-    public void flush() throws IOException {
+    public void flush() {
         lookups.flush();
         blobStore.flush();
     }

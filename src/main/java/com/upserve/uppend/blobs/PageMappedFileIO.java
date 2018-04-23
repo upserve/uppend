@@ -153,7 +153,7 @@ public class PageMappedFileIO implements Flushable {
     }
 
     @Override
-    public void flush() throws IOException {
+    public void flush() {
         posBuf.force();
     }
 }
