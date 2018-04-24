@@ -15,6 +15,8 @@ import java.util.concurrent.locks.Lock;
 import java.util.function.*;
 import java.util.stream.*;
 
+import static com.upserve.uppend.AutoFlusher.flusherWorkPool;
+
 public class BlockedLongs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -324,13 +326,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void flush() {
         if (readOnly) return;
-        log.trace("flushing {}", file);
+        log.info("flushing {}", file);
         posBuf.force();
-        for (MappedByteBuffer page : pages) {
-            if (page != null) {
-                page.force();
-            }
-        }
+
+        Arrays.stream(pages)
+                .parallel()
+                .filter(Objects::nonNull)
+                .forEach(MappedByteBuffer::force);
+
+        log.info("flushed {}", file);
     }
 
     public void trim() {

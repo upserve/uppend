@@ -51,6 +51,7 @@ public class Benchmark {
         metrics = new MetricRegistry();
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)
+                .withBlobsPerBlock(14)
                 .withLongLookupHashSize(hashSize)
                 .withIntialFileCacheSize(openFileCacheSize)
                 .withMaximumFileCacheSize(openFileCacheSize)
@@ -62,9 +63,9 @@ public class Benchmark {
                 .withMaximumLookupPageCacheSize(keyPageCacheSize)
                 .withInitialMetaDataCacheSize(metadataCacheSize)
                 .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
-                .withFlushDelaySeconds(flushDelaySeconds);
-//                .withStoreMetrics(metrics)
-//                .withCacheMetrics();
+                .withFlushDelaySeconds(flushDelaySeconds)
+                .withStoreMetrics(metrics)
+                .withCacheMetrics();
 
 
         log.info(builder.toString());
@@ -240,7 +241,7 @@ public class Benchmark {
         Thread.sleep(100);
 
         java.util.Timer watcherTimer = new java.util.Timer();
-        //watcherTimer.schedule(watcherTimer(), 5000, 5000);
+        watcherTimer.schedule(watcherTimer(), 5000, 5000);
 
         writerThread.join();
         readerThread.join();

@@ -104,13 +104,13 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
 
     @Override
     public void trim() {
-        log.info("Triming {}", dir);
+        log.debug("Triming {}", dir);
         try {
             trimInternal();
         } catch (Exception e) {
             log.error("unable to trim {}", dir, e);
         }
-        log.info("Trimed {}", dir);
+        log.debug("Trimed {}", dir);
     }
 
     ;

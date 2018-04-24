@@ -85,15 +85,23 @@ public class PageMappedFileIO implements Flushable {
     }
 
     void writeMappedInt(long pos, int val){
+        writeMapped(pos, int2bytes(val));
+    }
+
+    static byte[] int2bytes(int val){
         ByteBuffer intBuf = LOCAL_INT_BUFFER.get();
         intBuf.putInt(val).flip();
-        writeMapped(pos, intBuf.array());
+        return intBuf.array();
     }
 
     void writeMappedLong(long pos, long val){
+        writeMapped(pos, long2bytes(val));
+    }
+
+    static byte[] long2bytes(long val){
         ByteBuffer longBuf = LOCAL_LONG_BUFFER.get();
         longBuf.putLong(val).flip();
-        writeMapped(pos, longBuf.array());
+        return longBuf.array();
     }
 
     void writeMapped(long pos, byte[] bytes){

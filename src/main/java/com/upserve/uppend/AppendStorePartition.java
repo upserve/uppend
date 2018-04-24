@@ -99,8 +99,10 @@ public class AppendStorePartition extends Partition implements Flushable {
 
     @Override
     public void flush() {
+        log.debug("Starting flush for partition: {}", partitiondDir);
         lookups.flush();
         blobStore.flush();
+        log.debug("Finished flush for partition: {}", partitiondDir);
     }
 
     void clear(){

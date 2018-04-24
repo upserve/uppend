@@ -171,7 +171,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
-        blocks.flush();
+//        blocks.flush();
         partitionMap.values().parallelStream().forEach(AppendStorePartition::flush);
     }
 

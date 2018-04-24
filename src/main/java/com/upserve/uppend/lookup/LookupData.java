@@ -347,7 +347,9 @@ public class LookupData implements Flushable {
     public synchronized void flush() throws IOException {
         if (readOnly) throw new RuntimeException("Can not flush read only LookupData: " + hashPath);
 
+        log.debug("starting flush for {}", hashPath);
         if (writeCache.size() > 0) {
+
 
             Set<LookupKey> keys = writeCacheKeySetCopy();
 
@@ -357,11 +359,18 @@ public class LookupData implements Flushable {
 
             int currentMetadataGeneration = currentMetadata.getMetadataGeneration();
 
+
+            log.debug("Flushing {} entries for {}", keys.size(), hashPath);
+
+            BulkAppender bulkBlobAppender = new BulkAppender(keyBlobs, keys.stream().mapToInt(key -> key.byteLength() + 4).sum());
+
+            BulkAppender bulkKeyToBlockAppender = new BulkAppender(keyPosToBlockPos, keys.size() * LongLongStore.RECORD_SIZE);
+
+
             Map<Long, List<LookupKey>> newKeysGroupedBySortOrderIndex;
             try {
                 writeLock.lock();
                 newKeysGroupedBySortOrderIndex = keys.stream()
-                        .parallel()
                         .peek(key -> {
                             // Check the metadata generation of the LookupKeys
                             if (key.getMetaDataGeneration() != currentMetadataGeneration) {
@@ -370,25 +379,37 @@ public class LookupData implements Flushable {
                             }
                         })
                         .map(key -> {
+                                    final long insertSortedAfterKeyAtIndex = key.getLookupBlockIndex();
 
-                                    long insertSortedAfterKeyAtIndex = key.getLookupBlockIndex();
+                                    final byte[] keyBlob = BlobStore.byteRecord(key.bytes());
+                                    final long pos = bulkBlobAppender.getBulkAppendPosition(keyBlob.length);
+                                    bulkBlobAppender.addBulkAppendBytes(pos, keyBlob);
 
-                                    Long value = writeCache.get(key);
-                                    partitionLookupCache.putLookup(key, value); // put it in the read cache and remove from the write cache
+//                                    final long pos = keyBlobs.append(key.bytes());
 
-                                    writeCache.remove(key, value);
-
-                                    long pos = keyBlobs.append(key.bytes());
-                                    key.setLookupBlockIndex((int) keyPosToBlockPos.append(pos, value));
+                                    writeCache.computeIfPresent(key, (k, v) -> {
+                                        partitionLookupCache.putLookup(k, v);
+//                                        key.setLookupBlockIndex((int) keyPosToBlockPos.append(pos, v));
+                                        final long keyToBlockPosition = bulkKeyToBlockAppender.getBulkAppendPosition(LongLongStore.RECORD_SIZE);
+                                        int index = LongLongStore.indexFromPosition(keyToBlockPosition);
+                                        bulkKeyToBlockAppender.addBulkAppendBytes(keyToBlockPosition, LongLongStore.byteRecord(pos, v));
+                                        key.setLookupBlockIndex((int) index);
+                                        return null;
+                                    });
 
                                     return Maps.immutableEntry(insertSortedAfterKeyAtIndex, key);
                                 }
 
                         ).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
 
+                bulkBlobAppender.finishBulkAppend();
+                bulkKeyToBlockAppender.finishBulkAppend();
+
             } finally {
                 writeLock.unlock();
             }
+
+            log.debug("flushed keys for {}", hashPath);
 
             int[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
 
@@ -440,15 +461,18 @@ public class LookupData implements Flushable {
                     }
                 }
             }
+
+            log.debug("Finished creating sortOrder for {}", hashPath);
+
             // TODO this forces the position but not the other pages we wrote too???
-            keyBlobs.flush();
-            keyPosToBlockPos.flush();
+//            keyBlobs.flush();
+//            keyPosToBlockPos.flush();
 
             partitionLookupCache.putMetadata(this,
                     LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataPath, metaDataGeneration.incrementAndGet())
             );
 
-            log.info("flushed {}", hashPath);
+            log.debug("flushed {}", hashPath);
         }
     }
 

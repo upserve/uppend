@@ -15,8 +15,7 @@ public class BlobStore extends PageMappedFileIO {
     public long append(byte[] bytes) {
         int writeSize = bytes.length + 4;
         final long pos = appendPosition(writeSize);
-        writeMappedInt(pos, bytes.length);
-        writeMapped(pos + 4, bytes);
+        writeMapped(pos, byteRecord(bytes));
         if (log.isTraceEnabled()) log.trace("appended {} bytes to {} at pos {}", bytes.length, filePath, pos);
         return pos;
     }
@@ -30,4 +29,12 @@ public class BlobStore extends PageMappedFileIO {
         if (log.isTraceEnabled()) log.trace("read mapped {} bytes from {} @ {}", size, filePath, pos);
         return buf;
     }
+
+    public static byte[] byteRecord(byte[] inputBytes){
+        byte[] result = new byte[inputBytes.length + 4];
+        System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
+        System.arraycopy(inputBytes, 0, result, 4, inputBytes.length);
+        return result;
+    }
+
 }

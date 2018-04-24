@@ -48,7 +48,7 @@ public class CommandBenchmark implements Callable<Void> {
     int blobPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_BLOB_CACHE_SIZE;
 
     @Option(names = {"-s", "--key-page-cache-size"}, description = "Key Page Cache size")
-    int keyPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_BLOB_CACHE_SIZE;
+    int keyPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE;
 
     @Option(names = {"-f", "--flush-delay"}, description = "Flush delay (sec)")
     int flushDelay = AppendOnlyStoreBuilder.DEFAULT_FLUSH_DELAY_SECONDS;

@@ -189,7 +189,7 @@ public class LongLookup implements Flushable {
     @Override
     public void flush() {
 
-        lookups.values().parallelStream().forEach(lookupData -> {
+        lookups.values().forEach(lookupData -> {
             try {
                 lookupData.flush();
             } catch (IOException e) {

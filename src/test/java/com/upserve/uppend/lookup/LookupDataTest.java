@@ -375,7 +375,7 @@ public class LookupDataTest {
         assertEquals(0, data.writeCache.size());
 
         assertLookupKeyCache(0, 0, 0, 0);
-//        assertLookupPagesCache(299994, 77, 77, 0); // Hit count is not stable in parallel execution
+        assertLookupPagesCache(0, 77, 77, 0);
         lookupPageCacheStats.set(lookupCache.getPageCache().stats());
         assertLookupMetadataCache(1, 0, 0, 0);
 

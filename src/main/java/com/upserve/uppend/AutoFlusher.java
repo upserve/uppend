@@ -21,6 +21,10 @@ public class AutoFlusher {
     private static final ThreadFactory threadFactory;
     public static final ExecutorService flushExecPool;
 
+
+    public static final ForkJoinPool flusherWorkPool;
+
+
     static {
         ThreadGroup threadGroup = new ThreadGroup("auto-flush");
         threadGroup.setDaemon(true);
@@ -34,6 +38,10 @@ public class AutoFlusher {
         AtomicInteger flushExecPoolThreadNumber = new AtomicInteger();
         ThreadFactory flushExecPoolThreadFactory = r -> new Thread(threadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
         flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
+
+
+        flusherWorkPool = new ForkJoinPool();
+
     }
 
     public static synchronized void register(int delaySeconds, Flushable flushable) {
@@ -88,8 +96,9 @@ public class AutoFlusher {
             } else {
                 ConcurrentLinkedQueue<Flushable> errorFlushables = new ConcurrentLinkedQueue<>();
                 ArrayList<Future> futures = new ArrayList<>();
+                log.info("Flush worker pool size: {}, active: {}", flusherWorkPool.getPoolSize(), flusherWorkPool.getActiveThreadCount());
                 for (Flushable flushable : flushables) {
-                    futures.add(flushExecPool.submit(() -> {
+                    futures.add(flusherWorkPool.submit(() -> {
                         try {
                             flushable.flush();
                         } catch (IOException e) {

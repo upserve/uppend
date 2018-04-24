@@ -11,7 +11,9 @@ import java.util.function.Supplier;
 public class LongLongStore extends PageMappedFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final Supplier<ByteBuffer> recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(16);
+    public static final int RECORD_SIZE = 16;
+
+    private static final Supplier<ByteBuffer> recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(RECORD_SIZE);
 
     public LongLongStore(Path file, PageCache pageCache) {
         super(file, pageCache);
@@ -25,17 +27,21 @@ public class LongLongStore extends PageMappedFileIO {
      */
     public long append(long val1, long val2){
         if (fileCache.readOnly()) throw new RuntimeException("Can not append value to a read only file " + filePath);
+        final long pos = appendPosition(RECORD_SIZE);
+        writeMapped(pos, byteRecord(val1, val2));
+        return (pos - 8) / RECORD_SIZE;
+    }
+
+    public static byte[] byteRecord(long val1, long val2){
         ByteBuffer buf = recordBufSupplier.get();
         buf.putLong(val1);
         buf.putLong(val2);
         buf.flip();
-        final long pos = appendPosition(16);
-        writeMapped(pos, buf.array());
-        return (pos - 8) / 16;
+        return buf.array();
     }
 
     public int getMaxIndex(){
-        return (int) ((getPosition() - 8) / 16);
+        return indexFromPosition(getPosition());
     }
 
     /**
@@ -44,7 +50,7 @@ public class LongLongStore extends PageMappedFileIO {
      * @param val a long to be written
      */
     public void writeLeft(long index, long val){
-        write(index * 16 + 8 , val);
+        write(index * RECORD_SIZE + 8 , val);
     }
 
     /**
@@ -53,7 +59,7 @@ public class LongLongStore extends PageMappedFileIO {
      * @param val a long to be written
      */
     public void writeRight(long index, long val){
-        write((index +1) * 16 , val);
+        write((index +1) * RECORD_SIZE , val);
     }
 
     private void write(long pos, long val){
@@ -67,7 +73,7 @@ public class LongLongStore extends PageMappedFileIO {
      * @return the left long value at that index
      */
     public long getLeft(long index){
-        return readMappedLong(index * 16 + 8);
+        return readMappedLong(index * RECORD_SIZE + 8);
     }
 
     /**
@@ -76,6 +82,10 @@ public class LongLongStore extends PageMappedFileIO {
      * @return the right long value at that index
      */
     public long getRight(long index){
-        return readMappedLong((index + 1) * 16);
+        return readMappedLong((index + 1) * RECORD_SIZE);
+    }
+
+    public static int indexFromPosition(long keyToBlockPosition) {
+        return (int) ((keyToBlockPosition - 8) / RECORD_SIZE);
     }
 }
