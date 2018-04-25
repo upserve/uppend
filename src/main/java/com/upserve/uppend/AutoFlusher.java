@@ -8,6 +8,7 @@ import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 public class AutoFlusher {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -24,6 +25,9 @@ public class AutoFlusher {
 
     public static final ForkJoinPool flusherWorkPool;
 
+    public static Function<String, ForkJoinPool.ForkJoinWorkerThreadFactory> threadFactoryFunction;
+
+    public static Function<String, ForkJoinPool> forkJoinPoolFunction;
 
     static {
         ThreadGroup threadGroup = new ThreadGroup("auto-flush");
@@ -40,7 +44,17 @@ public class AutoFlusher {
         flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
 
 
-        flusherWorkPool = new ForkJoinPool();
+        threadFactoryFunction = name -> pool ->
+            {
+                final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+                worker.setName(name + worker.getPoolIndex());
+                return worker;
+            };
+
+
+        forkJoinPoolFunction = name -> new ForkJoinPool(Runtime.getRuntime().availableProcessors(), threadFactoryFunction.apply(name), null, false);
+        
+        flusherWorkPool = forkJoinPoolFunction.apply("flush-worker");
 
     }
 

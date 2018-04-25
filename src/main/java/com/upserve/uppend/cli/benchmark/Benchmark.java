@@ -10,10 +10,12 @@ import org.slf4j.Logger;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
+import static com.upserve.uppend.AutoFlusher.forkJoinPoolFunction;
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
 public class Benchmark {
@@ -35,6 +37,8 @@ public class Benchmark {
     private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
 
+    private final ForkJoinPool runPool;
+
     private volatile boolean isDone = false;
 
     public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int openFileCacheSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds) {
@@ -47,6 +51,9 @@ public class Benchmark {
         if (Files.exists(path)) {
             log.warn("Location already exists: appending to {}", path);
         }
+
+        ForkJoinPool cachePool = forkJoinPoolFunction.apply("cache-worker");
+        runPool = forkJoinPoolFunction.apply("benchmark-worker");;
 
         metrics = new MetricRegistry();
 
@@ -64,6 +71,11 @@ public class Benchmark {
                 .withInitialMetaDataCacheSize(metadataCacheSize)
                 .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
                 .withFlushDelaySeconds(flushDelaySeconds)
+                .withLookupPageCacheExecutorService(cachePool)
+                .withFileCacheExecutorService(cachePool)
+                .withLookupMetaDataCacheExecutorService(cachePool)
+                .withBlobCacheExecutorService(cachePool)
+                .withLookupKeyCacheExecutorService(cachePool)
                 .withStoreMetrics(metrics)
                 .withCacheMetrics();
 
@@ -206,7 +218,9 @@ public class Benchmark {
                     double total = runtime.totalMemory() / (1024.0 * 1024.0);
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
 
-                    log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
+                    long fds = FileDescriptors.getOpen();
+
+                    log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total; Open files: %s", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total, fds));
 
                     stats = testInstance.getFileCacheStats();
                     log.info("File Cache: {}", stats.minus(fileCacheStats.getAndSet(stats)));
@@ -229,22 +243,23 @@ public class Benchmark {
             }
         };
     }
-    public void run() throws InterruptedException {
+    public void run() throws InterruptedException, ExecutionException {
         log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
 
-        Thread writerThread = new Thread(writer);
-        Thread readerThread = new Thread(reader);
 
-        writerThread.start();
+
+        Future writerFuture = runPool.submit(writer);
+
         Thread.sleep(sleep * 1000); // give the writer a head start...
-        readerThread.start();
+
+        Future readerFuture = runPool.submit(reader);
         Thread.sleep(100);
 
         java.util.Timer watcherTimer = new java.util.Timer();
         watcherTimer.schedule(watcherTimer(), 5000, 5000);
 
-        writerThread.join();
-        readerThread.join();
+        writerFuture.get();
+        readerFuture.get();
 
         log.info("Threads joined - cleanup and shutdown!");
 

@@ -20,7 +20,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     // Long lookup Cache Options
     public static final int DEFAULT_LOOKUP_HASH_SIZE = 256;
-    public static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 * 1024;
+    public static final int DEFAULT_LOOKUP_PAGE_SIZE = 1024 * 1024;
     public static final int DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE = 1024;
     public static final int DEFAULT_MAXIMUM_LOOKUP_PAGE_CACHE_SIZE = 16 * 1024;
 
