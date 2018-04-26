@@ -5,7 +5,7 @@ import java.nio.charset.StandardCharsets;
 public class LookupKey implements Comparable<LookupKey> {
     private final byte[] bytes;
     // Lookup block index is immutable as the lookup blocks are append only
-    private int lookupBlockIndex;
+    private int insertAfterSortIndex;
     // Used to determine whether the sort order information is valid for this LookupKey during flush
     private int metaDataGeneration;
 
@@ -14,7 +14,7 @@ public class LookupKey implements Comparable<LookupKey> {
             throw new NullPointerException("null string given");
         }
         bytes = stringValue.getBytes(StandardCharsets.UTF_8);
-        lookupBlockIndex = -1;
+        insertAfterSortIndex = -1;
     }
 
     public LookupKey(byte[] bytesValue){
@@ -22,15 +22,15 @@ public class LookupKey implements Comparable<LookupKey> {
             throw new NullPointerException("null bytes given");
         }
         bytes = bytesValue;
-        lookupBlockIndex = -1;
+        insertAfterSortIndex = -1;
     }
 
-    public int getLookupBlockIndex(){
-        return lookupBlockIndex;
+    public int getInsertAfterSortIndex(){
+        return insertAfterSortIndex;
     }
 
-    public void setLookupBlockIndex(int value){
-        lookupBlockIndex = value;
+    public void setInsertAfterSortIndex(int value){
+        insertAfterSortIndex = value;
     }
 
     public int getMetaDataGeneration() {

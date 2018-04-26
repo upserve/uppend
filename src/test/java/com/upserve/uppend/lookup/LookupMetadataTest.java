@@ -78,7 +78,7 @@ public class LookupMetadataTest {
 
         LookupKey keyA = new LookupKey("a");
         LookupKey keyB = new LookupKey("b");
-        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new int[] {0, 1}, 3);
+        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new long[] {0, 1}, 3);
         Files.createDirectories(path.getParent());
         metadata.writeTo(path);
 
@@ -94,7 +94,7 @@ public class LookupMetadataTest {
         Files.createDirectories(path.getParent());
         LookupMetadata initialMetadata = LookupMetadata.open(path, 2);
 
-        assertArrayEquals(new int[]{}, initialMetadata.getKeyStorageOrder());
+        assertArrayEquals(new long[]{}, initialMetadata.getKeyStorageOrder());
         assertEquals(null, initialMetadata.getMaxKey());
         assertEquals(null, initialMetadata.getMinKey());
         assertEquals(2, initialMetadata.getMetadataGeneration());
@@ -102,62 +102,62 @@ public class LookupMetadataTest {
 
     @Test
     public void testEmptyLookup(){
-        LookupMetadata initialMetadata = new LookupMetadata(null, null, new int[0], 1);
+        LookupMetadata initialMetadata = new LookupMetadata(null, null, new long[0], 1);
         
         LookupKey searchKey = new LookupKey("Foo");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
         verifyZeroInteractions(mockLookupData);
 
         assertEquals(null, result);
-        assertEquals(-1, searchKey.getLookupBlockIndex());
+        assertEquals(-1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
     @Test
     public void testOneKeyLookupAbove(){
         LookupKey oneKey = new LookupKey("Foo");
-        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new int[]{0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new long[]{0}, 1);
 
         LookupKey searchKey = new LookupKey("Bar");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
         verifyZeroInteractions(mockLookupData);
 
         assertEquals(null, result);
-        assertEquals(-1, searchKey.getLookupBlockIndex());
+        assertEquals(-1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
     @Test
     public void testOneKeyLookupBelow(){
         LookupKey oneKey = new LookupKey("Foo");
-        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new int[]{0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new long[]{0}, 1);
 
         LookupKey searchKey = new LookupKey("Zar");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
         verifyZeroInteractions(mockLookupData);
 
         assertEquals(null, result);
-        assertEquals(0, searchKey.getLookupBlockIndex());
+        assertEquals(0, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
     @Test
     public void testOneKeyLookupEquals(){
         LookupKey oneKey = new LookupKey("Foo");
-        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new int[]{0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new long[]{0}, 1);
 
         Long expected = 5L;
-        when(mockLookupData.getKeyValue(0)).thenReturn(expected);
+        when(mockLookupData.readValue(0)).thenReturn(expected);
         verifyNoMoreInteractions(mockLookupData);
 
         LookupKey searchKey = new LookupKey("Foo");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
         assertEquals(expected, result);
-        assertEquals(0, searchKey.getLookupBlockIndex());
+        assertEquals(0, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
@@ -165,15 +165,15 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupBelowLower(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0,1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0,1}, 1);
 
         LookupKey searchKey = new LookupKey("a");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
         verifyZeroInteractions(mockLookupData);
 
         assertEquals(null, result);
-        assertEquals(-1, searchKey.getLookupBlockIndex());
+        assertEquals(-1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
@@ -181,18 +181,18 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupEqualsLower(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0,1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0,1}, 1);
 
         Long expected = 5L;
-        when(mockLookupData.getKeyValue(0)).thenReturn(expected);
+        when(mockLookupData.readValue(0)).thenReturn(expected);
 
         LookupKey searchKey = new LookupKey("b");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
-        verify(mockLookupData).getKeyValue(0);
+        verify(mockLookupData).readValue(0);
 
         assertEquals(expected, result);
-        assertEquals(0, searchKey.getLookupBlockIndex());
+        assertEquals(0, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
@@ -200,15 +200,15 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupInBetween(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0,1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0,1}, 1);
 
         LookupKey searchKey = new LookupKey("m");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
         verifyZeroInteractions(mockLookupData);
 
         assertEquals(null, result);
-        assertEquals(0, searchKey.getLookupBlockIndex());
+        assertEquals(0, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
@@ -216,18 +216,18 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupEqualsUpper(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0,1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0,1}, 1);
 
         Long expected = 5L;
-        when(mockLookupData.getKeyValue(1)).thenReturn(expected);
+        when(mockLookupData.readValue(1)).thenReturn(expected);
 
         LookupKey searchKey = new LookupKey("y");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
-        verify(mockLookupData).getKeyValue(1);
+        verify(mockLookupData).readValue(1);
 
         assertEquals(expected, result);
-        assertEquals(1, searchKey.getLookupBlockIndex());
+        assertEquals(1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
     }
 
@@ -235,18 +235,18 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupEqualsUpperDifferentSortOrder(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{1,0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{1,0}, 1);
 
         Long expected = 5L;
-        when(mockLookupData.getKeyValue(0)).thenReturn(expected);
+        when(mockLookupData.readValue(0)).thenReturn(expected);
 
         LookupKey searchKey = new LookupKey("y");
-        Long result = initialMetadata.findLong(mockLookupData, searchKey);
+        Long result = initialMetadata.findKeyPosition(mockLookupData, searchKey);
 
-        verify(mockLookupData).getKeyValue(0);
+        verify(mockLookupData).readValue(0);
 
         assertEquals(expected, result);
-        assertEquals(0, searchKey.getLookupBlockIndex());
+        assertEquals(0, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
 
     }
@@ -255,14 +255,14 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupAboveUpper(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{0,1}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{0,1}, 1);
 
 
         LookupKey searchKey = new LookupKey("z");
-        Long result = metadata.findLong(mockLookupData, searchKey);
+        Long result = metadata.findKeyPosition(mockLookupData, searchKey);
 
         assertEquals(null, result);
-        assertEquals(1, searchKey.getLookupBlockIndex());
+        assertEquals(1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
 
         verifyZeroInteractions(mockLookupData);
@@ -272,31 +272,31 @@ public class LookupMetadataTest {
     public void testManyKeysEqualsLastMidpoint(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12,7,8,1,11,6,3,5,10,2,0,4,9}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{12,7,8,1,11,6,3,5,10,2,0,4,9}, 1);
 
-        when(mockLookupData.readKey(3)).thenReturn(new LookupKey("m")); // First midpoint is the 6th sort value => 3
-        when(mockLookupData.readKey(2)).thenReturn(new LookupKey("s")); // Second midpoint is the 9th sort value => 2
+        when(mockLookupData.readKey(3L)).thenReturn(new LookupKey("m")); // First midpoint is the 6th sort value => 3
+        when(mockLookupData.readKey(2L)).thenReturn(new LookupKey("s")); // Second midpoint is the 9th sort value => 2
         Long expected = 5L;
-        when(mockLookupData.getKeyValue(2)).thenReturn(expected);
+        when(mockLookupData.readValue(2)).thenReturn(expected);
 
         LookupKey searchKey = new LookupKey("s");
-        Long result = metadata.findLong(mockLookupData, searchKey);
+        Long result = metadata.findKeyPosition(mockLookupData, searchKey);
 
-        verify(mockLookupData).readKey(3);
-        verify(mockLookupData).readKey(2);
-        verify(mockLookupData).getKeyValue(2);
+        verify(mockLookupData).readKey(3L);
+        verify(mockLookupData).readKey(2L);
+        verify(mockLookupData).readValue(2);
 
         assertEquals(expected, result);
-        assertEquals(2, searchKey.getLookupBlockIndex());
+        assertEquals(2, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
 
         // These keys are now cached and don't require reading from the lookupData
-        when(mockLookupData.getKeyValue(3)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("m")));
-        verify(mockLookupData).getKeyValue(3);
+        when(mockLookupData.readValue(3)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("m")));
+        verify(mockLookupData).readValue(3);
 
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("s")));
-        verify(mockLookupData, times(2)).getKeyValue(2);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("s")));
+        verify(mockLookupData, times(2)).readValue(2);
 
         verifyNoMoreInteractions(mockLookupData);
     }
@@ -305,42 +305,42 @@ public class LookupMetadataTest {
     public void testManyKeysBelowLastMidpoint(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12,7,8,1,11,6,3,5,10,2,0,4,9}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{12,7,8,1,11,6,3,5,10,2,0,4,9}, 1);
 
-        when(mockLookupData.readKey(3)).thenReturn(new LookupKey("m")); // First midpoint is the 6th sort value => 3
-        when(mockLookupData.readKey(2)).thenReturn(new LookupKey("u")); // Second midpoint is the 9th sort value => 2
-        when(mockLookupData.readKey(5)).thenReturn(new LookupKey("o")); // Third midpoint is the 7th sort value => 5
-        when(mockLookupData.readKey(10)).thenReturn(new LookupKey("t")); // Fourth midpoint is the 8th sort value => 5
+        when(mockLookupData.readKey(3L)).thenReturn(new LookupKey("m")); // First midpoint is the 6th sort value => 3
+        when(mockLookupData.readKey(2L)).thenReturn(new LookupKey("u")); // Second midpoint is the 9th sort value => 2
+        when(mockLookupData.readKey(5L)).thenReturn(new LookupKey("o")); // Third midpoint is the 7th sort value => 5
+        when(mockLookupData.readKey(10L)).thenReturn(new LookupKey("t")); // Fourth midpoint is the 8th sort value => 5
 
         LookupKey searchKey = new LookupKey("s");
-        Long result = metadata.findLong(mockLookupData, searchKey);
+        Long result = metadata.findKeyPosition(mockLookupData, searchKey);
 
-        verify(mockLookupData).readKey(3);
-        verify(mockLookupData).readKey(2);
-        verify(mockLookupData).readKey(5);
-        verify(mockLookupData).readKey(10);
+        verify(mockLookupData).readKey(3L);
+        verify(mockLookupData).readKey(2L);
+        verify(mockLookupData).readKey(5L);
+        verify(mockLookupData).readKey(10L);
 
         assertEquals(null, result);
-        assertEquals(5, searchKey.getLookupBlockIndex());
+        assertEquals(5, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
 
         // These keys are now cached and don't require reading from the lookupData, just getting the Long
         Long expected = 4L;
-        when(mockLookupData.getKeyValue(3)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("m")));
-        verify(mockLookupData).getKeyValue(3);
+        when(mockLookupData.readValue(3)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("m")));
+        verify(mockLookupData).readValue(3);
 
-        when(mockLookupData.getKeyValue(2)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("u")));
-        verify(mockLookupData).getKeyValue(2);
+        when(mockLookupData.readValue(2)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("u")));
+        verify(mockLookupData).readValue(2);
 
-        when(mockLookupData.getKeyValue(5)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("o")));
-        verify(mockLookupData).getKeyValue(5);
+        when(mockLookupData.readValue(5)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("o")));
+        verify(mockLookupData).readValue(5);
 
-        when(mockLookupData.getKeyValue(10)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("t")));
-        verify(mockLookupData).getKeyValue(10);
+        when(mockLookupData.readValue(10)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("t")));
+        verify(mockLookupData).readValue(10);
 
         verifyNoMoreInteractions(mockLookupData);
     }
@@ -349,43 +349,43 @@ public class LookupMetadataTest {
     public void testManyKeysAboveLastMidpoint(){
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12,7,8,1,11,6,3,5,10,2,0,4,9}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{12,7,8,1,11,6,3,5,10,2,0,4,9}, 1);
 
 
-        when(mockLookupData.readKey(3)).thenReturn(new LookupKey("m")); // First midpoint is the 6th sort value => 3
-        when(mockLookupData.readKey(2)).thenReturn(new LookupKey("u")); // Second midpoint is the 9th sort value => 2
-        when(mockLookupData.readKey(5)).thenReturn(new LookupKey("o")); // Second midpoint is the 7th sort value => 5
-        when(mockLookupData.readKey(10)).thenReturn(new LookupKey("q")); // Second midpoint is the 8th sort value => 5
+        when(mockLookupData.readKey(3L)).thenReturn(new LookupKey("m")); // First midpoint is the 6th sort value => 3
+        when(mockLookupData.readKey(2L)).thenReturn(new LookupKey("u")); // Second midpoint is the 9th sort value => 2
+        when(mockLookupData.readKey(5L)).thenReturn(new LookupKey("o")); // Second midpoint is the 7th sort value => 5
+        when(mockLookupData.readKey(10L)).thenReturn(new LookupKey("q")); // Second midpoint is the 8th sort value => 5
 
         LookupKey searchKey = new LookupKey("s");
-        Long result = metadata.findLong(mockLookupData, searchKey);
+        Long result = metadata.findKeyPosition(mockLookupData, searchKey);
 
-        verify(mockLookupData).readKey(3);
-        verify(mockLookupData).readKey(2);
-        verify(mockLookupData).readKey(5);
-        verify(mockLookupData).readKey(10);
+        verify(mockLookupData).readKey(3L);
+        verify(mockLookupData).readKey(2L);
+        verify(mockLookupData).readKey(5L);
+        verify(mockLookupData).readKey(10L);
 
         assertEquals(null, result);
-        assertEquals(10, searchKey.getLookupBlockIndex());
+        assertEquals(10, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
 
         // These keys are now cached and don't require reading from the lookupData, just getting the Long
         Long expected = 4L;
-        when(mockLookupData.getKeyValue(3)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("m")));
-        verify(mockLookupData).getKeyValue(3);
+        when(mockLookupData.readValue(3)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("m")));
+        verify(mockLookupData).readValue(3);
 
-        when(mockLookupData.getKeyValue(2)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("u")));
-        verify(mockLookupData).getKeyValue(2);
+        when(mockLookupData.readValue(2)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("u")));
+        verify(mockLookupData).readValue(2);
 
-        when(mockLookupData.getKeyValue(5)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("o")));
-        verify(mockLookupData).getKeyValue(5);
+        when(mockLookupData.readValue(5)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("o")));
+        verify(mockLookupData).readValue(5);
 
-        when(mockLookupData.getKeyValue(10)).thenReturn(expected);
-        assertEquals(expected, metadata.findLong(mockLookupData, new LookupKey("q")));
-        verify(mockLookupData).getKeyValue(10);
+        when(mockLookupData.readValue(10)).thenReturn(expected);
+        assertEquals(expected, metadata.findKeyPosition(mockLookupData, new LookupKey("q")));
+        verify(mockLookupData).readValue(10);
 
         verifyNoMoreInteractions(mockLookupData);
     }
@@ -416,7 +416,7 @@ public class LookupMetadataTest {
                 .forEach(key -> {
                             Long expected = null;
                             if (key % 2 == 0) expected = 1000L + key;
-                            assertEquals(expected, metadata.findLong(lookupData, new LookupKey(String.valueOf(key))));
+                            assertEquals(expected, metadata.findKeyPosition(lookupData, new LookupKey(String.valueOf(key))));
                         }
                 );
     }
@@ -425,7 +425,7 @@ public class LookupMetadataTest {
     public void testToString() throws Exception {
         LookupKey keyA = new LookupKey("00");
         LookupKey keyB = new LookupKey("01");
-        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new int[]{0,1},4);
+        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new long[]{0,1},4);
         String toString = metadata.toString();
         assertTrue(toString.contains("numKeys=2"));
         assertTrue(toString.contains("minKey=00"));
@@ -442,7 +442,7 @@ public class LookupMetadataTest {
     private void buildSimpleTestData(Path path) throws IOException {
         LookupKey keyA = new LookupKey("a");
         LookupKey keyB = new LookupKey("b");
-        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new int[] {0}, 0);
+        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new long[] {0}, 0);
         Files.createDirectories(path.getParent());
         metadata.writeTo(path);
     }

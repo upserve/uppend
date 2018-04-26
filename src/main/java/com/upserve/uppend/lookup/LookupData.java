@@ -29,8 +29,7 @@ public class LookupData implements Flushable {
 
     private final boolean readOnly;
 
-    private final BlobStore keyBlobs;
-    private final LongLongStore keyPosToBlockPos;
+    private final LongBlobStore keyLongBlobs;
 
     private final ReadWriteLock flushLock;
     private final Lock readLock;
@@ -75,9 +74,7 @@ public class LookupData implements Flushable {
             }
         }
 
-        keyBlobs = new BlobStore(keyPath, partitionLookupCache.getPageCache());
-
-        keyPosToBlockPos = new LongLongStore(dataPath, partitionLookupCache.getPageCache());
+        keyLongBlobs = new LongBlobStore(keyPath, partitionLookupCache.getPageCache());
 
         metaDataGeneration = new AtomicInteger();
 
@@ -182,11 +179,14 @@ public class LookupData implements Flushable {
                     return delta; // must write a new key with delta as the value when we flush
 
                 } else {
-                    existingValue += delta;
-                    ref[0] = existingValue;
+                    long newValue = existingValue + delta;
+                    ref[0] = newValue;
 
-                    partitionLookupCache.putLookup(key, existingValue); // Update the read cache
-                    keyPosToBlockPos.writeRight(key.getLookupBlockIndex(), existingValue); // Update the value on disk
+                    partitionLookupCache.putLookup(key, newValue); // Update the read cache
+                    // This is gross - find a way to hold onto the position???
+                    LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
+                    Long pos = lookupMetadata.findKeyPosition(this, key);
+                    keyLongBlobs.writeLong(pos, newValue); // Update the value on disk
 
                     // No need to add this to the write cache
                     return null;
@@ -224,7 +224,11 @@ public class LookupData implements Flushable {
                     ref[0] = existingValue;
 
                     partitionLookupCache.putLookup(key, value); // Update the read cache
-                    keyPosToBlockPos.writeRight(key.getLookupBlockIndex(), value); // Update the value on disk
+
+                    // This is gross - find a way to hold onto the position???
+                    LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
+                    Long pos = lookupMetadata.findKeyPosition(this, key);
+                    keyLongBlobs.writeLong(pos, value); // Update the value on disk
 
                     // No need to add this to the write cache
                     return null;
@@ -245,41 +249,30 @@ public class LookupData implements Flushable {
 
     /**
      * read the LookupKey by index
-     * @param keyNumber the index into the block of long pairs that map key blob position to key's value
+     * @param keyPosition the position in the longBlobs files
      * @return the cached lookup key
      */
-    public LookupKey readKey(int keyNumber) {
-        long keyPos = keyPosToBlockPos.getLeft(keyNumber);
-
-        LookupKey key = new LookupKey(keyBlobs.read(keyPos));
-        key.setLookupBlockIndex(keyNumber);
-
-        return key;
+    public LookupKey readKey(Long keyPosition) {
+        return new LookupKey(keyLongBlobs.readBlob(keyPosition));
     }
 
     /**
      * Used in iterators to return an entry containing the key as a string and the value
-     * @param keyNumber the index into the long data to lookup
+     * @param keyPosition the position in the longBlobs files
      * @return the key and the long value associated with it
      */
-    public Map.Entry<String, Long> readEntry(int keyNumber) {
-        long keyPos = keyPosToBlockPos.getLeft(keyNumber);
-        long value = keyPosToBlockPos.getRight(keyNumber);
-
-        LookupKey key = new LookupKey(keyBlobs.read(keyPos));
-        key.setLookupBlockIndex(keyNumber);
-
-        return Maps.immutableEntry(key.string(), value);
+    public Map.Entry<String, Long> readEntry(long keyPosition) {
+        return Maps.immutableEntry(readKey(keyPosition).string(), readValue(keyPosition));
     }
 
 
     /**
      * Read the long value associated with a particular key number
-     * @param keyNumber the index into the block of long pairs that map key blob position to key's value
+     * @param keyPosition the position in the longBlobs files
      * @return the long value
      */
-    public long getKeyValue(int keyNumber){
-        return keyPosToBlockPos.getRight(keyNumber);
+    public long readValue(long keyPosition){
+        return keyLongBlobs.readLong(keyPosition);
     }
 
     /**
@@ -300,7 +293,13 @@ public class LookupData implements Flushable {
      * @return Long value or null if not present
      */
     private Long findValueFor(LookupKey key) {
-        return partitionLookupCache.getMetadata(this).findLong(this, key);
+        LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
+        Long pos = lookupMetadata.findKeyPosition(this, key);
+        if (pos == null){
+            return null;
+        } else {
+            return readValue(pos);
+        }
     }
 
     /**
@@ -362,12 +361,11 @@ public class LookupData implements Flushable {
 
             log.debug("Flushing {} entries for {}", keys.size(), hashPath);
 
-            BulkAppender bulkBlobAppender = new BulkAppender(keyBlobs, keys.stream().mapToInt(key -> key.byteLength() + 4).sum());
+            BulkAppender bulkBlobAppender = new BulkAppender(
+                    keyLongBlobs, keys.stream().map(LookupKey::bytes).mapToInt(LongBlobStore::recordSize).sum()
+            );
 
-            BulkAppender bulkKeyToBlockAppender = new BulkAppender(keyPosToBlockPos, keys.size() * LongLongStore.RECORD_SIZE);
-
-
-            Map<Long, List<LookupKey>> newKeysGroupedBySortOrderIndex;
+            Map<Integer, List<Map.Entry<Long, LookupKey>>> newKeysGroupedBySortOrderIndex;
             try {
                 writeLock.lock();
                 newKeysGroupedBySortOrderIndex = keys.stream()
@@ -375,35 +373,26 @@ public class LookupData implements Flushable {
                             // Check the metadata generation of the LookupKeys
                             if (key.getMetaDataGeneration() != currentMetadataGeneration) {
                                 // Update the index of the key which this new value sorts after
-                                currentMetadata.findLong(this, key);
+                                currentMetadata.findKeyPosition(this, key);
                             }
                         })
                         .map(key -> {
-                                    final long insertSortedAfterKeyAtIndex = key.getLookupBlockIndex();
-
-                                    final byte[] keyBlob = BlobStore.byteRecord(key.bytes());
-                                    final long pos = bulkBlobAppender.getBulkAppendPosition(keyBlob.length);
-                                    bulkBlobAppender.addBulkAppendBytes(pos, keyBlob);
-
-//                                    final long pos = keyBlobs.append(key.bytes());
-
+                                    long[] posValue = new long[1];
                                     writeCache.computeIfPresent(key, (k, v) -> {
                                         partitionLookupCache.putLookup(k, v);
-//                                        key.setLookupBlockIndex((int) keyPosToBlockPos.append(pos, v));
-                                        final long keyToBlockPosition = bulkKeyToBlockAppender.getBulkAppendPosition(LongLongStore.RECORD_SIZE);
-                                        int index = LongLongStore.indexFromPosition(keyToBlockPosition);
-                                        bulkKeyToBlockAppender.addBulkAppendBytes(keyToBlockPosition, LongLongStore.byteRecord(pos, v));
-                                        key.setLookupBlockIndex((int) index);
+                                        final byte[] keyBlob = LongBlobStore.byteRecord(v, key.bytes());
+                                        final long pos = bulkBlobAppender.getBulkAppendPosition(keyBlob.length);
+                                        posValue[0] = pos;
+                                        bulkBlobAppender.addBulkAppendBytes(pos, keyBlob);
                                         return null;
                                     });
 
-                                    return Maps.immutableEntry(insertSortedAfterKeyAtIndex, key);
+                                    return Maps.immutableEntry(posValue[0], key);
                                 }
 
-                        ).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+                        ).collect(Collectors.groupingBy(entry -> entry.getValue().getInsertAfterSortIndex(), Collectors.toList()));
 
                 bulkBlobAppender.finishBulkAppend();
-                bulkKeyToBlockAppender.finishBulkAppend();
 
             } finally {
                 writeLock.unlock();
@@ -411,9 +400,9 @@ public class LookupData implements Flushable {
 
             log.debug("flushed keys for {}", hashPath);
 
-            int[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
+            long[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
 
-            int[] newKeySortOrder = new int[currentKeySortOrder.length + keys.size()];
+            long[] newKeySortOrder = new long[currentKeySortOrder.length + keys.size()];
 
 
             int index = 0;
@@ -421,52 +410,46 @@ public class LookupData implements Flushable {
             LookupKey minKey = currentMetadata.getMinKey();
             LookupKey maxKey = currentMetadata.getMaxKey();
 
-            List<LookupKey> newKeys = null;
+            List<Map.Entry<Long, LookupKey>> newEntries = null;
 
-            if(newKeysGroupedBySortOrderIndex.containsKey(-1L)){
-                newKeys = newKeysGroupedBySortOrderIndex.get(-1L);
-                newKeys.sort(LookupKey::compareTo);
+            if(newKeysGroupedBySortOrderIndex.containsKey(-1)){
+                newEntries = newKeysGroupedBySortOrderIndex.get(-1);
+                newEntries.sort(Comparator.comparing(Map.Entry::getValue));
 
-                minKey = newKeys.get(0);
+                minKey = newEntries.get(0).getValue();
 
-                for(LookupKey key: newKeys){
-                    newKeySortOrder[index] = key.getLookupBlockIndex();
+                for(Map.Entry<Long, LookupKey> entry: newEntries){
+                    newKeySortOrder[index] = entry.getKey();
                     index++;
                 }
             }
 
             if (currentKeySortOrder.length == 0){
-                if (newKeys == null) throw new RuntimeException("newKeys should never be null if currentKeysSortOrder is empty");
-                maxKey = newKeys.get(newKeys.size() - 1);
+                if (newEntries == null) throw new RuntimeException("newKeys should never be null if currentKeysSortOrder is empty");
+                maxKey = newEntries.get(newEntries.size() - 1).getValue();
             } else {
-                for (int keyIndex : currentKeySortOrder) {
+                for (long keyPosition : currentKeySortOrder) {
+                    newKeySortOrder[index] = keyPosition;
 
-                    newKeySortOrder[index] = keyIndex;
-                    index++;
+                    if (newKeysGroupedBySortOrderIndex.containsKey(index)) {
+                        newEntries = newKeysGroupedBySortOrderIndex.get(index);
+                        newEntries.sort(Comparator.comparing(Map.Entry::getValue));
 
-                    if (newKeysGroupedBySortOrderIndex.containsKey((long) keyIndex)) {
-                        newKeys = newKeysGroupedBySortOrderIndex.get((long) keyIndex);
-                        newKeys.sort(LookupKey::compareTo);
-
-                        for (LookupKey key : newKeys) {
-                            newKeySortOrder[index] = key.getLookupBlockIndex();
+                        for (Map.Entry<Long, LookupKey> entry: newEntries) {
+                            index++;
+                            newKeySortOrder[index] = entry.getKey();
 
                             if (index == newKeySortOrder.length) {
-                                maxKey = key;
+                                maxKey = entry.getValue();
                             }
-
-                            index++;
                         }
 
                     }
+                    index++;
                 }
             }
 
             log.debug("Finished creating sortOrder for {}", hashPath);
-
-            // TODO this forces the position but not the other pages we wrote too???
-//            keyBlobs.flush();
-//            keyPosToBlockPos.flush();
 
             partitionLookupCache.putMetadata(this,
                     LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataPath, metaDataGeneration.incrementAndGet())
@@ -476,154 +459,154 @@ public class LookupData implements Flushable {
         }
     }
 
-    Stream<LookupKey> keys() {
-        KeyIterator iter;
-        try {
-            readLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
-            iter = new KeyIterator(this);
-        } finally {
-            readLock.unlock();
-        }
-        Spliterator<LookupKey> spliter = Spliterators.spliterator(
-                iter,
-                iter.getNumKeys(),
-                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
-        );
-        return StreamSupport.stream(spliter, true);
-    }
-
-    Stream<Map.Entry<String, Long>> scan() {
-
-        KeyLongIterator iter;
-        try {
-            readLock.lock(); // Read lock the WriteCache while initializing the KeyLongIterator
-            iter = new KeyLongIterator(this);
-        } finally {
-            readLock.unlock();
-        }
-
-        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
-                iter,
-                iter.getNumKeys(),
-                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
-        );
-        return StreamSupport.stream(spliter, true);
-    }
-
-    void scan(ObjLongConsumer<String> keyValueFunction) {
-        final int numKeys;
-        final Map<LookupKey, Long> writeCacheCopy;
-        try{
-            readLock.lock(); // Read lock the WriteCache while initializing the data to scan
-            numKeys = keyPosToBlockPos.getMaxIndex();
-
-            writeCacheCopy = writeCacheCopy();
-        } finally {
-            readLock.unlock();
-        }
-
-        writeCacheCopy
-                .forEach((key, value) -> keyValueFunction.accept(key.string(), value));
-
-        // Read but do not cache these keys - easy to add but is it helpful?
-        IntStream
-                .range(0, numKeys)
-                .mapToObj(this::readEntry)
-                .forEach(entry -> keyValueFunction
-                        .accept(entry.getKey(), entry.getValue()));
-    }
-
-    private static class KeyIterator implements Iterator<LookupKey> {
-
-        private int keyIndex = 0;
-        private final LookupData lookupData;
-        private final int maxKeyIndex;
-        private final int numKeys;
-        private final Iterator<LookupKey> writeCacheKeyIterator;
-
-        /**
-         * Should be constructed inside a ReadLock for the LookupData to ensure a consistent snapshot
-         * @param lookupData the keys to iterate
-         */
-        KeyIterator(LookupData lookupData) {
-            this.lookupData = lookupData;
-            // Get a snapshot of the keys
-            Set<LookupKey> writeCacheKeys = lookupData.writeCacheKeySetCopy();
-            maxKeyIndex = lookupData.keyPosToBlockPos.getMaxIndex();
-            numKeys = maxKeyIndex + writeCacheKeys.size();
-            writeCacheKeyIterator = writeCacheKeys.iterator();
-        }
-
-        int getNumKeys() {
-            return numKeys;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return keyIndex < numKeys;
-        }
-
-        @Override
-        public LookupKey next() {
-            LookupKey key;
-
-            if (keyIndex < maxKeyIndex){
-                key = lookupData.readKey(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
-            } else {
-                key = writeCacheKeyIterator.next();
-            }
-
-            keyIndex++;
-            return key;
-        }
-    }
-
-    private static class KeyLongIterator implements Iterator<Map.Entry<String, Long>> {
-
-        private int keyIndex = 0;
-        private final LookupData lookupData;
-        private final int maxKeyIndex;
-        private final int numKeys;
-        private final Iterator<Map.Entry<String, Long>> writeCacheKeyIterator;
-
-        /**
-         * Should be constructed inside a ReadLock for the LookupData to ensure a consistent snapshot
-         * @param lookupData the keys to iterate
-         */
-        KeyLongIterator(LookupData lookupData) {
-            this.lookupData = lookupData;
-            // Get a snapshot of the keys
-            Map<LookupKey, Long> writeCacheCopy = lookupData.writeCacheCopy();
-            maxKeyIndex = lookupData.keyPosToBlockPos.getMaxIndex();
-            numKeys = maxKeyIndex + writeCacheCopy.size();
-            writeCacheKeyIterator = writeCacheCopy
-                    .entrySet()
-                    .stream()
-                    .map(entry -> Maps.immutableEntry(entry.getKey().string(), entry.getValue()))
-                    .iterator();
-        }
-
-        int getNumKeys() {
-            return numKeys;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return keyIndex < numKeys;
-        }
-
-        @Override
-        public Map.Entry<String, Long>  next() {
-            Map.Entry<String, Long> result;
-
-            if (keyIndex < maxKeyIndex){
-                result = lookupData.readEntry(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
-            } else {
-                result = writeCacheKeyIterator.next();
-            }
-
-            keyIndex++;
-            return result;
-        }
-    }
+//    Stream<LookupKey> keys() {
+//        KeyIterator iter;
+//        try {
+//            readLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
+//            iter = new KeyIterator(this);
+//        } finally {
+//            readLock.unlock();
+//        }
+//        Spliterator<LookupKey> spliter = Spliterators.spliterator(
+//                iter,
+//                iter.getNumKeys(),
+//                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
+//        );
+//        return StreamSupport.stream(spliter, true);
+//    }
+//
+//    Stream<Map.Entry<String, Long>> scan() {
+//
+//        KeyLongIterator iter;
+//        try {
+//            readLock.lock(); // Read lock the WriteCache while initializing the KeyLongIterator
+//            iter = new KeyLongIterator(this);
+//        } finally {
+//            readLock.unlock();
+//        }
+//
+//        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
+//                iter,
+//                iter.getNumKeys(),
+//                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
+//        );
+//        return StreamSupport.stream(spliter, true);
+//    }
+//
+//    void scan(ObjLongConsumer<String> keyValueFunction) {
+//        final int numKeys;
+//        final Map<LookupKey, Long> writeCacheCopy;
+//        try{
+//            readLock.lock(); // Read lock the WriteCache while initializing the data to scan
+//            numKeys = keyPosToBlockPos.getMaxIndex();
+//
+//            writeCacheCopy = writeCacheCopy();
+//        } finally {
+//            readLock.unlock();
+//        }
+//
+//        writeCacheCopy
+//                .forEach((key, value) -> keyValueFunction.accept(key.string(), value));
+//
+//        // Read but do not cache these keys - easy to add but is it helpful?
+//        IntStream
+//                .range(0, numKeys)
+//                .mapToObj(this::readEntry)
+//                .forEach(entry -> keyValueFunction
+//                        .accept(entry.getKey(), entry.getValue()));
+//    }
+//
+//    private static class KeyIterator implements Iterator<LookupKey> {
+//
+//        private int keyIndex = 0;
+//        private final LookupData lookupData;
+//        private final int maxKeyIndex;
+//        private final int numKeys;
+//        private final Iterator<LookupKey> writeCacheKeyIterator;
+//
+//        /**
+//         * Should be constructed inside a ReadLock for the LookupData to ensure a consistent snapshot
+//         * @param lookupData the keys to iterate
+//         */
+//        KeyIterator(LookupData lookupData) {
+//            this.lookupData = lookupData;
+//            // Get a snapshot of the keys
+//            Set<LookupKey> writeCacheKeys = lookupData.writeCacheKeySetCopy();
+//            maxKeyIndex = lookupData.keyPosToBlockPos.getMaxIndex();
+//            numKeys = maxKeyIndex + writeCacheKeys.size();
+//            writeCacheKeyIterator = writeCacheKeys.iterator();
+//        }
+//
+//        int getNumKeys() {
+//            return numKeys;
+//        }
+//
+//        @Override
+//        public boolean hasNext() {
+//            return keyIndex < numKeys;
+//        }
+//
+//        @Override
+//        public LookupKey next() {
+//            LookupKey key;
+//
+//            if (keyIndex < maxKeyIndex){
+//                key = lookupData.readKey(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
+//            } else {
+//                key = writeCacheKeyIterator.next();
+//            }
+//
+//            keyIndex++;
+//            return key;
+//        }
+//    }
+//
+//    private static class KeyLongIterator implements Iterator<Map.Entry<String, Long>> {
+//
+//        private int keyIndex = 0;
+//        private final LookupData lookupData;
+//        private final int maxKeyIndex;
+//        private final int numKeys;
+//        private final Iterator<Map.Entry<String, Long>> writeCacheKeyIterator;
+//
+//        /**
+//         * Should be constructed inside a ReadLock for the LookupData to ensure a consistent snapshot
+//         * @param lookupData the keys to iterate
+//         */
+//        KeyLongIterator(LookupData lookupData) {
+//            this.lookupData = lookupData;
+//            // Get a snapshot of the keys
+//            Map<LookupKey, Long> writeCacheCopy = lookupData.writeCacheCopy();
+//            maxKeyIndex = lookupData.keyPosToBlockPos.getMaxIndex();
+//            numKeys = maxKeyIndex + writeCacheCopy.size();
+//            writeCacheKeyIterator = writeCacheCopy
+//                    .entrySet()
+//                    .stream()
+//                    .map(entry -> Maps.immutableEntry(entry.getKey().string(), entry.getValue()))
+//                    .iterator();
+//        }
+//
+//        int getNumKeys() {
+//            return numKeys;
+//        }
+//
+//        @Override
+//        public boolean hasNext() {
+//            return keyIndex < numKeys;
+//        }
+//
+//        @Override
+//        public Map.Entry<String, Long>  next() {
+//            Map.Entry<String, Long> result;
+//
+//            if (keyIndex < maxKeyIndex){
+//                result = lookupData.readEntry(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
+//            } else {
+//                result = writeCacheKeyIterator.next();
+//            }
+//
+//            keyIndex++;
+//            return result;
+//        }
+//    }
 }

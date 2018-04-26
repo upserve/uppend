@@ -149,12 +149,14 @@ public class LongLookup implements Flushable {
     }
 
     public Stream<String> keys() {
-        return hashPaths()
-                .map(this::safeGetLookupData)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .flatMap(LookupData::keys)
-                .map(LookupKey::string);
+//        return hashPaths()
+//                .map(this::safeGetLookupData)
+//                .filter(Optional::isPresent)
+//                .map(Optional::get)
+//                .flatMap(LookupData::keys)
+//                .map(LookupKey::string);
+        return Stream.empty();
+
     }
 
     /**
@@ -163,11 +165,12 @@ public class LongLookup implements Flushable {
      * @return a stream of entries of key and long value
      */
     public Stream<Map.Entry<String, Long>> scan() {
-        return hashPaths()
-                .map(this::safeGetLookupData)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .flatMap(LookupData::scan);
+//        return hashPaths()
+//                .map(this::safeGetLookupData)
+//                .filter(Optional::isPresent)
+//                .map(Optional::get)
+//                .flatMap(LookupData::scan);
+        return Stream.empty();
     }
 
     /**
@@ -176,13 +179,13 @@ public class LongLookup implements Flushable {
      * @param keyValueFunction function to call for each key and long value
      */
     public void scan(ObjLongConsumer<String> keyValueFunction) {
-        hashPaths()
-                .map(this::safeGetLookupData)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .forEach(lookupData -> {
-                    lookupData.scan(keyValueFunction);
-                });
+//        hashPaths()
+//                .map(this::safeGetLookupData)
+//                .filter(Optional::isPresent)
+//                .map(Optional::get)
+//                .forEach(lookupData -> {
+//                    lookupData.scan(keyValueFunction);
+//                });
     }
 
 

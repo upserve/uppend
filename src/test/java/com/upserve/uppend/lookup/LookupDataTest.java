@@ -392,24 +392,24 @@ public class LookupDataTest {
 
 
 
-    @Test
-    public void testScan() throws Exception {
-        LookupData data = new LookupData(lookupDir, partitionLookupCache);
-        data.put(new LookupKey("mykey1"), 1);
-        data.put(new LookupKey("mykey2"), 2);
-        data.flush();
-        Map<String, Long> entries = new TreeMap<>();
-        data.scan(entries::put);
-        assertEquals(2, entries.size());
-        assertArrayEquals(new String[]{"mykey1", "mykey2"}, entries.keySet().toArray(new String[0]));
-        assertArrayEquals(new Long[]{1L, 2L}, entries.values().toArray(new Long[0]));
-    }
-
-    @Test
-    public void testScanNonExistant() throws Exception {
-        LookupData data = new LookupData(lookupDir, partitionLookupCache);
-        data.scan((k, v) -> {
-            throw new IllegalStateException("should not have called this");
-        });
-    }
+//    @Test
+//    public void testScan() throws Exception {
+//        LookupData data = new LookupData(lookupDir, partitionLookupCache);
+//        data.put(new LookupKey("mykey1"), 1);
+//        data.put(new LookupKey("mykey2"), 2);
+//        data.flush();
+//        Map<String, Long> entries = new TreeMap<>();
+//        data.scan(entries::put);
+//        assertEquals(2, entries.size());
+//        assertArrayEquals(new String[]{"mykey1", "mykey2"}, entries.keySet().toArray(new String[0]));
+//        assertArrayEquals(new Long[]{1L, 2L}, entries.values().toArray(new Long[0]));
+//    }
+//
+//    @Test
+//    public void testScanNonExistant() throws Exception {
+//        LookupData data = new LookupData(lookupDir, partitionLookupCache);
+//        data.scan((k, v) -> {
+//            throw new IllegalStateException("should not have called this");
+//        });
+//    }
 }
