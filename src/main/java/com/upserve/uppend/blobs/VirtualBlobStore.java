@@ -2,12 +2,18 @@ package com.upserve.uppend.blobs;
 
 import org.slf4j.Logger;
 import java.lang.invoke.MethodHandles;
+import java.nio.ByteBuffer;
 
-public class VirtualBlobStore extends VirtualPageMappedFileIO {
+public class VirtualBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     public VirtualBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
         super(virtualFileNumber, virtualPageFile);
+    }
+
+    public void write(byte[] bytes, long position) {
+        // TODO Need to create a LockedPage for this to work across multiple threads / JVM
+        writeMapped(position, byteRecord(bytes));
     }
 
     public long append(byte[] bytes) {

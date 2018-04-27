@@ -8,105 +8,176 @@ import org.slf4j.Logger;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
-import java.util.Map;
+import java.util.*;
 import java.util.function.*;
-import java.util.stream.Stream;
+import java.util.stream.*;
 
-public class AppendStorePartition extends Partition implements Flushable {
+public class AppendStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+    private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
 
-    private final Path partitiondDir;
-    private final LongLookup lookups;
-    private final BlobStore blobStore;
 
-    private static Path blobsFile(Path partitiondDir){
+    private final BlockedLongs blocks;
+    private final VirtualBlobStore[] blobs;
+    private final VirtualPageFile blobFile;
+
+    private static Path blobsFile(Path partitiondDir) {
         return partitiondDir.resolve("blobStore");
     }
 
-    public static AppendStorePartition createPartition(Path partentDir, String partition, int hashSize, PageCache blobPageCache, LookupCache lookupCache){
+    private static Path blocksFile(Path partitiondDir) {
+        return partitiondDir.resolve("blockedLongs");
+    }
+
+    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache) {
         validatePartition(partition);
-        Path partitiondDir = partentDir.resolve(partition);
-        return new AppendStorePartition(
-                partitiondDir,
-                new LongLookup(lookupsDir(partitiondDir), hashSize, PartitionLookupCache.create(partition, lookupCache)),
-                new BlobStore(blobsFile(partitiondDir), blobPageCache)
+        Path partitiondDir = parentDir.resolve(partition);
+        try {
+            Files.createDirectories(partitiondDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to make partition directory: " + partitiondDir, e);
+        }
+
+        BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, false);
+
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, false, blobPageCache);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, false, keyPageCache);
+
+
+        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, false);
+    }
+
+    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
+        validatePartition(partition);
+        Path partitiondDir = parentDir.resolve(partition);
+
+        if (!(Files.exists(blocksFile(partitiondDir)) && Files.exists(metadataPath(partitiondDir))
+                && Files.exists(keysPath(partitiondDir)) && Files.exists(blobsFile(partitiondDir)))) return null;
+
+        BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, readOnly);
+
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, readOnly, blobPageCache);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, readOnly, keyPageCache);
+
+        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, false);
+    }
+
+    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, boolean readOnly) {
+        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, readOnly);
+
+
+        this.blocks = blocks;
+        this.blobFile = blobsFile;
+        blobs = IntStream.range(0, hashSize)
+                .mapToObj(virtualFileNumber -> new VirtualBlobStore(virtualFileNumber, blobsFile))
+                .toArray(VirtualBlobStore[]::new);
+
+
+    }
+
+    int keyHash(LookupKey key) {
+        return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
+    }
+
+    void append(String key, byte[] blob) {
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        final long blobPos = blobs[hash].append(blob);
+        final long blockPos = lookups[hash].putIfNotExists(lookupKey, blocks::allocate);
+        blocks.append(blockPos, blobPos);
+        log.trace("appending {} bytes (blob pos {}, block pos {}) for hash '{}', key '{}'", blob.length, blobPos, blockPos, hash, key);
+    }
+
+    Stream<byte[]> read(String key) {
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        return blocks.values(lookups[hash].getValue(lookupKey)).parallel().mapToObj(blobs[hash]::read);
+        // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
+    }
+
+    Stream<byte[]> readSequential(String key) {
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        return blocks.values(lookups[hash].getValue(lookupKey)).mapToObj(blobs[hash]::read);
+    }
+
+    byte[] readLast(String key) {
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        return blobs[hash].read(blocks.lastValue(lookups[hash].getValue(lookupKey)));
+    }
+
+    Stream<Map.Entry<String, Stream<byte[]>>> scan() {
+        return IntStream.range(0, hashSize)
+                .parallel()
+                .boxed()
+                .flatMap(virtualFileNumber ->
+                    lookups[virtualFileNumber].scan().map(entry -> Maps.immutableEntry(
+                            entry.getKey(),
+                            blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read)
+                    ))
                 );
     }
 
-    public static AppendStorePartition openPartition(Path partentDir, String partition, int hashSize, PageCache blobPageCache, LookupCache lookupCache) {
-        validatePartition(partition);
-        Path partitiondDir = partentDir.resolve(partition);
-        Path blobsFile = blobsFile(partitiondDir);
-        Path lookupsDir = lookupsDir(partitiondDir);
 
-        if (Files.exists(blobsFile)) {
-            return new AppendStorePartition(
-                    partitiondDir,
-                    new LongLookup(lookupsDir, hashSize, PartitionLookupCache.create(partition, lookupCache)),
-                    new BlobStore(blobsFile, blobPageCache)
-            );
-        } else {
-            return null;
-        }
-    }
-
-    private AppendStorePartition(Path partentDir, LongLookup longLookup, BlobStore blobStore){
-        partitiondDir = partentDir;
-        this.lookups = longLookup;
-        this.blobStore = blobStore;
-    }
-
-    void append(String key, byte[] blob, BlockedLongs blocks){
-        long blobPos = blobStore.append(blob);
-        long blockPos = lookups.putIfNotExists(key, blocks::allocate);
-        blocks.append(blockPos, blobPos);
-        log.trace("appending {} bytes (blob pos {}, block pos {}) for path '{}', key '{}'", blob.length, blobPos, blockPos, partitiondDir, key);
-    }
-
-    Stream<byte[]> read(String key, BlockedLongs blocks){
-        // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
-        return blocks.values(lookups.getLookupData(key)).parallel().mapToObj(blobStore::read);
-    }
-
-    Stream<byte[]> readSequential(String key, BlockedLongs blocks){
-        // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
-        return blocks.values(lookups.getLookupData(key)).mapToObj(blobStore::read);
-    }
-
-    byte[] readLast(String key, BlockedLongs blocks) {
-        return blobStore.read(blocks.lastValue(lookups.getLookupData(key)));
-    }
-
-    Stream<Map.Entry<String, Stream<byte[]>>> scan(BlockedLongs blocks){
-        return lookups.scan()
-                .map(entry -> Maps.immutableEntry(
-                        entry.getKey(),
-                        blocks.values(entry.getValue()).mapToObj(blobStore::read)
+    void scan(BiConsumer<String, Stream<byte[]>> callback) {
+        IntStream.range(0, hashSize)
+                .parallel()
+                .boxed()
+                .forEach(virtualFileNumber ->
+                        lookups[virtualFileNumber].scan().forEach(entry -> callback.accept(entry.getKey(), blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read))
                 ));
     }
 
-    long size() {
-        return blobStore.getPosition();
-    }
-
-    void scan(BlockedLongs blocks, BiConsumer<String, Stream<byte[]>> callback){
-        lookups.scan((s, value) -> callback.accept(s, blocks.values(value).mapToObj(blobStore::read)));
-    }
-
-    Stream<String> keys(){
-        return lookups.keys();
+    Stream<String> keys() {
+        return IntStream.range(0, hashSize)
+                .parallel()
+                .boxed()
+                .flatMap(virtualFileNumber -> lookups[virtualFileNumber].keys().map(LookupKey::string));
     }
 
     @Override
-    public void flush() {
-        log.debug("Starting flush for partition: {}", partitiondDir);
-        lookups.flush();
-        blobStore.flush();
-        log.debug("Finished flush for partition: {}", partitiondDir);
+    public void flush() throws IOException {
+        log.debug("Starting flush for partition: {}", lookupCache.getPartition());
+
+        Arrays.stream(lookups).parallel().forEach(lookupData -> {
+            try {
+                lookupData.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to flush!", e);
+            }
+        });
+
+        longKeyFile.flush();
+        metadataBlobFile.flush();
+        blobFile.flush();
+        blocks.flush();
+
+        log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
-    void clear(){
-        lookups.clear();
-        blobStore.clear();
+    void clear() throws IOException {
+        Arrays.stream(lookups).parallel().forEach(LookupData::clear);
+
+        longKeyFile.clear();
+        metadataBlobFile.clear();
+        blobFile.clear();
+        blocks.clear();
+    }
+
+    @Override
+    public void close() throws IOException {
+        flush();
+
+        longKeyFile.close();
+        metadataBlobFile.close();
+        blobFile.close();
+        blocks.close();
     }
 }

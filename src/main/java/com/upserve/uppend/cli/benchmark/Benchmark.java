@@ -41,7 +41,7 @@ public class Benchmark {
 
     private volatile boolean isDone = false;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int openFileCacheSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int metadataPageSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds) {
         this.mode = mode;
 
         this.count = count;
@@ -60,8 +60,6 @@ public class Benchmark {
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withBlobsPerBlock(14)
                 .withLongLookupHashSize(hashSize)
-                .withIntialFileCacheSize(openFileCacheSize)
-                .withMaximumFileCacheSize(openFileCacheSize)
                 .withInitialLookupKeyCacheSize(keyCachesize)
                 .withMaximumLookupKeyCacheWeight(keyCachesize * 256) // based on key size
                 .withInitialBlobCacheSize(blobPageCacheSize)
@@ -69,10 +67,10 @@ public class Benchmark {
                 .withInitialLookupPageCacheSize(keyPageCacheSize)
                 .withMaximumLookupPageCacheSize(keyPageCacheSize)
                 .withInitialMetaDataCacheSize(metadataCacheSize)
+                .withInitialMetaDataPageSize(metadataPageSize)
                 .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
                 .withFlushDelaySeconds(flushDelaySeconds)
                 .withLookupPageCacheExecutorService(cachePool)
-                .withFileCacheExecutorService(cachePool)
                 .withLookupMetaDataCacheExecutorService(cachePool)
                 .withBlobCacheExecutorService(cachePool)
                 .withLookupKeyCacheExecutorService(cachePool)
@@ -190,7 +188,6 @@ public class Benchmark {
 
         AtomicReference<CacheStats> blobPageCacheStats = new AtomicReference<CacheStats>(testInstance.getBlobPageCacheStats());
         AtomicReference<CacheStats> keyPageCacheStats = new AtomicReference<CacheStats>(testInstance.getKeyPageCacheStats());
-        AtomicReference<CacheStats> fileCacheStats = new AtomicReference<CacheStats>(testInstance.getFileCacheStats());
         AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<CacheStats>(testInstance.getLookupKeyCacheStats());
         AtomicReference<CacheStats> metadataCacheStats = new AtomicReference<CacheStats>(testInstance.getMetadataCacheStats());
 
@@ -221,9 +218,6 @@ public class Benchmark {
                     long fds = FileDescriptors.getOpen();
 
                     log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total; Open files: %s", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total, fds));
-
-                    stats = testInstance.getFileCacheStats();
-                    log.info("File Cache: {}", stats.minus(fileCacheStats.getAndSet(stats)));
 
                     stats = testInstance.getBlobPageCacheStats();
                     log.info("Blob Page Cache: {}", stats.minus(blobPageCacheStats.getAndSet(stats)));

@@ -26,7 +26,7 @@ public class FileDescriptors {
 
             return (long) getMaxFileDescriptorCountField.invoke(fileDescriptors.osMxBean);
         } catch (Exception e) {
-            log.error("Unable to get max file descriptors from OperatingSystemMXBean", e);
+            log.error("Unable to getValue max file descriptors from OperatingSystemMXBean", e);
             return 0;
         }
     }
@@ -37,7 +37,7 @@ public class FileDescriptors {
             getOpenFileDescriptorCountField.setAccessible(true);
             return (long) getOpenFileDescriptorCountField.invoke(fileDescriptors.osMxBean);
         } catch (Exception e) {
-            log.error("Unable to get max file descriptors from OperatingSystemMXBean", e);
+            log.error("Unable to getValue max file descriptors from OperatingSystemMXBean", e);
             return 0;
         }
     }

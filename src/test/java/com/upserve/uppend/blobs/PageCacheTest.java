@@ -26,8 +26,8 @@ public class PageCacheTest {
     ExecutorService testService = new ForkJoinPool();
     private AppendOnlyStoreBuilder defaults;
 
+    VirtualPageFile virtualPageFile;
     PageCache instance;
-    FileCache fileCache;
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -48,18 +48,15 @@ public class PageCacheTest {
                 .withInitialBlobCacheSize(128)
                 .withMaximumBlobCacheSize(512);
 
-        fileCache = defaults.buildFileCache(readOnly, name);
-        instance = defaults.buildBlobPageCache(fileCache, name);
+        instance = defaults.buildBlobPageCache(name);
+
+        virtualPageFile = new VirtualPageFile(existingFile, 12, false, instance);
     }
 
     @After
     public void shutdown() throws InterruptedException {
         if (instance != null) {
             instance.flush();
-        }
-
-        if (fileCache != null){
-            fileCache.flush();
         }
 
         if (testService != null) {
@@ -73,16 +70,16 @@ public class PageCacheTest {
         setup(false);
 
         final long position = 1284;
-        FilePage page;
+        Page page;
 
-        page = instance.getPage(existingFile, position);
+        page = instance.get(virtualPageFile, position);
         byte[] expected = "abc".getBytes();
         page.put(0, expected, 0);
 
         instance.flush();
 
         byte[] result = new byte[3];
-        page = instance.getPage(existingFile, position);
+        page = instance.get(virtualPageFile, position);
         page.get(0, result, 0);
 
         assertArrayEquals(expected, result);
@@ -92,76 +89,5 @@ public class PageCacheTest {
     public void testGetPageSize(){
         setup(false);
         assertEquals(512, instance.getPageSize());
-    }
-
-    @Test
-    public void testGetFileCache(){
-        setup(false);
-
-        assertEquals(fileCache, instance.getFileCache());
-    }
-
-    @Test
-    public void testReadOnly() throws InterruptedException {
-        setup(false);
-        assertFalse(instance.readOnly());
-
-        final long position = 1284;
-        FilePage page;
-
-        page = instance.getPage(existingFile, position);
-        byte[] expected = "abc".getBytes();
-        page.put(0, expected, 0);
-
-
-        FileCache readOnlyFileCache = defaults.buildFileCache(true, name);
-        PageCache secondInstance = defaults.buildBlobPageCache(readOnlyFileCache, name);
-
-        assertTrue(secondInstance.readOnly());
-
-        page = secondInstance.getPage(existingFile, position);
-        byte[] result = new byte[3];
-        page.get(0, result, 0);
-
-        assertArrayEquals(expected, result);
-
-        thrown.expect(ReadOnlyBufferException.class);
-
-        try {
-            page.put(0, result, 0); // can't put to the readonly buffer}
-        } finally {
-            secondInstance.flush();
-            readOnlyFileCache.flush();
-        }
-    }
-
-    @Test
-    public void testReadOnlyNoFile() {
-        setup(true);
-
-        assertTrue(instance.readOnly());
-
-        final long position = 1284;
-
-        thrown.expect(CompletionException.class);
-        thrown.expectCause(any(NoSuchFileException.class));
-        instance.getPage(fileDoesNotExist, position);
-    }
-
-    @Test
-    public void testHammerPageCache(){
-        setup(false);
-
-        instance.getPage(existingFile, 1000*512).flush(); // Must extend the file before concurrent writes begin
-
-        final int requests = 1_000_000;
-
-        new Random()
-                .longs(requests, 0, 1000 * 512)
-                .parallel()
-                .forEach(val -> instance.getPage(existingFile, val).put(instance.pagePosition(val), Longs.toByteArray(val), 0));
-        CacheStats stats = instance.stats();
-        assertEquals(requests+1, stats.requestCount());
-        assertEquals(256D/1000, stats.hitRate(), 25);
     }
 }

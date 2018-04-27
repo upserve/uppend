@@ -8,7 +8,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.Arrays;
+import java.util.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -41,7 +41,7 @@ import java.util.stream.IntStream;
  * TODO - fix this!
  *
  */
-public class VirtualPageFile {
+public class VirtualPageFile implements Flushable, Closeable{
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
@@ -55,6 +55,7 @@ public class VirtualPageFile {
     private final FileChannel channel;
 
     private final MappedByteBuffer headerBuffer;
+    private final MappedByteBuffer pageTableBuffer;
 
     private final AtomicLong nextPagePosition;
     private final boolean readOnly;
@@ -72,13 +73,24 @@ public class VirtualPageFile {
     private final int headerSize;
     private final int tableSize;
 
+    private final PageCache pageCache;
+
     private final FileChannel.MapMode mapMode;
 
     public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, boolean readOnly) {
+        this(filePath, virtualFiles, pageSize, readOnly, null);
+    }
+
+    public VirtualPageFile(Path filePath, int virtualFiles, boolean readOnly, PageCache pageCache) {
+        this(filePath, virtualFiles, pageCache.getPageSize(), readOnly, pageCache);
+    }
+
+    private VirtualPageFile(Path filePath, int virtualFiles, int pageSize, boolean readOnly, PageCache pageCache) {
         this.filePath = filePath;
         this.readOnly = readOnly;
         this.virtualFiles = virtualFiles;
         this.pageSize = pageSize;
+        this.pageCache = pageCache;
 
         if (virtualFiles < 1) throw new IllegalArgumentException("virtualFiles must be greater than 0");
 
@@ -133,7 +145,8 @@ public class VirtualPageFile {
         long nextPosition = Arrays.stream(lastPagePositions).mapToLong(AtomicLong::get).max().orElse(0L);
 
         try {
-            pageTable = channel.map(mapMode, headerSize, tableSize).asLongBuffer();
+            pageTableBuffer = channel.map(mapMode, headerSize, tableSize);
+            pageTable = pageTableBuffer.asLongBuffer();
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map page locations for path: " + filePath, e);
         }
@@ -146,8 +159,13 @@ public class VirtualPageFile {
         } else {
             nextPagePosition = new AtomicLong(nextPosition);
         }
+
+        // TODO Check file size on startup and try to recover pages?
     }
 
+    public int getVirtualFiles() {
+        return virtualFiles;
+    }
     public boolean isReadOnly() {
         return readOnly;
     }
@@ -170,15 +188,63 @@ public class VirtualPageFile {
         return (int) (pos / (long) pageSize);
     }
 
-    public FilePage getFilePage(int virtualFileNumber, int pageNumber) {
+    /**
+     * Get a FileChannel backed Page (no cache)
+     * @param virtualFileNumber the virtual file number
+     * @param pageNumber the page number to getValue
+     * @return a Page for File IO
+     */
+    public Page getFilePage(int virtualFileNumber, int pageNumber) {
         long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
 
+        return filePage(startPosition);
+    }
+
+    /**
+     * Get a MappedByteBuffer backed Page if there is a cache and the page exists. Otherwise it returns a FilePage
+     * @param virtualFileNumber the virtual file number
+     * @param pageNumber the page number to getValue
+     * @return a Page for File IO
+     */
+    public Page getPage(int virtualFileNumber, int pageNumber) {
+        long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
+
+        if (pageCache != null) {
+            return pageCache.getIfPresent(this, startPosition).orElse(filePage(startPosition));
+        } else {
+            return filePage(startPosition);
+        }
+    }
+
+    /**
+     * Get a MappedByteBuffer backed Page uses a page cache if present
+     * @param virtualFileNumber the virtual file number
+     * @param pageNumber the page number to getValue
+     * @return a Page for File IO
+     */
+    public Page getMappedPage(int virtualFileNumber, int pageNumber) {
+        long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
+
+
+        if (pageCache != null) {
+            return pageCache.get(this, startPosition);
+        } else {
+            return mappedPage(startPosition);
+        }
+    }
+
+    MappedPage mappedPage(long startPosition) {
         try {
-            return new FilePage(channel.map(mapMode, startPosition + 8, pageSize));
+            return new MappedPage(channel.map(mapMode, startPosition + 8, pageSize));
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map page from file " + filePath, e);
         }
     }
+
+    FilePage filePage(long startPosition) {
+        return new FilePage(channel,startPosition + 8, pageSize);
+    }
+
 
     long getPageStart(int virtualFileNumber, int pageNumber) {
         if (pageNumber == -1) return -1L;
@@ -206,7 +272,6 @@ public class VirtualPageFile {
     void putHeaderLastPage(int virtualFileNumber, long position) {
         headerBuffer.putLong(virtualFileNumber * HEADER_RECORD_SIZE + 8, position);
     }
-
 
     long getHeaderVirtualFilePosition(int virtualFileNumber){
         return headerBuffer.getLong(virtualFileNumber * HEADER_RECORD_SIZE + 16);
@@ -253,6 +318,7 @@ public class VirtualPageFile {
         long nextPageStart = nextPagePosition.getAndAdd(pageSize + 16);
         int nextPageNumber = virtualFilePageCounts[virtualFileNumber].getAndIncrement(); // the result is the index, the incremented value is the new count!
         boolean firstPage = firstPagePositions[virtualFileNumber].compareAndSet(0L, nextPageStart);
+        lastPagePositions[virtualFileNumber].set(nextPageStart);
 
         // Update the persisted header values
         if (firstPage) putHeaderFirstPage(virtualFileNumber, nextPageStart);
@@ -289,4 +355,47 @@ public class VirtualPageFile {
 
         return nextPageStart;
     }
+
+    public Path getFilePath() {
+        return filePath;
+    }
+
+    @Override
+    public void close() throws IOException {
+        flush();
+        channel.close();
+    }
+
+    @Override
+    public void flush() throws IOException {
+        headerBuffer.force();
+        pageTableBuffer.force();
+        channel.force(true);
+    }
+
+    public void clear() throws IOException {
+
+        if (pageCache != null) pageCache.flush();
+
+        IntStream
+                .range(0, virtualFiles)
+                .forEach(virtualFileNumber -> {
+                    putHeaderFirstPage(virtualFileNumber, 0);
+                    firstPagePositions[virtualFileNumber].set(0);
+
+                    putHeaderLastPage(virtualFileNumber, 0);
+                    lastPagePositions[virtualFileNumber].set(0);
+
+                    putHeaderVirtualFilePosition(virtualFileNumber, 0);
+                    virtualFilePositions[virtualFileNumber].set(0);
+
+                    putHeaderVirtualFilePageCount(virtualFileNumber, 0);
+                    virtualFilePageCounts[virtualFileNumber].set(0);
+                });
+
+        nextPagePosition.set(headerSize + tableSize);
+
+        channel.truncate(headerSize + tableSize);
+    }
+
 }

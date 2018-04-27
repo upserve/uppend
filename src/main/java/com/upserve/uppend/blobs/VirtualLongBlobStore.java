@@ -1,16 +1,19 @@
 package com.upserve.uppend.blobs;
 
+import com.google.common.collect.Maps;
 import com.google.common.primitives.Longs;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.*;
+import java.util.function.Consumer;
 
-public class LongBlobStore extends PageMappedFileIO {
+public class VirtualLongBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public LongBlobStore(Path file, PageCache pageCache) {
-        super(file, pageCache);
+    public VirtualLongBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
+        super(virtualFileNumber, virtualPageFile);
     }
 
     public long append(long val, byte[] bytes) {
@@ -49,5 +52,4 @@ public class LongBlobStore extends PageMappedFileIO {
         System.arraycopy(inputBytes, 0, result, 12, inputBytes.length);
         return result;
     }
-
 }

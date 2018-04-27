@@ -22,14 +22,12 @@ public class LookupData implements Flushable {
     // The container for stuff we need to write
     protected final ConcurrentHashMap<LookupKey, Long> writeCache; // Only new keys can be in the write cache
 
-    private final Path hashPath;
-    private final Path dataPath;
-    private final Path metadataPath;
-    private final Path keyPath;
 
     private final boolean readOnly;
 
-    private final LongBlobStore keyLongBlobs;
+    private final VirtualLongBlobStore keyLongBlobs;
+
+    private final VirtualBlobStore metadataBlobs;
 
     private final ReadWriteLock flushLock;
     private final Lock readLock;
@@ -38,43 +36,20 @@ public class LookupData implements Flushable {
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
 
-    /**
-     * Use this path to decide if the LookupData is present for a hashPath
-     * @param hashPath the hashpath to build a metadata path for.
-     * @return the path for the metadata file
-     */
-    public static Path metadataPath(Path hashPath){
-        return hashPath.resolve("meta");
-    }
+    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualBlobStore metadataBlobs, PartitionLookupCache lookupCache, boolean readOnly) {
 
-    public LookupData(Path path, PartitionLookupCache lookupCache) {
-        log.trace("opening hashpath for lookup: {}", path);
-
-        this.hashPath = path;
-        this.dataPath = path.resolve("data");
-        this.metadataPath = metadataPath(path);
-        this.keyPath = path.resolve("keys");
+        this.keyLongBlobs = keyLongBlobs;
+        this.metadataBlobs = metadataBlobs;
 
         this.partitionLookupCache = lookupCache;
 
+        this.readOnly = readOnly;
 
-        if (lookupCache.getPageCache().getFileCache().readOnly()) {
-            readOnly = true;
+        if (readOnly) {
             writeCache = null;
         } else {
-            readOnly = false;
             writeCache = new ConcurrentHashMap<>();
         }
-
-        if (!Files.exists(path) || !Files.isDirectory(path) /* notExists() returns true erroneously */) {
-            try {
-                Files.createDirectories(path);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to make parent dir: " + path, e);
-            }
-        }
-
-        keyLongBlobs = new LongBlobStore(keyPath, partitionLookupCache.getPageCache());
 
         metaDataGeneration = new AtomicInteger();
 
@@ -89,12 +64,16 @@ public class LookupData implements Flushable {
      * @param key the key to look up
      * @return the value associated with the key, null if the key was not found
      */
-    public Long get(LookupKey key) {
+    public Long getValue(LookupKey key) {
         if (readOnly) {
             return getCached(key);
         } else {
             return writeCache.getOrDefault(key, getCached(key));
         }
+    }
+
+    VirtualBlobStore getMetadataBlobs(){
+        return metadataBlobs;
     }
 
     /**
@@ -105,7 +84,7 @@ public class LookupData implements Flushable {
      * @return the value associated with the key
      */
     public long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
-        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
+        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
 
         long[] ref = new long[1];
         writeCache.compute(key, (k, value) -> {
@@ -137,7 +116,7 @@ public class LookupData implements Flushable {
      * @return the value associated with the key
      */
     public long putIfNotExists(LookupKey key, long value) {
-        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
+        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
 
         long[] ref = new long[1];
         writeCache.compute(key, (k, val) -> {
@@ -168,7 +147,7 @@ public class LookupData implements Flushable {
      * @return the value new associated with the key
      */
     public long increment(LookupKey key, long delta) {
-        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData: " + hashPath);
+        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
 
         long[] ref = new long[1];
         writeCache.compute(key, (k, value) -> {
@@ -210,7 +189,7 @@ public class LookupData implements Flushable {
      * @return the previous value associated with the key or null if it did not exist
      */
     public Long put(LookupKey key, final long value) {
-        if (readOnly) throw new RuntimeException("Can not put in read only LookupData: " + hashPath);
+        if (readOnly) throw new RuntimeException("Can not put in read only LookupData");
 
         Long[] ref = new Long[1];
         writeCache.compute(key, (k, val) -> {
@@ -302,20 +281,12 @@ public class LookupData implements Flushable {
         }
     }
 
-    /**
-     * The path for the metadata
-     * @return the path
-     */
-    public Path getMetadataPath(){
-        return metadataPath;
-    }
-
-    public Path getHashPath(){
-        return hashPath;
-    }
-
     public int getMetaDataGeneration(){
         return metaDataGeneration.get();
+    }
+
+    public int getMetaDataKeyCount(){
+        return partitionLookupCache.getMetadata(this).getNumKeys();
     }
 
     /**
@@ -344,9 +315,9 @@ public class LookupData implements Flushable {
 
     @Override
     public synchronized void flush() throws IOException {
-        if (readOnly) throw new RuntimeException("Can not flush read only LookupData: " + hashPath);
+        if (readOnly) throw new RuntimeException("Can not flush read only LookupData");
 
-        log.debug("starting flush for {}", hashPath);
+        log.debug("starting flush");
         if (writeCache.size() > 0) {
 
 
@@ -359,10 +330,10 @@ public class LookupData implements Flushable {
             int currentMetadataGeneration = currentMetadata.getMetadataGeneration();
 
 
-            log.debug("Flushing {} entries for {}", keys.size(), hashPath);
+            log.debug("Flushing {} entries", keys.size());
 
             BulkAppender bulkBlobAppender = new BulkAppender(
-                    keyLongBlobs, keys.stream().map(LookupKey::bytes).mapToInt(LongBlobStore::recordSize).sum()
+                    keyLongBlobs, keys.stream().map(LookupKey::bytes).mapToInt(VirtualLongBlobStore::recordSize).sum()
             );
 
             Map<Integer, List<Map.Entry<Long, LookupKey>>> newKeysGroupedBySortOrderIndex;
@@ -380,7 +351,7 @@ public class LookupData implements Flushable {
                                     long[] posValue = new long[1];
                                     writeCache.computeIfPresent(key, (k, v) -> {
                                         partitionLookupCache.putLookup(k, v);
-                                        final byte[] keyBlob = LongBlobStore.byteRecord(v, key.bytes());
+                                        final byte[] keyBlob = VirtualLongBlobStore.byteRecord(v, key.bytes());
                                         final long pos = bulkBlobAppender.getBulkAppendPosition(keyBlob.length);
                                         posValue[0] = pos;
                                         bulkBlobAppender.addBulkAppendBytes(pos, keyBlob);
@@ -398,7 +369,7 @@ public class LookupData implements Flushable {
                 writeLock.unlock();
             }
 
-            log.debug("flushed keys for {}", hashPath);
+            log.debug("flushed keys");
 
             long[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
 
@@ -449,164 +420,97 @@ public class LookupData implements Flushable {
                 }
             }
 
-            log.debug("Finished creating sortOrder for {}", hashPath);
+            log.debug("Finished creating sortOrder");
 
             partitionLookupCache.putMetadata(this,
-                    LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataPath, metaDataGeneration.incrementAndGet())
+                    LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet())
             );
 
-            log.debug("flushed {}", hashPath);
+            log.debug("flushed");
         }
     }
 
-//    Stream<LookupKey> keys() {
-//        KeyIterator iter;
-//        try {
-//            readLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
-//            iter = new KeyIterator(this);
-//        } finally {
-//            readLock.unlock();
-//        }
-//        Spliterator<LookupKey> spliter = Spliterators.spliterator(
-//                iter,
-//                iter.getNumKeys(),
-//                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
-//        );
-//        return StreamSupport.stream(spliter, true);
-//    }
-//
-//    Stream<Map.Entry<String, Long>> scan() {
-//
-//        KeyLongIterator iter;
-//        try {
-//            readLock.lock(); // Read lock the WriteCache while initializing the KeyLongIterator
-//            iter = new KeyLongIterator(this);
-//        } finally {
-//            readLock.unlock();
-//        }
-//
-//        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
-//                iter,
-//                iter.getNumKeys(),
-//                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
-//        );
-//        return StreamSupport.stream(spliter, true);
-//    }
-//
-//    void scan(ObjLongConsumer<String> keyValueFunction) {
-//        final int numKeys;
-//        final Map<LookupKey, Long> writeCacheCopy;
-//        try{
-//            readLock.lock(); // Read lock the WriteCache while initializing the data to scan
-//            numKeys = keyPosToBlockPos.getMaxIndex();
-//
-//            writeCacheCopy = writeCacheCopy();
-//        } finally {
-//            readLock.unlock();
-//        }
-//
-//        writeCacheCopy
-//                .forEach((key, value) -> keyValueFunction.accept(key.string(), value));
-//
-//        // Read but do not cache these keys - easy to add but is it helpful?
-//        IntStream
-//                .range(0, numKeys)
-//                .mapToObj(this::readEntry)
-//                .forEach(entry -> keyValueFunction
-//                        .accept(entry.getKey(), entry.getValue()));
-//    }
-//
-//    private static class KeyIterator implements Iterator<LookupKey> {
-//
-//        private int keyIndex = 0;
-//        private final LookupData lookupData;
-//        private final int maxKeyIndex;
-//        private final int numKeys;
-//        private final Iterator<LookupKey> writeCacheKeyIterator;
-//
-//        /**
-//         * Should be constructed inside a ReadLock for the LookupData to ensure a consistent snapshot
-//         * @param lookupData the keys to iterate
-//         */
-//        KeyIterator(LookupData lookupData) {
-//            this.lookupData = lookupData;
-//            // Get a snapshot of the keys
-//            Set<LookupKey> writeCacheKeys = lookupData.writeCacheKeySetCopy();
-//            maxKeyIndex = lookupData.keyPosToBlockPos.getMaxIndex();
-//            numKeys = maxKeyIndex + writeCacheKeys.size();
-//            writeCacheKeyIterator = writeCacheKeys.iterator();
-//        }
-//
-//        int getNumKeys() {
-//            return numKeys;
-//        }
-//
-//        @Override
-//        public boolean hasNext() {
-//            return keyIndex < numKeys;
-//        }
-//
-//        @Override
-//        public LookupKey next() {
-//            LookupKey key;
-//
-//            if (keyIndex < maxKeyIndex){
-//                key = lookupData.readKey(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
-//            } else {
-//                key = writeCacheKeyIterator.next();
-//            }
-//
-//            keyIndex++;
-//            return key;
-//        }
-//    }
-//
-//    private static class KeyLongIterator implements Iterator<Map.Entry<String, Long>> {
-//
-//        private int keyIndex = 0;
-//        private final LookupData lookupData;
-//        private final int maxKeyIndex;
-//        private final int numKeys;
-//        private final Iterator<Map.Entry<String, Long>> writeCacheKeyIterator;
-//
-//        /**
-//         * Should be constructed inside a ReadLock for the LookupData to ensure a consistent snapshot
-//         * @param lookupData the keys to iterate
-//         */
-//        KeyLongIterator(LookupData lookupData) {
-//            this.lookupData = lookupData;
-//            // Get a snapshot of the keys
-//            Map<LookupKey, Long> writeCacheCopy = lookupData.writeCacheCopy();
-//            maxKeyIndex = lookupData.keyPosToBlockPos.getMaxIndex();
-//            numKeys = maxKeyIndex + writeCacheCopy.size();
-//            writeCacheKeyIterator = writeCacheCopy
-//                    .entrySet()
-//                    .stream()
-//                    .map(entry -> Maps.immutableEntry(entry.getKey().string(), entry.getValue()))
-//                    .iterator();
-//        }
-//
-//        int getNumKeys() {
-//            return numKeys;
-//        }
-//
-//        @Override
-//        public boolean hasNext() {
-//            return keyIndex < numKeys;
-//        }
-//
-//        @Override
-//        public Map.Entry<String, Long>  next() {
-//            Map.Entry<String, Long> result;
-//
-//            if (keyIndex < maxKeyIndex){
-//                result = lookupData.readEntry(keyIndex); // Read but do not cache these keys - easy to add but is it helpful?
-//            } else {
-//                result = writeCacheKeyIterator.next();
-//            }
-//
-//            keyIndex++;
-//            return result;
-//        }
-//    }
+    public void clear(){
+        writeCache.clear();
+    }
+
+    public Stream<LookupKey> keys() {
+        LookupDataIterator<LookupKey> iter;
+        try {
+            readLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
+            Set<LookupKey> keySet = writeCacheKeySetCopy();
+            iter = new LookupDataIterator<>(
+                    getMetaDataKeyCount(),
+                    keySet.size(),
+                    keySet.iterator(),
+                    atomicLong -> {
+                        LookupKey key = readKey(atomicLong.get());
+                        atomicLong.getAndAdd(VirtualLongBlobStore.recordSize(key.bytes()));
+                        return key;
+                }
+            );
+        } finally {
+            readLock.unlock();
+        }
+        Spliterator<LookupKey> spliter = Spliterators.spliterator(
+                iter,
+                iter.getNumKeys(),
+                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
+        );
+        return StreamSupport.stream(spliter, true);
+    }
+
+    public Stream<Map.Entry<String, Long>> scan() {
+
+        LookupDataIterator<Map.Entry<String, Long>> iter;
+        try {
+            readLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
+            Map<LookupKey, Long> map = writeCacheCopy();
+            iter = new LookupDataIterator<>(
+                    getMetaDataKeyCount(),
+                    map.size(),
+                    map.entrySet().stream().map(entry -> Maps.immutableEntry(entry.getKey().string(), entry.getValue())).iterator(),
+                    atomicLong -> {
+                        long position = atomicLong.get();
+                        LookupKey key = readKey(position);
+                        long value = readValue(position);
+                        atomicLong.getAndAdd(VirtualLongBlobStore.recordSize(key.bytes()));
+                        return Maps.immutableEntry(key.string(), value);
+                    }
+            );
+        } finally {
+            readLock.unlock();
+        }
+
+        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
+                iter,
+                iter.getNumKeys(),
+                Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
+        );
+        return StreamSupport.stream(spliter, true);
+    }
+
+    public void scan(ObjLongConsumer<String> keyValueFunction) {
+        final int numKeys;
+        final Map<LookupKey, Long> writeCacheCopy;
+        try{
+            readLock.lock(); // Read lock the WriteCache while initializing the data to scan
+            numKeys = getMetaDataKeyCount();
+
+            writeCacheCopy = writeCacheCopy();
+        } finally {
+            readLock.unlock();
+        }
+
+        writeCacheCopy
+                .forEach((key, value) -> keyValueFunction.accept(key.string(), value));
+
+        // Read but do not cache these keys - easy to add but is it helpful?
+        IntStream
+                .range(0, numKeys)
+                .mapToObj(this::readEntry)
+                .forEach(entry -> keyValueFunction
+                        .accept(entry.getKey(), entry.getValue()));
+    }
+
 }

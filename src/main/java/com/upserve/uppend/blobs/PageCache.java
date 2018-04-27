@@ -1,16 +1,12 @@
 package com.upserve.uppend.blobs;
 
-import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.*;
 import com.github.benmanes.caffeine.cache.stats.*;
-import com.upserve.uppend.metrics.MetricsStatsCounter;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.function.*;
 
@@ -24,67 +20,45 @@ import java.util.function.*;
 public class PageCache implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private final Cache<PageKey, Page> pageCache;
     private final int pageSize;
-    private final FileCache fileCache;
-    private final LoadingCache<PageKey, FilePage> pageCache;
 
-    public PageCache(FileCache fileCache, int pageSize, int initialCacheSize, int maximumCacheSize, ExecutorService executorService, Supplier<StatsCounter> metricsSupplier) {
+    public PageCache(int pageSize, int initialCacheSize, int maximumCacheSize, ExecutorService executorService, Supplier<StatsCounter> metricsSupplier) {
         this.pageSize = pageSize;
-        this.fileCache = fileCache;
-        Caffeine<PageKey, FilePage> cacheBuilder = Caffeine
-                .<PageKey, FilePage>newBuilder()
+
+        Caffeine<PageKey, Page> cacheBuilder = Caffeine
+                .<PageKey, Page>newBuilder()
                 .executor(executorService)
                 .initialCapacity(initialCacheSize)
                 .maximumSize(maximumCacheSize)
-                .<PageKey, FilePage>removalListener((key, value, cause) -> {
+                .<PageKey, Page>removalListener((key, value, cause) -> {
                     log.debug("Called removal on {} with cause {}", key, cause);
-//                    if (value != null) value.flush();
                 });
 
         if (metricsSupplier != null) {
             cacheBuilder = cacheBuilder.recordStats(metricsSupplier);
         }
 
-        FileChannel.MapMode mode = fileCache.readOnly() ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE;
-
         this.pageCache = cacheBuilder
-                .<PageKey, FilePage>build(key -> {
-                    log.debug("new FilePage from {}", key);
-                    final long filePosition = pageSize * key.getPage();
-                    MappedByteBuffer buffer = fileCache.getFileChannel(key.getFilePath()).map(mode, filePosition, pageSize);
-                    return new FilePage(buffer);
-                });
+                .<PageKey, Page>build();
 
     }
 
-    FilePage getPage(Path filePath, long pos) {
-        long pageIndexLong = pos / pageSize;
-        return getPage(new PageKey(filePath, pageIndexLong)
-        );
+    public int getPageSize(){
+        return pageSize;
     }
 
-    private FilePage getPage(PageKey key) {
-        return pageCache.get(key);
+    Page get(VirtualPageFile virtualPageFile, long pos) {
+        return pageCache.get(new PageKey(virtualPageFile.getFilePath(), pos), pageKey -> virtualPageFile.mappedPage(pos));
     }
 
-    public int pagePosition(long pos) {
-        return (int) (pos % (long) pageSize);
-    }
 
-    public boolean readOnly() {
-        return fileCache.readOnly();
+    Optional<Page> getIfPresent(VirtualPageFile virtualPageFile, long pos){
+        return Optional.ofNullable(pageCache.getIfPresent(new PageKey(virtualPageFile.getFilePath(), pos)));
     }
 
     public CacheStats stats() {
         return pageCache.stats();
-    }
-
-    public FileCache getFileCache() {
-        return fileCache;
-    }
-
-    int getPageSize() {
-        return pageSize;
     }
 
     @Override

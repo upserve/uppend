@@ -31,18 +31,16 @@ public class VirtualBlobStoreTest {
         Files.createDirectories(rootPath);
         virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, 1024, false);
 
-//        blobStore.clear();
+        virtualPageFile.clear();
     }
 
-//    @After
-//    public void uninitialize() {
-//        pageCache.flush();
-//        fileCache.flush();
-//    }
+    @After
+    public void uninitialize() throws IOException {
+        virtualPageFile.clear();
+    }
 
     @Test
     public void testSimple(){
-
         IntStream.range(0, NUMBER_OF_STORES)
                 .parallel()
                 .forEach(storeNumber -> testVirtualBlobStore(storeNumber));
@@ -64,30 +62,33 @@ public class VirtualBlobStoreTest {
         assertEquals("bar", new String(bytes));
     }
 
-//    @Test
-//    public void testClear(){
-//        long pos = blobStore.append("foo".getBytes());
-//        assertEquals(8, pos);
-//        pos = blobStore.append("bar".getBytes());
-//        assertEquals(15, pos);
-//        blobStore.clear();
-//        pageCache.flush();
-//        pos = blobStore.append("baz".getBytes());
-//        assertEquals(8, pos);
-//    }
+    @Test
+    public void testClear() throws IOException {
+        VirtualBlobStore blobStore = new VirtualBlobStore(4, virtualPageFile);
 
-//    @Test
-//    public void testClose() throws IOException {
-//        assertEquals(8, blobStore.append("foo".getBytes()));
-//        assertEquals(15, blobStore.append("foobar".getBytes()));
-//        blobStore.flush();
-//        pageCache.flush();
-//        fileCache.flush();
-//        blobStore = new BlobStore(blobsPath, pageCache);
-//        assertEquals(25, blobStore.getPosition());
-//        assertEquals("foo", new String(blobStore.read(8)));
-//        assertEquals("foobar", new String(blobStore.read(15)));
-//    }
+        long pos = blobStore.append("foo".getBytes());
+        assertEquals(8, pos);
+        pos = blobStore.append("bar".getBytes());
+        assertEquals(15, pos);
+        virtualPageFile.clear();
+
+        pos = blobStore.append("baz".getBytes());
+        assertEquals(8, pos);
+    }
+
+    @Test
+    public void testClose() throws IOException {
+        VirtualBlobStore blobStore = new VirtualBlobStore(4, virtualPageFile);
+
+        assertEquals(8, blobStore.append("foo".getBytes()));
+        assertEquals(15, blobStore.append("foobar".getBytes()));
+        virtualPageFile.flush();
+
+        blobStore = new VirtualBlobStore(4, virtualPageFile);
+        assertEquals(25, blobStore.getPosition());
+        assertEquals("foo", new String(blobStore.read(8)));
+        assertEquals("foobar", new String(blobStore.read(15)));
+    }
 
     @Test
     public void testConcurrent() {

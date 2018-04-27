@@ -22,8 +22,8 @@ public class PartitionLookupCache {
         this.lookupCache = lookupCache;
     }
 
-    public PageCache getPageCache(){
-        return lookupCache.getPageCache();
+    public String getPartition(){
+        return partition;
     }
 
     public void putLookup(LookupKey key, long val){

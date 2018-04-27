@@ -66,9 +66,8 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
         return build(true);
     }
 
-    public PageCache buildBlobPageCache(FileCache fileCache, String metricsPrefix) {
+    public PageCache buildBlobPageCache(String metricsPrefix) {
         return new PageCache(
-                fileCache,
                 getBlobPageSize(),
                 getInitialBlobCacheSize(),
                 getMaximumBlobCacheSize(),
@@ -76,7 +75,6 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
                 metricsSupplier(metricsPrefix, BLOB_PAGE_CACHE_METRICS)
         );
     }
-
 
     public static AppendOnlyStoreBuilder getDefaultTestBuilder(){
         return getDefaultTestBuilder(ForkJoinPool.commonPool());
@@ -95,9 +93,6 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
                 .withInitialMetaDataCacheSize(64)
                 .withMaximumMetaDataCacheWeight(100 * 1024)
                 .withLookupMetaDataCacheExecutorService(testService)
-                .withIntialFileCacheSize(128)
-                .withMaximumFileCacheSize(1024)
-                .withFileCacheExecutorService(testService)
                 .withLongLookupHashSize(16)
                 .withLookupPageSize(16*1024)
                 .withLookupPageCacheExecutorService(testService)
@@ -144,9 +139,6 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
                 ", lookupKeyCacheExecutorService=" + lookupKeyCacheExecutorService +
                 ", lookupMetaDataCacheExecutorService=" + lookupMetaDataCacheExecutorService +
                 ", lookupPageCacheExecutorService=" + lookupPageCacheExecutorService +
-                ", maximumFileCacheSize=" + maximumFileCacheSize +
-                ", intialFileCacheSize=" + intialFileCacheSize +
-                ", fileCacheExecutorService=" + fileCacheExecutorService +
                 ", flushDelaySeconds=" + flushDelaySeconds +
                 ", dir=" + dir +
                 ", storeMetrics=" + storeMetrics +

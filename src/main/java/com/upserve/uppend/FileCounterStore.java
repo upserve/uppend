@@ -4,7 +4,7 @@ import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
 import org.slf4j.Logger;
 
-import java.io.IOException;
+import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 import java.util.*;
@@ -16,7 +16,7 @@ import static com.upserve.uppend.Partition.listPartitions;
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final FileCache fileCache;
+    private final PageCache keyPageCache;
     private final LookupCache lookupCache;
     private final Function<String, CounterStorePartition> openPartitionFunction;
     private final Function<String, CounterStorePartition> createPartitionFunction;
@@ -24,12 +24,11 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
         super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
 
-        fileCache = builder.buildFileCache(readOnly, getName());
-        PageCache lookupPageCache = builder.buildLookupPageCache(fileCache, getName());
-        lookupCache = builder.buildLookupCache(lookupPageCache, getName());
+        keyPageCache = builder.buildLookupPageCache(getName());
+        lookupCache = builder.buildLookupCache(getName());
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), lookupCache);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
     }
 
     @Override
@@ -96,17 +95,22 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
                 .map(this::getIfPresent)
                 .filter(Optional::isPresent)
                 .map(Optional::get)
-                .forEach(CounterStorePartition::clear);
+                .forEach(counterStorePartition -> {
+                    try {
+                        counterStorePartition.clear();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Failed to clear counter store partition", e);
+                    }
+                });
         partitionMap.clear();
         lookupCache.flush();
-        fileCache.flush();
     }
 
     @Override
     public void trimInternal() throws IOException {
         if (!readOnly) flushInternal();
         lookupCache.flush();
-        fileCache.flush();
+        keyPageCache.flush();
     }
 
     @Override
@@ -123,14 +127,28 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     protected void flushInternal() throws IOException {
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
-        // Only need to flush open partitions
-        for (CounterStorePartition counterStorePartition : partitionMap.values()) {
-            counterStorePartition.flush();
-        }
+        partitionMap.values().parallelStream().forEach(counterStorePartition -> {
+            try {
+                counterStorePartition.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Error flushing store " + dir, e);
+            }
+        });
     }
 
     @Override
     protected void closeInternal() throws IOException {
         flushInternal();
+
+        partitionMap.values().parallelStream().forEach(counterStorePartition -> {
+            try {
+                counterStorePartition.close();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Error closing store " + dir, e);
+            }
+        });
+
+        lookupCache.flush();
+        keyPageCache.flush();
     }
 }

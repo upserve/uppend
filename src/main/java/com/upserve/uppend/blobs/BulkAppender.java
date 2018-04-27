@@ -6,20 +6,19 @@ public class BulkAppender {
 
     private final AtomicLong filePosition;
     private final long initialPosition;
-    private final PageMappedFileIO pageMappedFileIO;
+    private final VirtualPageFileIO virtualPageFileIO;
 
     private final byte[] bulkBytes;
 
 
-    public BulkAppender(PageMappedFileIO pageMappedFileIO, int bulkWriteSize) {
-        filePosition = new AtomicLong(pageMappedFileIO.position.get());
+    public BulkAppender(VirtualPageFileIO virtualPageFileIO, int bulkWriteSize) {
+        filePosition = new AtomicLong(virtualPageFileIO.getPosition());
         initialPosition = filePosition.get();
 
-        this.pageMappedFileIO = pageMappedFileIO;
+        this.virtualPageFileIO = virtualPageFileIO;
 
         bulkBytes = new byte[bulkWriteSize];
     }
-
 
     public long getBulkAppendPosition(long size) {
         return filePosition.getAndAdd(size);
@@ -29,13 +28,12 @@ public class BulkAppender {
         System.arraycopy(bytes,0, bulkBytes, (int) (pos - initialPosition), bytes.length);
     }
 
-
     public void finishBulkAppend() {
-        final long writePosition = pageMappedFileIO.appendPosition(bulkBytes.length);
+        final long writePosition = virtualPageFileIO.appendPosition(bulkBytes.length);
         if (writePosition + bulkBytes.length != filePosition.get()) {
             throw new IllegalStateException("Bulk appender position and length do not match");
         }
 
-        pageMappedFileIO.writeMapped(writePosition, bulkBytes);
+        virtualPageFileIO.writeMapped(writePosition, bulkBytes);
     }
 }

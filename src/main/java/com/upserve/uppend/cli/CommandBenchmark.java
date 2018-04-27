@@ -38,9 +38,6 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-c", "--key-cache-size"}, description = "Key Cache size")
     int keyCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_LOOKUP_KEY_CACHE_SIZE * 100;
 
-    @Option(names = {"-o", "--open-file-cache-size"}, description = "Open File Cache size")
-    int openFileCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_FILE_CACHE_SIZE;
-
     @Option(names = {"-m", "--key-metadata-cache-size"}, description = "Metadata Cache size")
     int metadataCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_METADATA_CACHE_SIZE;
 
@@ -49,6 +46,9 @@ public class CommandBenchmark implements Callable<Void> {
 
     @Option(names = {"-s", "--key-page-cache-size"}, description = "Key Page Cache size")
     int keyPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE;
+
+    @Option(names = {"-o", "--metadata-page-size"}, description = "Metadata page size")
+    int metadataPageSize = AppendOnlyStoreBuilder.DEFAULT_METADATA_PAGE_SIZE;
 
     @Option(names = {"-f", "--flush-delay"}, description = "Flush delay (sec)")
     int flushDelay = AppendOnlyStoreBuilder.DEFAULT_FLUSH_DELAY_SECONDS;
@@ -60,7 +60,7 @@ public class CommandBenchmark implements Callable<Void> {
     @Override
     public Void call() throws Exception {
         Benchmark benchmark = new Benchmark(
-                mode, path, maxPartitions, maxKeys, count, hashSize, keyCacheSize, metadataCacheSize, openFileCacheSize, blobPageCacheSize, keyPageCacheSize, flushDelay
+                mode, path, maxPartitions, maxKeys, count, hashSize, keyCacheSize, metadataCacheSize, metadataPageSize, blobPageCacheSize, keyPageCacheSize, flushDelay
         );
         benchmark.run();
         return null;

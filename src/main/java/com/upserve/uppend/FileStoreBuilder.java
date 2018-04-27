@@ -12,7 +12,6 @@ import java.util.function.*;
 
 public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
-    static final String FILE_CACHE_METRICS = "FileCache";
     static final String LOOKUP_PAGE_CACHE_METRICS = "LookupPageCache";
     static final String BLOB_PAGE_CACHE_METRICS = "BlobPageCache";
     static final String LOOKUP_KEY_CACHE_METRICS = "LookupKeyCache";
@@ -29,6 +28,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     public static final long DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT = 1_000_000;
     public static final int DEFAULT_INITIAL_METADATA_CACHE_SIZE = 1000;
+    public static final int DEFAULT_METADATA_PAGE_SIZE = 4096;
 
     int lookupHashSize = DEFAULT_LOOKUP_HASH_SIZE;
 
@@ -42,18 +42,11 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     long maximumMetaDataCacheWeight = DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT;
     int initialMetaDataCacheSize = DEFAULT_INITIAL_METADATA_CACHE_SIZE;
 
+    int metaDataPageSize = DEFAULT_METADATA_PAGE_SIZE;
+
     ExecutorService lookupKeyCacheExecutorService = ForkJoinPool.commonPool();
     ExecutorService lookupMetaDataCacheExecutorService = ForkJoinPool.commonPool();
     ExecutorService lookupPageCacheExecutorService = ForkJoinPool.commonPool();
-
-    // File Cache Options
-    public static final int DEFAULT_MAXIMUM_FILE_CACHE_SIZE = 8_000;
-    public static final int DEFAULT_INITIAL_FILE_CACHE_SIZE = 1000;
-
-    int maximumFileCacheSize = DEFAULT_MAXIMUM_FILE_CACHE_SIZE;
-    int intialFileCacheSize = DEFAULT_INITIAL_FILE_CACHE_SIZE;
-
-    ExecutorService fileCacheExecutorService = ForkJoinPool.commonPool();
 
     // Store Options
     public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
@@ -116,6 +109,12 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
+    public T withInitialMetaDataPageSize(int metaDataPageSize) {
+        this.metaDataPageSize = metaDataPageSize;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
     public T withLookupKeyCacheExecutorService(ExecutorService lookupKeyCacheExecutorService){
         this.lookupKeyCacheExecutorService = lookupKeyCacheExecutorService;
         return (T) this;
@@ -130,25 +129,6 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withLookupPageCacheExecutorService(ExecutorService lookupPageCacheExecutorService){
         this.lookupPageCacheExecutorService = lookupPageCacheExecutorService;
-        return (T) this;
-    }
-
-    // File Cache Options
-    @SuppressWarnings("unchecked")
-    public T withMaximumFileCacheSize(int maximumFileCacheSize) {
-        this.maximumFileCacheSize = maximumFileCacheSize;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withIntialFileCacheSize(int intialFileCacheSize) {
-        this.intialFileCacheSize = intialFileCacheSize;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withFileCacheExecutorService(ExecutorService fileCacheExecutorService){
-        this.fileCacheExecutorService = fileCacheExecutorService;
         return (T) this;
     }
 
@@ -213,18 +193,8 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
         }
     }
 
-    public FileCache buildFileCache(boolean readOnly, String metricsPrefix){
-        return new FileCache(
-                getIntialFileCacheSize(),
-                getMaximumFileCacheSize(),
-                getFileCacheExecutorService(),
-                metricsSupplier(metricsPrefix, FILE_CACHE_METRICS),
-                readOnly);
-    }
-
-    public PageCache buildLookupPageCache(FileCache fileCache, String metricsPrefix) {
+    public PageCache buildLookupPageCache(String metricsPrefix) {
         return new PageCache(
-                fileCache,
                 getLookupPageSize(),
                 getInitialLookupPageCacheSize(),
                 getMaximumLookupPageCacheSize(),
@@ -233,9 +203,8 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
         );
     }
 
-    public LookupCache buildLookupCache(PageCache pageCache, String metricsPrefix){
+    public LookupCache buildLookupCache(String metricsPrefix){
         return new LookupCache(
-                pageCache,
                 getInitialLookupKeyCacheSize(),
                 getMaximumLookupKeyCacheWeight(),
                 getLookupKeyCacheExecutorService(),
@@ -258,18 +227,6 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     public boolean isStoreMetrics() {
         return storeMetrics;
-    }
-
-    public int getMaximumFileCacheSize() {
-        return maximumFileCacheSize;
-    }
-
-    public int getIntialFileCacheSize() {
-        return intialFileCacheSize;
-    }
-
-    public ExecutorService getFileCacheExecutorService() {
-        return fileCacheExecutorService;
     }
 
     public int getInitialLookupPageCacheSize() {
@@ -315,6 +272,8 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     public int getInitialMetaDataCacheSize() {
         return initialMetaDataCacheSize;
     }
+
+    public int getMetadataPageSize() { return metaDataPageSize; }
 
     public ExecutorService getLookupKeyCacheExecutorService() {
         return lookupKeyCacheExecutorService;

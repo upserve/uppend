@@ -62,7 +62,7 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
     void clear();
 
     /**
-     * get the name of the counter store - the last element in the path
+     * getValue the name of the counter store - the last element in the path
      * @return the name of the datastore for reporting purposes
      */
     String getName();

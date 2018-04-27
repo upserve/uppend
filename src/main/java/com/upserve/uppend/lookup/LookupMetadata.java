@@ -1,5 +1,6 @@
 package com.upserve.uppend.lookup;
 
+import com.upserve.uppend.blobs.VirtualBlobStore;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -23,7 +24,7 @@ public class LookupMetadata {
 
     private final ConcurrentHashMap<Long, LookupKey> bisectKeys;
 
-    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, Path path, int metadataGeneration) throws IOException {
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, VirtualBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
                 minKey,
@@ -32,7 +33,7 @@ public class LookupMetadata {
                 metadataGeneration
         );
 
-        newMetadata.writeTo(path);
+        newMetadata.writeTo(metaDataBlobs);
 
         return newMetadata;
     }
@@ -48,42 +49,35 @@ public class LookupMetadata {
         bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public static LookupMetadata open(Path path, int metadataGeneration){
-        try {
-            return new LookupMetadata(path, metadataGeneration);
-        } catch (NoSuchFileException e) {
-            log.debug("No metadata found at path {}", path);
+    public static LookupMetadata open(VirtualBlobStore metadataBlobs, int metadataGeneration){
+        byte[] bytes = metadataBlobs.read(0L);
+
+        if (bytes.length == 0) {
             return new LookupMetadata(null, null, new long[0], metadataGeneration);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to load metadata from path:" + path, e);
+        } else {
+            return new LookupMetadata(bytes, metadataGeneration);
         }
     }
 
-    public LookupMetadata(Path path, int metadataGeneration) throws IOException {
-        log.trace("constructing metadata at path: {}", path);
-        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
-            int minKeyLength, maxKeyLength;
-            try (DataInputStream din = new DataInputStream(Files.newInputStream(path, StandardOpenOption.READ))) {
-                numKeys = din.readInt();
-                minKeyLength = din.readInt();
-                byte[] minKeyBytes = new byte[minKeyLength];
-                din.read(minKeyBytes); // should check result - number of bytes read
-                minKey = new LookupKey(minKeyBytes);
-                maxKeyLength = din.readInt();
-                byte[] maxKeyBytes = new byte[maxKeyLength];
-                din.read(maxKeyBytes);
-                maxKey = new LookupKey(maxKeyBytes);
-            }
-            long pos = 12 + minKeyLength + maxKeyLength;
-            int byteSize = 8 * numKeys;
-            ByteBuffer bbuf = ByteBuffer.allocate(byteSize);
-            int bytesRead = chan.read(bbuf, pos);
-            if (bytesRead != byteSize) throw new IllegalStateException("expected compressed key storage order size " + byteSize + " but got " + bytesRead);
-            bbuf.rewind();
-            LongBuffer lbuf = bbuf.asLongBuffer();
-            keyStorageOrder = new long[numKeys];
-            lbuf.get(keyStorageOrder);
-        }
+    public LookupMetadata(byte[] bytes, int metadataGeneration) {
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+
+        int minKeyLength, maxKeyLength;
+        numKeys = buffer.getInt();
+        minKeyLength = buffer.getInt();
+        byte[] minKeyBytes = new byte[minKeyLength];
+        buffer.get(minKeyBytes); // should check result - number of bytes read
+        minKey = new LookupKey(minKeyBytes);
+        maxKeyLength = buffer.getInt();
+        byte[] maxKeyBytes = new byte[maxKeyLength];
+        buffer.get(maxKeyBytes);
+        maxKey = new LookupKey(maxKeyBytes);
+
+        long pos = 12 + minKeyLength + maxKeyLength;
+        int byteSize = 8 * numKeys;
+        LongBuffer lbuf = buffer.asLongBuffer();
+        keyStorageOrder = new long[numKeys];
+        lbuf.get(keyStorageOrder);
 
         this.metadataGeneration = metadataGeneration;
 
@@ -145,7 +139,7 @@ public class LookupMetadata {
         do {
             midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);
 
-            if (log.isTraceEnabled()) log.trace("reading {} from {}: [{}, {}], [{}, {}], {}", key, lookupData.getHashPath(), keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
+            if (log.isTraceEnabled()) log.trace("reading {}: [{}, {}], [{}, {}], {}", key, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
 
             keyPosition = keyStorageOrder[midpointKeyIndex];
             // Cache only the most frequently used midpoint keys
@@ -173,34 +167,21 @@ public class LookupMetadata {
         return null;
     }
 
-    public void writeTo(Path path) throws IOException {
-        log.trace("writing metadata to path: {}", path);
-        Path tmpPath = path.resolveSibling(path.getFileName() + ".tmp");
-        try (FileChannel chan = FileChannel.open(tmpPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
+    public void writeTo(VirtualBlobStore metadataBlobs) {
+        int headerSize = 12 + minKey.byteLength() + maxKey.byteLength();
+        int longBufSize = 8 * numKeys;
+        ByteBuffer byteBuffer = ByteBuffer.allocate(headerSize + longBufSize);
+        byteBuffer.putInt(numKeys);
+        byteBuffer.putInt(minKey.byteLength());
+        byteBuffer.put(minKey.bytes());
+        byteBuffer.putInt(maxKey.byteLength());
+        byteBuffer.put(maxKey.bytes());
 
-            int bufSize = 12 + minKey.byteLength() + maxKey.byteLength();
-            ByteBuffer headBuf = ByteBuffer.allocate(bufSize);
-            headBuf.putInt(numKeys);
-            headBuf.putInt(minKey.byteLength());
-            headBuf.put(minKey.bytes());
-            headBuf.putInt(maxKey.byteLength());
-            headBuf.put(maxKey.bytes());
-            headBuf.flip();
-            chan.write(headBuf, 0);
+        LongBuffer longBuffer = byteBuffer.asLongBuffer();
+        longBuffer.put(keyStorageOrder);
+        byteBuffer.rewind();
 
-            int longBufSize = 8 * numKeys;
-            ByteBuffer byteBuffer = ByteBuffer.allocate(longBufSize);
-            LongBuffer longBuffer = byteBuffer.asLongBuffer();
-            longBuffer.put(keyStorageOrder);
-            byteBuffer.rewind();
-            int written = chan.write(byteBuffer, bufSize);
-            if (written != longBufSize) {
-                throw new RuntimeException("Expected " + bufSize + " but wrote" + written +" bytes to metadata " + path);
-            }
-
-        }
-        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
-        log.trace("wrote metadata to path: {}: numKeys={}, minKey={}, maxKey={}", path, numKeys, minKey, maxKey);
+        metadataBlobs.write(byteBuffer.array(), 0L);
     }
 
     @Override
@@ -217,6 +198,10 @@ public class LookupMetadata {
     }
 
     public int weight() {
+        return numKeys;
+    }
+
+    public int getNumKeys(){
         return numKeys;
     }
 

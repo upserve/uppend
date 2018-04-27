@@ -46,14 +46,8 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, Aut
      */
     String getName();
 
-    CacheStats getFileCacheStats();
     CacheStats getBlobPageCacheStats();
     CacheStats getKeyPageCacheStats();
     CacheStats getLookupKeyCacheStats();
     CacheStats getMetadataCacheStats();
-
-
-
-
-
 }

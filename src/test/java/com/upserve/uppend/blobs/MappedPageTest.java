@@ -14,13 +14,13 @@ import static java.lang.Math.max;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
-public class FilePageTest {
+public class MappedPageTest {
     Path rootPath = Paths.get("build/test/blobs/filepage");
     Path filePath = rootPath.resolve("testfile");
     Path readOnlyFilePath = rootPath.resolve("readOnlyTestfile");
 
-    FilePage rwPage;
-    FilePage roPage;
+    MappedPage rwPage;
+    MappedPage roPage;
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
@@ -32,8 +32,8 @@ public class FilePageTest {
         SafeDeleting.removeDirectory(rootPath);
         Files.createDirectories(rootPath);
         try(FileChannel file = FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ)){
-            rwPage =  new FilePage(file.map(FileChannel.MapMode.READ_WRITE, 0, pageSize));
-            roPage =  new FilePage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
+            rwPage =  new MappedPage(file.map(FileChannel.MapMode.READ_WRITE, 0, pageSize));
+            roPage =  new MappedPage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
         }
 
     }
@@ -41,11 +41,11 @@ public class FilePageTest {
     @Test
     public void testReadOnlyPastFileSize() throws IOException {
         Files.createFile(readOnlyFilePath);
-        final FilePage page;
+        final MappedPage page;
         thrown.expect(IOException.class);
         thrown.expectMessage("Channel not open for writing - cannot extend file to required size");
         try(FileChannel file = FileChannel.open(readOnlyFilePath, StandardOpenOption.READ)){
-            page =  new FilePage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
+            page =  new MappedPage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
         }
     }
 
@@ -114,7 +114,7 @@ public class FilePageTest {
         putGetHelper(rwPage, rwPage, bufferSize, bufferOffset, pagePosition);
     }
 
-    public void putGetHelper(FilePage writer, FilePage reader, int bufferSize, int bufferOffset, int pagePosition) {
+    public void putGetHelper(MappedPage writer, MappedPage reader, int bufferSize, int bufferOffset, int pagePosition) {
         final int expectedSize = min(bufferSize - bufferOffset, pageSize - pagePosition);
 
         byte[] expected = genBytes(bufferSize);

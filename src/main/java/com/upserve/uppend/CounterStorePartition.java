@@ -8,75 +8,118 @@ import org.slf4j.Logger;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
-import java.util.Map;
+import java.util.*;
 import java.util.function.*;
-import java.util.stream.Stream;
+import java.util.stream.*;
 
-public class CounterStorePartition extends Partition implements Flushable {
+public class CounterStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final Path partitiondDir;
-    private final LongLookup lookups;
-
-    public static CounterStorePartition createPartition(Path partentDir, String partition, int hashSize, LookupCache lookupCache){
+    public static CounterStorePartition createPartition(Path partentDir, String partition, int hashSize, int metadataPageSize, PageCache keyPageCache, LookupCache lookupCache) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
-        return new CounterStorePartition(
-                partitiondDir,
-                new LongLookup(lookupsDir(partitiondDir), hashSize, PartitionLookupCache.create(partition, lookupCache))
-        );
-    }
-
-    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashSize, LookupCache lookupCache) {
-        validatePartition(partition);
-        Path partitiondDir = partentDir.resolve(partition);
-        Path lookupsDir = lookupsDir(partitiondDir);
-
-        if (Files.exists(lookupsDir)) {
-            return new CounterStorePartition(
-                    partitiondDir,
-                    new LongLookup(lookupsDir, hashSize, PartitionLookupCache.create(partition, lookupCache))
-            );
-        } else {
-            return null;
+        try {
+            Files.createDirectories(partentDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to make partition directory: " + partentDir, e);
         }
+
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, false, keyPageCache);
+
+
+        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, false);
     }
 
-    private CounterStorePartition(Path partentDir, LongLookup longLookup){
-        partitiondDir = partentDir;
-        this.lookups = longLookup;
+    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashSize, int metadataPageSize, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
+        validatePartition(partition);
+        Path partitiondDir = partentDir.resolve(partition);
+
+        if (!(Files.exists(metadataPath(partentDir)) && Files.exists(keysPath(partentDir)))) return null;
+
+
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, readOnly, keyPageCache);
+
+        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, false);
+    }
+
+    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, boolean readOnly){
+        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, readOnly);
     }
 
     public Long set(String key, long value) {
-        return lookups.put(key, value);
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        return lookups[hash].put(lookupKey, value);
     }
 
     public long increment(String key, long delta) {
-        return lookups.increment(key, delta);
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        return lookups[hash].increment(lookupKey, delta);
     }
 
     public Long get(String key) {
-       return lookups.getLookupData(key);
+        LookupKey lookupKey = new LookupKey(key);
+        final int hash = keyHash(lookupKey);
+
+        return lookups[hash].getValue(lookupKey);
     }
 
     public Stream<Map.Entry<String, Long>> scan() {
-        return lookups.scan();
+        return IntStream.range(0, hashSize)
+                .parallel()
+                .boxed()
+                .flatMap(virtualFileNumber -> lookups[virtualFileNumber].scan());
     }
 
     public void scan(ObjLongConsumer<String> callback) {
-        lookups.scan(callback);
+
+        IntStream.range(0, hashSize)
+                .parallel()
+                .boxed()
+                .forEach(virtualFileNumber -> lookups[virtualFileNumber].scan(callback));
     }
 
     Stream<String> keys(){
-        return lookups.keys();
+        return IntStream.range(0, hashSize)
+                .parallel()
+                .boxed()
+                .flatMap(virtualFileNumber -> lookups[virtualFileNumber].keys().map(LookupKey::string));
     }
 
     @Override
     public void flush() throws IOException {
-        lookups.flush();
+        log.debug("Starting flush for partition: {}", lookupCache.getPartition());
+
+        Arrays.stream(lookups).parallel().forEach(lookupData -> {
+            try {
+                lookupData.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to flush!", e);
+            }
+        });
+
+        longKeyFile.flush();
+        metadataBlobFile.flush();
+        log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
-    void clear(){
-        lookups.clear();
+    void clear() throws IOException {
+        Arrays.stream(lookups).parallel().forEach(LookupData::clear);
+
+        longKeyFile.clear();
+        metadataBlobFile.clear();
+    }
+
+    @Override
+    public void close() throws IOException {
+        flush();
+
+        longKeyFile.close();
+        metadataBlobFile.close();
     }
 }

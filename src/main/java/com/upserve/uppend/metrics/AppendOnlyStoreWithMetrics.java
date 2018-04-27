@@ -182,11 +182,6 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public CacheStats getFileCacheStats() {
-        return store.getFileCacheStats();
-    }
-
-    @Override
     public CacheStats getBlobPageCacheStats() { return store.getBlobPageCacheStats(); }
 
     @Override

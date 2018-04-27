@@ -20,11 +20,8 @@ public class LookupCache implements Flushable {
 
     private final LoadingCache<LookupData, LookupMetadata> lookupMetaDataCache;
 
-    // Pages loaded from LookupData files
-    private final PageCache pageCache;
 
-    public LookupCache(PageCache pagecache, int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
-        this.pageCache = pagecache;
+    public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
 
         Caffeine<PartitionLookupKey, Long> keyCacheBuilder = Caffeine
                 .<PartitionLookupKey, Long>newBuilder()
@@ -53,14 +50,11 @@ public class LookupCache implements Flushable {
 
         lookupMetaDataCache = metadataCacheBuilder
                 .<LookupData, LookupMetadata>build(lookupData -> LookupMetadata.open(
-                lookupData.getMetadataPath(),
+                lookupData.getMetadataBlobs(),
                 lookupData.getMetaDataGeneration()
         ));
     }
 
-    public PageCache getPageCache(){
-        return pageCache;
-    }
 
     public void putLookup(PartitionLookupKey key, long val){
         keyLongLookupCache.put(key, val);
@@ -78,10 +72,6 @@ public class LookupCache implements Flushable {
         lookupMetaDataCache.put(key, value);
     }
 
-    public CacheStats pageStats() {
-        return pageCache.stats();
-    }
-
     public CacheStats keyStats() {
         return keyLongLookupCache.stats();
     }
@@ -94,6 +84,5 @@ public class LookupCache implements Flushable {
     public void flush() {
         lookupMetaDataCache.invalidateAll();
         keyLongLookupCache.invalidateAll();
-        pageCache.flush();
     }
 }

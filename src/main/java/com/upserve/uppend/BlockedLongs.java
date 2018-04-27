@@ -304,8 +304,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     }
 
     @Override
-    public void close() throws Exception {
-        log.trace("closing {}", file);
+    public void close() throws IOException {
+        log.debug("closing {}", file);
 
         if (readOnly){
             blocks.close();
@@ -326,7 +326,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     @Override
     public void flush() {
         if (readOnly) return;
-        log.info("flushing {}", file);
+        log.debug("flushing {}", file);
         posBuf.force();
 
         Arrays.stream(pages)
@@ -334,7 +334,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 .filter(Objects::nonNull)
                 .forEach(MappedByteBuffer::force);
 
-        log.info("flushed {}", file);
+        log.debug("flushed {}", file);
     }
 
     public void trim() {
