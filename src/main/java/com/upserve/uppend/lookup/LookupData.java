@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.*;
@@ -27,7 +26,7 @@ public class LookupData implements Flushable {
 
     private final VirtualLongBlobStore keyLongBlobs;
 
-    private final VirtualBlobStore metadataBlobs;
+    private final VirtualMutableBlobStore metadataBlobs;
 
     private final ReadWriteLock flushLock;
     private final Lock readLock;
@@ -36,7 +35,7 @@ public class LookupData implements Flushable {
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
 
-    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualBlobStore metadataBlobs, PartitionLookupCache lookupCache, boolean readOnly) {
+    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, boolean readOnly) {
 
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
@@ -72,7 +71,7 @@ public class LookupData implements Flushable {
         }
     }
 
-    VirtualBlobStore getMetadataBlobs(){
+    VirtualMutableBlobStore getMetadataBlobs(){
         return metadataBlobs;
     }
 

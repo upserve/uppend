@@ -18,7 +18,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
 
     private final BlockedLongs blocks;
-    private final VirtualBlobStore[] blobs;
+    private final VirtualAppendOnlyBlobStore[] blobs;
     private final VirtualPageFile blobFile;
 
     private static Path blobsFile(Path partitiondDir) {
@@ -71,8 +71,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         this.blocks = blocks;
         this.blobFile = blobsFile;
         blobs = IntStream.range(0, hashSize)
-                .mapToObj(virtualFileNumber -> new VirtualBlobStore(virtualFileNumber, blobsFile))
-                .toArray(VirtualBlobStore[]::new);
+                .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(virtualFileNumber, blobsFile))
+                .toArray(VirtualAppendOnlyBlobStore[]::new);
 
 
     }

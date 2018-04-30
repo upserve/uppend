@@ -55,6 +55,7 @@ public class Benchmark {
         ForkJoinPool cachePool = forkJoinPoolFunction.apply("cache-worker");
         runPool = forkJoinPoolFunction.apply("benchmark-worker");;
 
+        // TODO add a reader pool!
         metrics = new MetricRegistry();
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)

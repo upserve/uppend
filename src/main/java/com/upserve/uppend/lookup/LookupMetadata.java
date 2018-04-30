@@ -1,13 +1,11 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.blobs.VirtualBlobStore;
+import com.upserve.uppend.blobs.*;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
-import java.nio.channels.FileChannel;
-import java.nio.file.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class LookupMetadata {
@@ -24,7 +22,7 @@ public class LookupMetadata {
 
     private final ConcurrentHashMap<Long, LookupKey> bisectKeys;
 
-    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, VirtualBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
                 minKey,
@@ -49,7 +47,7 @@ public class LookupMetadata {
         bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public static LookupMetadata open(VirtualBlobStore metadataBlobs, int metadataGeneration){
+    public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration){
         byte[] bytes = metadataBlobs.read(0L);
 
         if (bytes.length == 0) {
@@ -167,7 +165,7 @@ public class LookupMetadata {
         return null;
     }
 
-    public void writeTo(VirtualBlobStore metadataBlobs) {
+    public void writeTo(VirtualMutableBlobStore metadataBlobs) {
         int headerSize = 12 + minKey.byteLength() + maxKey.byteLength();
         int longBufSize = 8 * numKeys;
         ByteBuffer byteBuffer = ByteBuffer.allocate(headerSize + longBufSize);

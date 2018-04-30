@@ -59,7 +59,7 @@ public abstract class Partition {
         lookups = IntStream.range(0, hashSize)
                 .mapToObj(virtualFileNumber -> new LookupData(
                                 new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
-                                new VirtualBlobStore(virtualFileNumber, metadataBlobFile),
+                                new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
                                 lookupCache,
                                 readOnly
                         )

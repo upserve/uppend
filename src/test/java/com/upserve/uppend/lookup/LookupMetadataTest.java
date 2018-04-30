@@ -13,7 +13,6 @@
 //import java.nio.ByteBuffer;
 //import java.nio.channels.FileChannel;
 //import java.nio.file.*;
-//import java.util.*;
 //import java.util.stream.IntStream;
 //
 //import static org.junit.Assert.*;
@@ -26,12 +25,24 @@
 //    private final Path rootPath = Paths.get("build/test/lookup/lookupMetadata");
 //    private final Path path = rootPath.resolve(name);
 //
+//    private VirtualPageFile virtualPageFile;
+//    private VirtualAppendOnlyBlobStore metadataBlobs;
+//
+//    private static final int NUMBER_OF_STORES = 12;
+//
 //    @Mock
 //    LookupData mockLookupData;
 //
 //    @Before
 //    public void before() throws IOException {
 //        SafeDeleting.removeDirectory(rootPath);
+//
+//        virtualPageFile = new VirtualPageFile(path, NUMBER_OF_STORES, 1024, false);
+//
+//        virtualPageFile.clear();
+//
+//        metadataBlobs = new VirtualAppendOnlyBlobStore(1, virtualPageFile);
+//
 //    }
 //
 //    @Test

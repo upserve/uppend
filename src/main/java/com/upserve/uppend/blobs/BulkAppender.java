@@ -34,6 +34,6 @@ public class BulkAppender {
             throw new IllegalStateException("Bulk appender position and length do not match");
         }
 
-        virtualPageFileIO.writeMapped(writePosition, bulkBytes);
+        virtualPageFileIO.write(writePosition, bulkBytes);
     }
 }

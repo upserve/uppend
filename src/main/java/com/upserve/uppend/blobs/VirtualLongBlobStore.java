@@ -1,14 +1,15 @@
 package com.upserve.uppend.blobs;
 
-import com.google.common.collect.Maps;
-import com.google.common.primitives.Longs;
+
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.function.Consumer;
 
+/**
+ * For storing a Long position and an associated Key as a blob together.
+ * The blobs are append only, but the long value can be updated.
+ * TODO address non atomic nature of the long update
+ */
 public class VirtualLongBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -20,20 +21,24 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
         int writeSize = recordSize(bytes);
         final long pos = appendPosition(writeSize);
 
-        writeMapped(pos, byteRecord(val, bytes));
+        write(pos, byteRecord(val, bytes));
         return pos;
     }
 
+    public long getPosition(){
+        return super.getPosition();
+    }
+
     public void writeLong(long pos, long val){
-        writeMappedLong(pos + 4, val);
+        super.writeLong(pos + 4, val);
     }
 
     public long readLong(long pos) {
-        return readMappedLong(pos+4);
+        return super.readLong(pos+4);
     }
 
     public byte[] readBlob(long pos) {
-        int size = readMappedInt(pos);
+        int size = readInt(pos);
         byte[] buf = new byte[size];
         readMapped(pos + 12, buf);
 
@@ -43,7 +48,6 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
     public static int recordSize(byte[] inputBytes) {
         return inputBytes.length + 12;
     }
-
 
     public static byte[] byteRecord(long val, byte[] inputBytes){
         byte[] result = new byte[recordSize(inputBytes)];
