@@ -31,7 +31,7 @@ group 'com.upserve'
 description = """Uppend: fast, append-only key-multivalue store"""
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '3.3'
+    gradleVersion = '4.4'
 }
 
 gradleLint.rules += 'unused-dependency'
@@ -41,8 +41,9 @@ apply plugin: 'maven'
 apply plugin: 'jacoco'
 apply plugin: 'com.bmuschko.nexus'
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+sourceCompatibility = 1.9
+targetCompatibility = 1.9
+// Requires 1.9 or greater due to unsafe memory access in MappebByteBuffer - Oracle Incident Report 9119653
 
 repositories {
     mavenCentral()
