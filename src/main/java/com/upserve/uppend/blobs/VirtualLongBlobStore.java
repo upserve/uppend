@@ -18,8 +18,8 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
     }
 
     public long append(long val, byte[] bytes) {
-        int writeSize = recordSize(bytes);
-        final long pos = appendPosition(writeSize);
+        // Ensures that the long value is aligned with a single page.
+        final long pos = appendPageAlignedPosition(recordSize(bytes), 4, 12);
 
         write(pos, byteRecord(val, bytes));
         return pos;
@@ -40,7 +40,7 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
     public byte[] readBlob(long pos) {
         int size = readInt(pos);
         byte[] buf = new byte[size];
-        readMapped(pos + 12, buf);
+        read(pos + 12, buf);
 
         return buf;
     }

@@ -36,8 +36,7 @@ public class LookupMetadata {
         return newMetadata;
     }
 
-
-    public LookupMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, int metadataGeneration) {
+    LookupMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, int metadataGeneration) {
         this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
         this.maxKey = maxKey;
@@ -48,34 +47,35 @@ public class LookupMetadata {
     }
 
     public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration){
-        byte[] bytes = metadataBlobs.read(0L);
-
-        if (bytes.length == 0) {
-            return new LookupMetadata(null, null, new long[0], metadataGeneration);
-        } else {
+        if (metadataBlobs.isPageAllocated(0L)) {
+            byte[] bytes = metadataBlobs.read(0L);
             return new LookupMetadata(bytes, metadataGeneration);
+        } else {
+            return new LookupMetadata(null, null, new long[0], metadataGeneration);
         }
     }
 
-    public LookupMetadata(byte[] bytes, int metadataGeneration) {
+    LookupMetadata(byte[] bytes, int metadataGeneration) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         int minKeyLength, maxKeyLength;
-        numKeys = buffer.getInt();
-        minKeyLength = buffer.getInt();
-        byte[] minKeyBytes = new byte[minKeyLength];
-        buffer.get(minKeyBytes); // should check result - number of bytes read
-        minKey = new LookupKey(minKeyBytes);
-        maxKeyLength = buffer.getInt();
-        byte[] maxKeyBytes = new byte[maxKeyLength];
-        buffer.get(maxKeyBytes);
-        maxKey = new LookupKey(maxKeyBytes);
+        try {
+            numKeys = buffer.getInt();
+            minKeyLength = buffer.getInt();
+            byte[] minKeyBytes = new byte[minKeyLength];
+            buffer.get(minKeyBytes); // should check result - number of bytes read
+            minKey = new LookupKey(minKeyBytes);
+            maxKeyLength = buffer.getInt();
+            byte[] maxKeyBytes = new byte[maxKeyLength];
+            buffer.get(maxKeyBytes);
+            maxKey = new LookupKey(maxKeyBytes);
 
-        long pos = 12 + minKeyLength + maxKeyLength;
-        int byteSize = 8 * numKeys;
-        LongBuffer lbuf = buffer.asLongBuffer();
-        keyStorageOrder = new long[numKeys];
-        lbuf.get(keyStorageOrder);
+            LongBuffer lbuf = buffer.asLongBuffer();
+            keyStorageOrder = new long[numKeys];
+            lbuf.get(keyStorageOrder);
+        } catch (BufferUnderflowException e) {
+            throw new IllegalStateException("Meta blob is corrupted", e); // The checksum is correct - indicates a format change!
+        }
 
         this.metadataGeneration = metadataGeneration;
 
@@ -83,14 +83,16 @@ public class LookupMetadata {
         }
 
     /**
-     * Finds the position of a key or null if not present using bisect on the sorted storage order
-     * The key is marked with the generation of the metadata used and the sortIndex it should be inserted after
-     * @param lookupData a reference to use for reading keys
+     * Finds the value associated with a key or null if not present using bisect on the sorted storage order
+     * If the result is null (key not found) the key is marked with the generation of the metadata used and the
+     * sortIndex it should be inserted after.
+     * If the result is not null (key was found) the key is marked with its position in the longBlob file.
+     * @param longBlobStore The longBlobStore to read keys and values
      * @param key the key to find and mark
      * @return the position of the key
      */
 
-    public Long findKeyPosition(LookupData lookupData, LookupKey key) {
+    public Long findKey(VirtualLongBlobStore longBlobStore, LookupKey key) {
 
         key.setMetaDataGeneration(metadataGeneration);
 
@@ -109,14 +111,14 @@ public class LookupMetadata {
         LookupKey midpointKey;
         int midpointKeyIndex;
 
-
         int comparison = lowerKey.compareTo(key);
         if (comparison > 0 /* new key is less than lowerKey */) {
             key.setInsertAfterSortIndex(-1); // Insert it after this index in the sort order
             return null;
         }
         if (comparison == 0) {
-            return keyStorageOrder[keyIndexLower];
+            key.setPosition(keyStorageOrder[keyIndexLower]);
+            return longBlobStore.readLong(keyStorageOrder[keyIndexLower]);
         }
 
         comparison = upperKey.compareTo(key);
@@ -125,7 +127,8 @@ public class LookupMetadata {
             return null;
         }
         if (comparison == 0) {
-            return keyStorageOrder[keyIndexUpper];
+            key.setPosition(keyStorageOrder[keyIndexUpper]);
+            return longBlobStore.readLong(keyStorageOrder[keyIndexUpper]);
         }
 
         if (numKeys == 2) { // There are no other values keys besides upper and lower
@@ -142,9 +145,9 @@ public class LookupMetadata {
             keyPosition = keyStorageOrder[midpointKeyIndex];
             // Cache only the most frequently used midpoint keys
             if (bisectCount < MAX_BISECT_KEY_CACHE_DEPTH) {
-                midpointKey = bisectKeys.computeIfAbsent(keyPosition, lookupData::readKey);
+                midpointKey = bisectKeys.computeIfAbsent(keyPosition, position -> new LookupKey(longBlobStore.readBlob(position)));
             } else {
-                midpointKey = lookupData.readKey(keyPosition);
+                midpointKey = new LookupKey(longBlobStore.readBlob(keyPosition));
             }
 
             comparison = key.compareTo(midpointKey);
@@ -155,7 +158,8 @@ public class LookupMetadata {
                 keyIndexLower = midpointKeyIndex;
                 lowerKey = midpointKey;
             } else {
-                return keyPosition;
+                key.setPosition(keyPosition);
+                return longBlobStore.readLong(keyPosition);
             }
 
             bisectCount++;
@@ -179,7 +183,7 @@ public class LookupMetadata {
         longBuffer.put(keyStorageOrder);
         byteBuffer.rewind();
 
-        metadataBlobs.write(byteBuffer.array(), 0L);
+        metadataBlobs.write(0L, byteBuffer.array());
     }
 
     @Override

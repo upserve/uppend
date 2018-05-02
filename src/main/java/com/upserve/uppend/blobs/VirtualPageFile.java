@@ -10,7 +10,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
-import java.util.function.Supplier;
+import java.util.function.*;
 import java.util.stream.IntStream;
 
 /**
@@ -139,6 +139,13 @@ public class VirtualPageFile implements Flushable, Closeable{
         return readOnly;
     }
 
+    boolean isPageAvailable(int virtualFileNumber, int pageNumber){
+        if (readOnly) {
+            return pageNumber < getHeaderVirtualFilePageCount(virtualFileNumber);
+        } else{
+            return pageNumber < virtualFilePageCounts[virtualFileNumber].get();
+        }
+    }
 
     // Package private methods
     long appendPosition(int virtualFileNumber, int size) {
@@ -148,6 +155,31 @@ public class VirtualPageFile implements Flushable, Closeable{
         putHeaderVirtualFilePosition(virtualFileNumber,result+size);
         // It is possible to have a race here which could result in loosing an appended value if the writer process dies
         // before it writes again...
+        return result;
+    }
+
+    long appendPageAlignedPosition(int virtualFileNumber, int size, int lowBound, int highBound){
+
+        long[] effectivelyFinal = new long[1];
+        getAtomicVirtualFilePosition(virtualFileNumber).getAndUpdate(val -> {
+
+            int naturalPageStartPosition = pagePosition(val);
+            int availableSpace = pageSize - naturalPageStartPosition;
+
+            if (availableSpace >= highBound) {
+                effectivelyFinal[0] = val;
+                return val + size;
+            } else if (availableSpace <= lowBound) {
+                effectivelyFinal[0] = val;
+                return val + size;
+            } else {
+              effectivelyFinal[0] = val + availableSpace - lowBound;
+              return val + size + availableSpace - lowBound;
+            }
+        });
+
+        final long result = effectivelyFinal[0];
+        putHeaderVirtualFilePosition(virtualFileNumber,result+size);
         return result;
     }
 
@@ -199,7 +231,7 @@ public class VirtualPageFile implements Flushable, Closeable{
      */
     Page getPage(int virtualFileNumber, int pageNumber) {
         long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
-        
+
         if (pageCache != null) {
             return pageCache.getIfPresent(this, startPosition).orElse(filePage(startPosition));
         } else {
@@ -364,6 +396,8 @@ public class VirtualPageFile implements Flushable, Closeable{
 
     private long getOrAllocatePage(int virtualFileNumber, int pageNumber) {
         final long startPosition;
+
+        // TODO fix this for readonly mode
         int curentPageCount = virtualFilePageCounts[virtualFileNumber].get();
         if (pageNumber < curentPageCount) {
             return getPageStart(virtualFileNumber, pageNumber);
@@ -391,14 +425,6 @@ public class VirtualPageFile implements Flushable, Closeable{
         boolean firstPage = firstPagePositions[virtualFileNumber].compareAndSet(0L, nextPageStart);
         lastPagePositions[virtualFileNumber].set(nextPageStart);
 
-        // Update the persisted header values
-        if (firstPage) putHeaderFirstPage(virtualFileNumber, nextPageStart);
-        putHeaderLastPage(virtualFileNumber, nextPageStart);
-        putHeaderVirtualFilePageCount(virtualFileNumber, nextPageNumber + 1);
-
-        // Update the persistent table of pages
-        putPageStart(virtualFileNumber, nextPageNumber, nextPageStart);
-
         long lastPageStart = getPageStart(virtualFileNumber, nextPageNumber -1);
 
         ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
@@ -410,7 +436,7 @@ public class VirtualPageFile implements Flushable, Closeable{
             try {
                 channel.write(longBuffer, lastPageStart + pageSize + 8);
             } catch (IOException e) {
-                throw new UncheckedIOException("Unable to next pointer for new page in " + filePath, e);
+                throw new UncheckedIOException("Unable to write next pointer in last page" + filePath, e);
             }
         }
 
@@ -421,10 +447,29 @@ public class VirtualPageFile implements Flushable, Closeable{
         try {
             channel.write(longBuffer, nextPageStart);
         } catch (IOException e) {
-            throw new UncheckedIOException("Unable to next pointer for new page in " + filePath, e);
+            throw new UncheckedIOException("Unable to write previous pointer for new page in " + filePath, e);
         }
 
-        // Now that the page is allocated - update the counter which is the lock
+        // Put a default value in the forward pointer in the new page to extend the file to the end of the page
+        longBuffer.rewind();
+        longBuffer.asLongBuffer().put(-1); // will be -1 until another page is added
+        longBuffer.rewind();
+
+        try {
+            channel.write(longBuffer, nextPageStart + pageSize + 8);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to write previous pointer for new page in " + filePath, e);
+        }
+
+        // Update the persistent table of pages
+        putPageStart(virtualFileNumber, nextPageNumber, nextPageStart);
+
+        // Update the persisted header values
+        if (firstPage) putHeaderFirstPage(virtualFileNumber, nextPageStart);
+        putHeaderLastPage(virtualFileNumber, nextPageStart);
+        putHeaderVirtualFilePageCount(virtualFileNumber, nextPageNumber + 1);
+
+        // Now that the page is allocated and persistent - update the counter which is the lock controlling access
         virtualFilePageCounts[virtualFileNumber].getAndIncrement();
         return nextPageStart;
     }

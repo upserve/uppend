@@ -63,7 +63,7 @@ public class FilePage implements Page {
             throw new UncheckedIOException("Unable to write to page", e);
         }
 
-        if (channelWrite != actualWrite) throw new IllegalStateException("Failed to read past end of file");
+        if (channelWrite != actualWrite) throw new IllegalStateException("Failed to write all bytes to file page");
 
         return actualWrite;
     }

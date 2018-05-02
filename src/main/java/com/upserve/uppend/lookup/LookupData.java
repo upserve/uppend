@@ -19,8 +19,7 @@ public class LookupData implements Flushable {
     private final PartitionLookupCache partitionLookupCache;
 
     // The container for stuff we need to write
-    protected final ConcurrentHashMap<LookupKey, Long> writeCache; // Only new keys can be in the write cache
-
+    private final ConcurrentHashMap<LookupKey, Long> writeCache; // Only new keys can be in the write cache
 
     private final boolean readOnly;
 
@@ -161,10 +160,7 @@ public class LookupData implements Flushable {
                     ref[0] = newValue;
 
                     partitionLookupCache.putLookup(key, newValue); // Update the read cache
-                    // This is gross - find a way to hold onto the position???
-                    LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
-                    Long pos = lookupMetadata.findKeyPosition(this, key);
-                    keyLongBlobs.writeLong(pos, newValue); // Update the value on disk
+                    keyLongBlobs.writeLong(key.getPosition(), newValue); // Update the value on disk
 
                     // No need to add this to the write cache
                     return null;
@@ -202,11 +198,7 @@ public class LookupData implements Flushable {
                     ref[0] = existingValue;
 
                     partitionLookupCache.putLookup(key, value); // Update the read cache
-
-                    // This is gross - find a way to hold onto the position???
-                    LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
-                    Long pos = lookupMetadata.findKeyPosition(this, key);
-                    keyLongBlobs.writeLong(pos, value); // Update the value on disk
+                    keyLongBlobs.writeLong(key.getPosition(), value); // Update the value on disk
 
                     // No need to add this to the write cache
                     return null;
@@ -272,12 +264,7 @@ public class LookupData implements Flushable {
      */
     private Long findValueFor(LookupKey key) {
         LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
-        Long pos = lookupMetadata.findKeyPosition(this, key);
-        if (pos == null){
-            return null;
-        } else {
-            return readValue(pos);
-        }
+        return lookupMetadata.findKey(keyLongBlobs, key);
     }
 
     public int getMetaDataGeneration(){
@@ -319,7 +306,6 @@ public class LookupData implements Flushable {
         log.debug("starting flush");
         if (writeCache.size() > 0) {
 
-
             Set<LookupKey> keys = writeCacheKeySetCopy();
 
             LookupMetadata currentMetadata = partitionLookupCache.getMetadata(this);
@@ -331,9 +317,11 @@ public class LookupData implements Flushable {
 
             log.debug("Flushing {} entries", keys.size());
 
-            BulkAppender bulkBlobAppender = new BulkAppender(
-                    keyLongBlobs, keys.stream().map(LookupKey::bytes).mapToInt(VirtualLongBlobStore::recordSize).sum()
-            );
+            // TODO Investigate using the bulk appender here - need to be careful with page spacing for mutable long values
+            // TODO Also need to be sure the mutable value is not modified on disk while it exists only in the bulk appender byte[] as it would get overwritten
+//            BulkAppender bulkBlobAppender = new BulkAppender(
+//                    keyLongBlobs, keys.stream().map(LookupKey::bytes).mapToInt(VirtualLongBlobStore::recordSize).sum()
+//            );
 
             Map<Integer, List<Map.Entry<Long, LookupKey>>> newKeysGroupedBySortOrderIndex;
             try {
@@ -342,18 +330,23 @@ public class LookupData implements Flushable {
                         .peek(key -> {
                             // Check the metadata generation of the LookupKeys
                             if (key.getMetaDataGeneration() != currentMetadataGeneration) {
-                                // Update the index of the key which this new value sorts after
-                                currentMetadata.findKeyPosition(this, key);
+                                // Update the index of the key for the current metadata generation for so we can insert it correctly
+                                currentMetadata.findKey(keyLongBlobs, key);
                             }
                         })
                         .map(key -> {
                                     long[] posValue = new long[1];
                                     writeCache.computeIfPresent(key, (k, v) -> {
                                         partitionLookupCache.putLookup(k, v);
-                                        final byte[] keyBlob = VirtualLongBlobStore.byteRecord(v, key.bytes());
-                                        final long pos = bulkBlobAppender.getBulkAppendPosition(keyBlob.length);
+
+                                        final long pos = keyLongBlobs.append(v, k.bytes());
+                                        key.setPosition(pos);
+
+//                                        final byte[] keyBlob = VirtualLongBlobStore.byteRecord(v, key.bytes());
+//                                        final long pos = bulkBlobAppender.getBulkAppendPosition(keyBlob.length);
+//                                        bulkBlobAppender.addBulkAppendBytes(pos, keyBlob);
+
                                         posValue[0] = pos;
-                                        bulkBlobAppender.addBulkAppendBytes(pos, keyBlob);
                                         return null;
                                     });
 
@@ -362,7 +355,7 @@ public class LookupData implements Flushable {
 
                         ).collect(Collectors.groupingBy(entry -> entry.getValue().getInsertAfterSortIndex(), Collectors.toList()));
 
-                bulkBlobAppender.finishBulkAppend();
+//                bulkBlobAppender.finishBulkAppend();
 
             } finally {
                 writeLock.unlock();

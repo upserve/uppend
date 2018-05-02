@@ -25,7 +25,7 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
         if (log.isTraceEnabled()) log.trace("read mapped from  {} @ {}", virtualFileNumber, pos);
         int size = readInt(pos);
         byte[] buf = new byte[size];
-        readMapped(pos + 4, buf);
+        super.read(pos + 4, buf);
 
         if (log.isTraceEnabled()) log.trace("read mapped {} bytes from {} @ {}", size, virtualFileNumber, pos);
         return buf;

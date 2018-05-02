@@ -216,9 +216,7 @@ public class Benchmark {
                     double total = runtime.totalMemory() / (1024.0 * 1024.0);
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
 
-                    long fds = FileDescriptors.getOpen();
-
-                    log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total; Open files: %s", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total, fds));
+                    log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
 
                     stats = testInstance.getBlobPageCacheStats();
                     log.info("Blob Page Cache: {}", stats.minus(blobPageCacheStats.getAndSet(stats)));

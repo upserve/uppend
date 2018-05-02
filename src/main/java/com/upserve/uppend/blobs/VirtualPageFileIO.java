@@ -24,8 +24,20 @@ public class VirtualPageFileIO {
         if (virtualFileNumber > virtualPageFile.getVirtualFiles()) throw new IllegalStateException("Requested a virtual file " + virtualFileNumber + " which is greater than the max allocated " + virtualPageFile.getVirtualFiles());
     }
 
-    long appendPosition(int size) {
+    long appendPageAlignedPosition(int size, int lowBound, int highBound) {
         // return the position for the next write
+        return virtualPageFile.appendPageAlignedPosition(virtualFileNumber, size, lowBound, highBound);
+    }
+
+    public boolean isReadOnly(){
+        return virtualPageFile.isReadOnly();
+    }
+
+    boolean isPageAllocated(long position) {
+        return virtualPageFile.isPageAvailable(virtualFileNumber, virtualPageFile.pageNumber(position));
+    }
+
+    long appendPosition(int size){
         return virtualPageFile.appendPosition(virtualFileNumber, size);
     }
 
@@ -79,18 +91,18 @@ public class VirtualPageFileIO {
     int readInt(long pos) {
         // TODO make thread local byte array?
         byte[] buf = new byte[4];
-        readMapped(pos, buf);
+        read(pos, buf);
         return Ints.fromByteArray(buf);
     }
 
     long readLong(long pos) {
         // TODO make thread local byte array?
         byte[] buf = new byte[8];
-        readMapped(pos, buf);
+        read(pos, buf);
         return Longs.fromByteArray(buf);
     }
 
-    void readMapped(long pos, byte[] buf){
+    void read(long pos, byte[] buf){
         if (buf.length == 0) return;
         final int result = readPagedOffset(pos, buf, 0);
         if (result != buf.length) {
@@ -106,9 +118,9 @@ public class VirtualPageFileIO {
         bytesRead = page.get(virtualPageFile.pagePosition(pos), buf, offset);
 
         if (bytesRead < (buf.length - offset)){
+            // TODO see if it is faster to use the head pointer to the next page start rather than recursion here?
             bytesRead += readPagedOffset(pos + bytesRead, buf, offset + bytesRead);
         }
         return bytesRead;
     }
-
 }

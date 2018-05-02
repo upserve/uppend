@@ -138,7 +138,7 @@ public class AppendOnlyStoreTest {
                             });
                 });
 
-        future.get(30_000, TimeUnit.MILLISECONDS);
+        future.get(300_000, TimeUnit.MILLISECONDS);
 
         flusherThread.interrupt();
         flusherThread.join(200);

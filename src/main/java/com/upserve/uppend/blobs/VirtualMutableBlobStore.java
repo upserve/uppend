@@ -15,9 +15,13 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
         super(virtualFileNumber, virtualPageFile);
     }
 
-    public void write(byte[] bytes, long position) {
+    public void write(long position, byte[] bytes) {
         // TODO Need to create a LockedPage for this to work across multiple threads / JVM
-        write(position, byteRecord(bytes));
+        super.write(position, byteRecord(bytes));
+    }
+
+    public boolean isPageAllocated(long position) {
+        return super.isPageAllocated(position);
     }
 
     public byte[] read(long pos) {
@@ -26,9 +30,9 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
         byte[] buf = new byte[size];
 
         byte[] checksum = new byte[4];
-        readMapped(pos + 4, checksum);
+        read(pos + 4, checksum);
 
-        readMapped(pos + 8, buf);
+        read(pos + 8, buf);
 
         if (log.isTraceEnabled()) log.trace("read mapped {} bytes from {} @ {}", size, virtualFileNumber, pos);
         if (Arrays.equals(checksum, hashFunction.hashBytes(buf).asBytes())) {
@@ -36,7 +40,6 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
         } else {
             throw new IllegalStateException("Checksum did not match for the requested blob");
         }
-
     }
 
     public static int recordSize(byte[] inputBytes){
