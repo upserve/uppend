@@ -212,25 +212,19 @@ public class VirtualPageFile implements Flushable, Closeable{
     }
 
     /**
-     * Get a FileChannel backed Page (no cache)
+     * Get or create (allocate) the page if it does not exist.
+     * Returns a MappedByteBuffer backed Page if there is one in the cache. Otherwise it returns a FilePage
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
      * @return a Page for File IO
      */
-    Page getFilePage(int virtualFileNumber, int pageNumber) {
-        long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
-
-        return filePage(startPosition);
-    }
-
-    /**
-     * Get a MappedByteBuffer backed Page if there is a cache and the page exists. Otherwise it returns a FilePage
-     * @param virtualFileNumber the virtual file number
-     * @param pageNumber the page number to getValue
-     * @return a Page for File IO
-     */
-    Page getPage(int virtualFileNumber, int pageNumber) {
-        long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
+    Page getOrCreatePage(int virtualFileNumber, int pageNumber) {
+        final long startPosition;
+        if (isPageAvailable(virtualFileNumber, pageNumber)) {
+            startPosition = getPageStart(virtualFileNumber, pageNumber);
+        } else {
+            startPosition = allocatePosition(virtualFileNumber, pageNumber);
+        }
 
         if (pageCache != null) {
             return pageCache.getIfPresent(this, startPosition).orElse(filePage(startPosition));
@@ -245,12 +239,12 @@ public class VirtualPageFile implements Flushable, Closeable{
      * @param pageNumber the page number to getValue
      * @return a Page for File IO
      */
-    Page getMappedPage(int virtualFileNumber, int pageNumber) {
-        long startPosition = getOrAllocatePage(virtualFileNumber, pageNumber);
-
+    Page getExistingPage(int virtualFileNumber, int pageNumber) {
+        // TODO we could cache each page start in the writer if reading the long from the mapped byte buffer gets expensive
+        long startPosition = getPageStart(virtualFileNumber, pageNumber);
 
         if (pageCache != null) {
-            return pageCache.get(this, startPosition);
+            return pageCache.get(startPosition, getFilePath(), pageKey -> mappedPage(pageKey.getPosition()));
         } else {
             return mappedPage(startPosition);
         }
@@ -344,7 +338,7 @@ public class VirtualPageFile implements Flushable, Closeable{
             nextPagePosition = new AtomicLong(nextPosition);
         }
 
-        // TODO Check file size on startup and try to recover pages?
+        // TODO Check file size on startup and try to recover pages from the head and tail pointers on the pages?
     }
 
     private long getPageStart(int virtualFileNumber, int pageNumber) {
@@ -394,34 +388,21 @@ public class VirtualPageFile implements Flushable, Closeable{
         headerBuffer.putInt(virtualFileNumber * HEADER_RECORD_SIZE + 24, count);
     }
 
-    private long getOrAllocatePage(int virtualFileNumber, int pageNumber) {
-        final long startPosition;
-
-        // TODO fix this for readonly mode
-        int curentPageCount = virtualFilePageCounts[virtualFileNumber].get();
-        if (pageNumber < curentPageCount) {
-            return getPageStart(virtualFileNumber, pageNumber);
-        } else if (readOnly) {
-            throw new IllegalStateException("Requested a page which is not yet allocated in a read only virtual file");
-        } else if (pageNumber == curentPageCount) {
-            synchronized (virtualFilePageCounts[virtualFileNumber]) {
-                // If another thread has already done it - just return the start position
-                if (pageNumber == virtualFilePageCounts[virtualFileNumber].get()) {
-                    return allocatePage(virtualFileNumber);
-                }
+    private long allocatePosition(int virtualFileNumber, int pageNumber) {
+        synchronized (virtualFilePageCounts[virtualFileNumber]) {
+            // If another thread has already done it - just return the start position
+            while (pageNumber >= virtualFilePageCounts[virtualFileNumber].get()) {
+                allocatePage(virtualFileNumber);
             }
-            return getPageStart(virtualFileNumber, pageNumber);
-        } else {
-            // This should not happen
-            throw new IllegalStateException("Requested page " + pageNumber + " but only currently have " + curentPageCount);
         }
+        return getPageStart(virtualFileNumber, pageNumber);
     }
 
-    private long allocatePage(int virtualFileNumber) {
+    private void allocatePage(int virtualFileNumber) {
 
         // Do the atomic stuff
         long nextPageStart = nextPagePosition.getAndAdd(pageSize + 16);
-        int nextPageNumber = virtualFilePageCounts[virtualFileNumber].get(); // the result is the index, the incremented value is the new count!
+        int nextPageNumber = virtualFilePageCounts[virtualFileNumber].get(); // the result is the index, the value incremented at the end of the method is the new count!
         boolean firstPage = firstPagePositions[virtualFileNumber].compareAndSet(0L, nextPageStart);
         lastPagePositions[virtualFileNumber].set(nextPageStart);
 
@@ -471,6 +452,5 @@ public class VirtualPageFile implements Flushable, Closeable{
 
         // Now that the page is allocated and persistent - update the counter which is the lock controlling access
         virtualFilePageCounts[virtualFileNumber].getAndIncrement();
-        return nextPageStart;
     }
 }

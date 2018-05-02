@@ -72,14 +72,14 @@ public class PageCacheTest {
         final long position = 1284;
         Page page;
 
-        page = instance.get(virtualPageFile, position);
+        page = instance.get(position, virtualPageFile.getFilePath(), pageKey -> virtualPageFile.mappedPage(pageKey.getPosition()));
         byte[] expected = "abc".getBytes();
         page.put(0, expected, 0);
 
         instance.flush();
 
         byte[] result = new byte[3];
-        page = instance.get(virtualPageFile, position);
+        page = instance.get(position, virtualPageFile.getFilePath(), pageKey -> virtualPageFile.mappedPage(pageKey.getPosition()));
         page.get(0, result, 0);
 
         assertArrayEquals(expected, result);

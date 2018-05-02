@@ -77,7 +77,7 @@ public class VirtualPageFileIO {
 
     private int writePagedOffset(long pos, byte[] bytes, int offset) {
         int pageNumber = virtualPageFile.pageNumber(pos);
-        Page page = virtualPageFile.getPage(virtualFileNumber, pageNumber);
+        Page page = virtualPageFile.getOrCreatePage(virtualFileNumber, pageNumber);
 
         int bytesWritten;
         bytesWritten = page.put(virtualPageFile.pagePosition(pos), bytes, offset);
@@ -112,7 +112,7 @@ public class VirtualPageFileIO {
 
     private int readPagedOffset(long pos, byte[] buf, int offset) {
         int pageNumber = virtualPageFile.pageNumber(pos);
-        Page page = virtualPageFile.getMappedPage(virtualFileNumber, pageNumber);
+        Page page = virtualPageFile.getExistingPage(virtualFileNumber, pageNumber);
 
         int bytesRead;
         bytesRead = page.get(virtualPageFile.pagePosition(pos), buf, offset);

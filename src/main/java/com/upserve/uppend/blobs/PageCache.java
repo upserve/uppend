@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
+import java.nio.file.Path;
 import java.util.Optional;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -48,10 +49,9 @@ public class PageCache implements Flushable {
         return pageSize;
     }
 
-    Page get(VirtualPageFile virtualPageFile, long pos) {
-        return pageCache.get(new PageKey(virtualPageFile.getFilePath(), pos), pageKey -> virtualPageFile.mappedPage(pos));
+    Page get(long pos, Path path, Function<PageKey, Page> pageLoader) {
+        return pageCache.get(new PageKey(path, pos), pageLoader);
     }
-
 
     Optional<Page> getIfPresent(VirtualPageFile virtualPageFile, long pos){
         return Optional.ofNullable(pageCache.getIfPresent(new PageKey(virtualPageFile.getFilePath(), pos)));

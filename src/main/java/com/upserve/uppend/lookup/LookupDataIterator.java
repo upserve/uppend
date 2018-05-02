@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
+// TODO Use the metadata sort order in the iterator to provide the position!
 public class LookupDataIterator<T> implements Iterator<T> {
 
     private int keyIndex = 0;
