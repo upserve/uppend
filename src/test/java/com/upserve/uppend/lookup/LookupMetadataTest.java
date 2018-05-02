@@ -4,7 +4,6 @@ import com.google.common.primitives.Ints;
 import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
-import org.apache.logging.log4j.message.AsynchronouslyFormattable;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
@@ -12,8 +11,6 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.IntStream;

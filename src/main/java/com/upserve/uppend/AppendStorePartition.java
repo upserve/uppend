@@ -119,7 +119,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 .boxed()
                 .flatMap(virtualFileNumber ->
                     lookups[virtualFileNumber].scan().map(entry -> Maps.immutableEntry(
-                            entry.getKey(),
+                            entry.getKey().string(),
                             blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read)
                     ))
                 );
@@ -131,7 +131,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 .parallel()
                 .boxed()
                 .forEach(virtualFileNumber ->
-                        lookups[virtualFileNumber].scan().forEach(entry -> callback.accept(entry.getKey(), blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read))
+                        lookups[virtualFileNumber].scan().forEach(entry -> callback.accept(entry.getKey().string(), blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read))
                 ));
     }
 

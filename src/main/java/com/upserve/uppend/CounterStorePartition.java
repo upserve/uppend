@@ -73,7 +73,7 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         return IntStream.range(0, hashSize)
                 .parallel()
                 .boxed()
-                .flatMap(virtualFileNumber -> lookups[virtualFileNumber].scan());
+                .flatMap(virtualFileNumber -> lookups[virtualFileNumber].scan().map(entry -> Maps.immutableEntry(entry.getKey().string(), entry.getValue())));
     }
 
     public void scan(ObjLongConsumer<String> callback) {
@@ -81,7 +81,7 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         IntStream.range(0, hashSize)
                 .parallel()
                 .boxed()
-                .forEach(virtualFileNumber -> lookups[virtualFileNumber].scan(callback));
+                .forEach(virtualFileNumber -> lookups[virtualFileNumber].scan((keyLookup,value) -> callback.accept(keyLookup.string(), value)));
     }
 
     Stream<String> keys(){

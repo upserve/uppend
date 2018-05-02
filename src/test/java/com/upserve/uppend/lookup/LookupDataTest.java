@@ -1,95 +1,96 @@
-//package com.upserve.uppend.lookup;
-//
-//import com.github.benmanes.caffeine.cache.stats.CacheStats;
-//import com.upserve.uppend.AppendOnlyStoreBuilder;
-//import com.upserve.uppend.blobs.*;
-//import com.upserve.uppend.util.SafeDeleting;
-//import org.junit.*;
-//
-//import java.io.*;
-//import java.nio.file.*;
-//import java.util.concurrent.atomic.AtomicReference;
-//import java.util.stream.LongStream;
-//
-//import static org.junit.Assert.*;
-//
-//public class LookupDataTest {
-//
-//    private static final String LOOKUP_KEY = "Lookup Key";
-//    private static final String LOOKUP_PAGES = "Lookup Pages";
-//    private static final String LOOKUP_METADATA = "Lookup Metadata";
-//
-//    private final String name = "lookupdata-test";
-//    private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
-//    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder
-//            .getDefaultTestBuilder()
-//            .withLookupPageSize(32*1024)
-//            .withMaximumLookupKeyCacheWeight(1024 * 1024)
-//            ;
-//
-//    private final PageCache pageCache = defaults.buildLookupPageCache(name);
-//    private final LookupCache lookupCache = defaults.buildLookupCache(name);
-//
-//    private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
-//
-//    private AtomicReference<CacheStats> lookupPageCacheStats = new AtomicReference<>(lookupCache.pageStats());
-//    private AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<>(lookupCache.keyStats());
-//    private AtomicReference<CacheStats> lookupMetadataCacheStats = new AtomicReference<>(lookupCache.metadataStats());
-//
-//    @Before
-//    public void initialize() throws Exception {
-//        SafeDeleting.removeDirectory(lookupDir);
-//    }
-//
-//    @After
-//    public void tearDown() {
-//        lookupCache.flush();
-//        pageCache.flush();
-//        fileCache.flush();
-//    }
-//
-//    @Test
-//    public void testCtor() throws Exception {
-//        new LookupData(lookupDir, partitionLookupCache);
-//    }
-//
-//    @Test
-//    public void testCtorErrors() throws Exception {
-//        Files.createDirectories(lookupDir);
-//        File notDir = File.createTempFile("not-a-dir", ".tmp", lookupDir.toFile());
-//        Path notDirPath = notDir.toPath();
-//        Exception expected = null;
-//
-//        try {
-//            new LookupData(notDirPath, partitionLookupCache);
-//        } catch (UncheckedIOException e) {
-//            expected = e;
-//        }
-//        assertNotNull(expected);
-//        assertTrue(expected.getMessage().contains("unable to make parent dir"));
-//
-//        expected = null;
-//        notDirPath = notDirPath.resolve("sub").resolve("sub2");
-//        try {
-//            new LookupData(notDirPath, partitionLookupCache);
-//        } catch (UncheckedIOException e) {
-//            expected = e;
-//        }
-//        assertNotNull(expected);
-//        assertTrue(expected.getMessage().contains("unable to make parent dir"));
-//
-//        assertTrue(notDir.delete());
-//    }
-//
-//    @Test
-//    public void testGetAndPut() throws Exception {
-//        LookupData data = new LookupData(lookupDir, partitionLookupCache);
-//        final LookupKey key = new LookupKey("mykey");
-//        assertEquals(null, data.getValue(key));
-//        data.put(key, 80);
-//        assertEquals(Long.valueOf(80), data.getValue(key));
-//    }
-//
+package com.upserve.uppend.lookup;
+
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.upserve.uppend.AppendOnlyStoreBuilder;
+import com.upserve.uppend.blobs.*;
+import com.upserve.uppend.util.SafeDeleting;
+import org.junit.*;
+import org.junit.rules.ExpectedException;
+
+import java.io.*;
+import java.nio.file.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.LongStream;
+
+import static org.junit.Assert.*;
+
+public class LookupDataTest {
+
+    private static final String LOOKUP_KEY = "Lookup Key";
+    private static final String LOOKUP_PAGES = "Lookup Pages";
+    private static final String LOOKUP_METADATA = "Lookup Metadata";
+
+    private final String name = "lookupdata-test";
+    private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
+    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder
+            .getDefaultTestBuilder()
+            .withLookupPageSize(32*1024)
+            .withMaximumLookupKeyCacheWeight(1024 * 1024);
+
+    private final PageCache pageCache = defaults.buildLookupPageCache(name);
+    private final LookupCache lookupCache = defaults.buildLookupCache(name);
+
+    private final PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
+
+    private AtomicReference<CacheStats> lookupPageCacheStats = new AtomicReference<>(pageCache.stats());
+    private AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<>(lookupCache.keyStats());
+    private AtomicReference<CacheStats> lookupMetadataCacheStats = new AtomicReference<>(lookupCache.metadataStats());
+
+    private VirtualPageFile metadataPageFile;
+    private VirtualMutableBlobStore mutableBlobStore;
+
+    private VirtualPageFile keyDataPageFile;
+    private VirtualLongBlobStore keyBlobStore;
+
+    @Rule
+    public ExpectedException thrown = ExpectedException.none();
+
+    public static final int NUMBER_OF_STORES = 12;
+
+    @Before
+    public void initialize() throws Exception {
+        SafeDeleting.removeDirectory(lookupDir);
+        Files.createDirectories(lookupDir);
+        setup(false);
+    }
+
+
+    public void setup(boolean readOnly) {
+        metadataPageFile = new VirtualPageFile(lookupDir.resolve("metadata"), NUMBER_OF_STORES, 1024, readOnly);
+        mutableBlobStore = new VirtualMutableBlobStore(1, metadataPageFile);
+
+        keyDataPageFile = new VirtualPageFile(lookupDir.resolve("keydata"), NUMBER_OF_STORES, readOnly, pageCache);
+        keyBlobStore = new VirtualLongBlobStore(1, metadataPageFile);
+    }
+
+    @After
+    public void tearDown() throws IOException {
+        lookupCache.flush();
+        pageCache.flush();
+        keyDataPageFile.close();
+        metadataPageFile.close();
+    }
+
+
+    @Test
+    public void testOpenEmptyReadOnly() throws Exception {
+        tearDown(); // Close the page files
+        setup(true);
+        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, partitionLookupCache, false);
+        final LookupKey key = new LookupKey("mykey");
+
+        assertNull(data.getValue(key));
+    }
+
+    @Test
+    public void testOpenGetAndPut() throws Exception {
+        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, partitionLookupCache, false);
+        final LookupKey key = new LookupKey("mykey");
+        assertEquals(null, data.getValue(key));
+        data.put(key, 80);
+        assertEquals(Long.valueOf(80), data.getValue(key));
+    }
+
 //    @Test
 //    public void testPutIfNotExists() throws Exception {
 //        LookupData data = new LookupData(lookupDir, partitionLookupCache);
@@ -387,27 +388,27 @@
 //        assertLookupPagesCache(0, 0, 0, 0);
 //        assertLookupMetadataCache(0, 0, 0, 0);
 //    }
+
+
+
+//    @Test
+//    public void testScan() throws Exception {
+//        LookupData data = new LookupData(lookupDir, partitionLookupCache);
+//        data.put(new LookupKey("mykey1"), 1);
+//        data.put(new LookupKey("mykey2"), 2);
+//        data.flush();
+//        Map<String, Long> entries = new TreeMap<>();
+//        data.scan(entries::put);
+//        assertEquals(2, entries.size());
+//        assertArrayEquals(new String[]{"mykey1", "mykey2"}, entries.keySet().toArray(new String[0]));
+//        assertArrayEquals(new Long[]{1L, 2L}, entries.values().toArray(new Long[0]));
+//    }
 //
-//
-//
-////    @Test
-////    public void testScan() throws Exception {
-////        LookupData data = new LookupData(lookupDir, partitionLookupCache);
-////        data.put(new LookupKey("mykey1"), 1);
-////        data.put(new LookupKey("mykey2"), 2);
-////        data.flush();
-////        Map<String, Long> entries = new TreeMap<>();
-////        data.scan(entries::put);
-////        assertEquals(2, entries.size());
-////        assertArrayEquals(new String[]{"mykey1", "mykey2"}, entries.keySet().toArray(new String[0]));
-////        assertArrayEquals(new Long[]{1L, 2L}, entries.values().toArray(new Long[0]));
-////    }
-////
-////    @Test
-////    public void testScanNonExistant() throws Exception {
-////        LookupData data = new LookupData(lookupDir, partitionLookupCache);
-////        data.scan((k, v) -> {
-////            throw new IllegalStateException("should not have called this");
-////        });
-////    }
-//}
+//    @Test
+//    public void testScanNonExistant() throws Exception {
+//        LookupData data = new LookupData(lookupDir, partitionLookupCache);
+//        data.scan((k, v) -> {
+//            throw new IllegalStateException("should not have called this");
+//        });
+//    }
+}

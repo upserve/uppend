@@ -44,7 +44,7 @@ public class LookupCache implements Flushable {
                 .maximumWeight(maximumMetaDataWeight)
                 .<LookupData, LookupMetadata>weigher((k ,v) -> v.weight());
 
-         // TODO add TTL for read only stores on metadata
+         //TODO add TTL for read only stores on metadata
 
         if (metadataCacheMetricsSupplier != null) {
             metadataCacheBuilder = metadataCacheBuilder.recordStats(metadataCacheMetricsSupplier);
