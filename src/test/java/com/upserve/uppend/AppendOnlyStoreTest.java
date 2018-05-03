@@ -16,9 +16,7 @@ import java.util.stream.Collectors;
 import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
-
     private final Path path = Paths.get("build/test/file-append-only-store");
-
 
     private AppendOnlyStore newStore() {
         return AppendOnlyStoreBuilder.getDefaultTestBuilder().withDir(path).build(false);
@@ -72,6 +70,10 @@ public class AppendOnlyStoreTest {
         store.append("partition", key, bytes);
         store.clear();
         assertEquals(0, store.read("partition", key).count());
+
+        assertEquals(0, store.partitions().count());
+        assertEquals(0, store.keys("partition").count());
+
         store.append("partition", key, bytes);
         assertEquals(1, store.read("partition", key).count());
     }

@@ -36,10 +36,6 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         return name;
     }
 
-    private static Path partionPath(Path dir) {
-        return dir.resolve("partitions");
-    }
-
     @Override
     public Long set(String partition, String key, long value) {
         log.trace("setting {}={} in partition '{}'", key, value, partition);

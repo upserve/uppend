@@ -69,6 +69,10 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
         isClosed = new AtomicBoolean(false);
     }
 
+    protected static Path partionPath(Path dir) {
+        return dir.resolve("partitions");
+    }
+
     abstract Function<String, T> getOpenPartitionFunction();
 
     abstract Function<String, T> getCreatePartitionFunction();

@@ -63,10 +63,6 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         return lookupCache.metadataStats();
     }
 
-    private static Path partionPath(Path dir) {
-        return dir.resolve("partitions");
-    }
-
     @Override
     public void append(String partition, String key, byte[] value) {
         log.trace("appending for partition '{}', key '{}'", partition, key);
@@ -126,7 +122,6 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
     @Override
     public void clear() {
-        // Consider using a ReadWrite lock for clear and close?
         if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + dir);
 
         log.trace("clearing");

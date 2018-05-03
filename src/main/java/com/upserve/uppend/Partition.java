@@ -67,7 +67,7 @@ public abstract class Partition {
     }
 
     int keyHash(LookupKey key) {
-        return hashFunction.hashBytes(key.bytes()).asInt() % hashSize;
+        return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
     }
 
     public static Path metadataPath(Path partitionDir){

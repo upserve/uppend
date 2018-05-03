@@ -3,6 +3,7 @@ package com.upserve.uppend;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
+import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -103,10 +104,9 @@ public class CounterStorePartition extends Partition implements Flushable, Close
     }
 
     void clear() throws IOException {
-        Arrays.stream(lookups).parallel().forEach(LookupData::clear);
-
-        longKeyFile.clear();
-        metadataBlobFile.clear();
+        longKeyFile.close();
+        metadataBlobFile.close();
+        SafeDeleting.removeDirectory(longKeyFile.getFilePath().getParent());
     }
 
     @Override

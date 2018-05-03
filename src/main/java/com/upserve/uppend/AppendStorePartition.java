@@ -3,6 +3,7 @@ package com.upserve.uppend;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
+import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -73,10 +74,6 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         blobs = IntStream.range(0, hashSize)
                 .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(virtualFileNumber, blobsFile))
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
-    }
-
-    int keyHash(LookupKey key) {
-        return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
     }
 
     void append(String key, byte[] blob) {
@@ -155,12 +152,12 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     void clear() throws IOException {
-        Arrays.stream(lookups).parallel().forEach(LookupData::clear);
+        longKeyFile.close();
+        metadataBlobFile.close();
+        blobFile.close();
+        blocks.close();
 
-        longKeyFile.clear();
-        metadataBlobFile.clear();
-        blobFile.clear();
-        blocks.clear();
+        SafeDeleting.removeDirectory(longKeyFile.getFilePath().getParent());
     }
 
     @Override

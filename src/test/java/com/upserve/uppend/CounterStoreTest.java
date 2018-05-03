@@ -1,12 +1,14 @@
 package com.upserve.uppend;
 
 import com.google.common.collect.ImmutableMap;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -16,8 +18,10 @@ import static org.junit.Assert.*;
 public class CounterStoreTest {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    Path path = Paths.get("build/test/file-counter-store");
+
     private CounterStore newStore() {
-        return CounterStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
+        return CounterStoreBuilder.getDefaultTestBuilder().withDir(path).build();
     }
 
     private CounterStore store;
@@ -26,9 +30,10 @@ public class CounterStoreTest {
     public ExpectedException thrown = ExpectedException.none();
 
     @Before
-    public void initialize() {
+    public void initialize() throws IOException {
+        SafeDeleting.removeDirectory(path);
+        Files.createDirectories(path.getParent());
         store = newStore();
-        store.clear();
     }
 
     @After
@@ -169,10 +174,6 @@ public class CounterStoreTest {
 
     @Test
     public void testExample() throws Exception {
-        store.close();
-        store = CounterStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
-        store.clear();
-
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
