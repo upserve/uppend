@@ -19,13 +19,11 @@ public class VirtualAppendOnlyBlobStoreTest {
     private String name = "blobs_test";
     private Path rootPath = Paths.get("build/test/blobStore");
     private Path blobsPath = rootPath.resolve(name);
-    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder();
 
     private VirtualPageFile virtualPageFile;
 
-    ExecutorService executorService;
-    private PageCache pageCache;
-    private static int NUMBER_OF_STORES = 12;
+    private ExecutorService executorService;
+    private static int NUMBER_OF_STORES = 13;
 
     @Before
     public void initialize() throws IOException {
@@ -34,76 +32,102 @@ public class VirtualAppendOnlyBlobStoreTest {
         Files.createDirectories(rootPath);
 
         executorService = new ForkJoinPool();
+    }
 
-        pageCache = new PageCache(12800, 1024, 4096, executorService, null);
+    public void setup(int pageSize){
+        PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
         virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
-
-        virtualPageFile.clear();
     }
 
     @After
     public void uninitialize() throws IOException {
-        virtualPageFile.clear();
+        virtualPageFile.close();
+        executorService.shutdown();
     }
 
     @Test
     public void testSimple(){
+        setup(25);
         IntStream.range(0, NUMBER_OF_STORES)
                 .parallel()
-                .forEach(this::testVirtualBlobStore);
+                .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 0));
+
+        IntStream.range(0, NUMBER_OF_STORES)
+                .parallel()
+                .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 1));
+
+        IntStream.range(0, NUMBER_OF_STORES)
+                .parallel()
+                .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 2));
     }
 
-
-
-    private void testVirtualBlobStore(int virtualBlobStoreNumber) {
-
+    private void testVirtualBlobStore(int virtualBlobStoreNumber, int times) {
         VirtualAppendOnlyBlobStore blobStore = new VirtualAppendOnlyBlobStore(virtualBlobStoreNumber, virtualPageFile);
 
-        long pos = blobStore.append("foo".getBytes());
-        assertEquals(0, pos);
-        pos = blobStore.append("bar".getBytes());
-        assertEquals(7, pos);
-        byte[] bytes = blobStore.read(0);
-        assertEquals("foo", new String(bytes));
-        bytes = blobStore.read(7);
-        assertEquals("bar", new String(bytes));
+        long pos;
+        final int recordSize = 13 + 4;
+
+        // Write twice to this store
+        pos = blobStore.append(sampleValue("f", virtualBlobStoreNumber, times).getBytes());
+        assertEquals(times * (recordSize * 2), pos);
+        pos = blobStore.append(sampleValue("b", virtualBlobStoreNumber, times).getBytes());
+        assertEquals(recordSize + times * (recordSize * 2), pos);
+
+        IntStream
+                .rangeClosed(0, times)
+                .forEach(timeCalled -> {
+                    byte[] bytes;
+                    bytes = blobStore.read(timeCalled * (recordSize * 2));
+                    assertEquals(sampleValue("f", virtualBlobStoreNumber, timeCalled), new String(bytes));
+                    bytes = blobStore.read(recordSize + timeCalled * (recordSize * 2));
+                    assertEquals(sampleValue("b", virtualBlobStoreNumber, timeCalled), new String(bytes));
+                }
+        );
+    }
+
+    private String sampleValue(String head, int virtualStoreNumber, int times) {
+        return String.format("%s_%05d_%05d", head, virtualStoreNumber, times);
     }
 
     @Test
     public void testClear() throws IOException {
-        VirtualAppendOnlyBlobStore blobStore = new VirtualAppendOnlyBlobStore(4, virtualPageFile);
-        testVirtualBlobStore(4);
+        setup(25);
+        testVirtualBlobStore(4, 0);
+        testVirtualBlobStore(4, 1);
+
         virtualPageFile.clear();
-        testVirtualBlobStore(4);
+        testVirtualBlobStore(4, 0);
+        testVirtualBlobStore(4, 1);
     }
 
     @Test
     public void testClose() throws IOException {
-        VirtualAppendOnlyBlobStore blobStore = new VirtualAppendOnlyBlobStore(4, virtualPageFile);
+        setup(25);
+        IntStream.range(0, NUMBER_OF_STORES)
+                .parallel()
+                .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 0));
 
-        assertEquals(0, blobStore.append("foo".getBytes()));
-        assertEquals(7, blobStore.append("foobar".getBytes()));
         virtualPageFile.close();
+        setup(25);
 
-        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, 1024, false);
-        blobStore = new VirtualAppendOnlyBlobStore(4, virtualPageFile);
-        assertEquals(17, blobStore.getPosition());
-        assertEquals("foo", new String(blobStore.read(0)));
-        assertEquals("foobar", new String(blobStore.read(7)));
+        IntStream.range(0, NUMBER_OF_STORES)
+                .parallel()
+                .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 1));
+
+        IntStream.range(0, NUMBER_OF_STORES)
+                .parallel()
+                .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 2));
     }
 
     @Test
     public void testConcurrent() {
-
+        setup(1280);
         IntStream.range(0, NUMBER_OF_STORES)
                 .parallel()
                 .forEach(this::concurrentHelper);
-
-
     }
 
     private void concurrentHelper(int virtualBlobStoreNumber) {
-
         VirtualAppendOnlyBlobStore blobStore = new VirtualAppendOnlyBlobStore(virtualBlobStoreNumber, virtualPageFile);
 
         ConcurrentMap<Long, byte[]> testData = new ConcurrentHashMap<>();
@@ -117,19 +141,9 @@ public class VirtualAppendOnlyBlobStoreTest {
                     testData.put(pos, bytes);
                 });
 
-
-        try {
-            virtualPageFile.flush();
-        } catch (IOException e) {
-            throw new UncheckedIOException("flush failed", e);
-        }
-
         testData.entrySet().parallelStream().forEach(entry -> {
-
             byte[] result = blobStore.read(entry.getKey());
             assertArrayEquals(entry.getValue(), result);
         });
-
     }
-
 }

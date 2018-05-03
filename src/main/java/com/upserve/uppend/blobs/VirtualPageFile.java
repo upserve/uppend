@@ -40,6 +40,8 @@ import java.util.stream.IntStream;
  * A fixed number of pages per virtual file are allocated at startup - exceeding this number would be... bad
  * TODO - fix this!
  *
+ * TODO put the number of virtual files and the page size in the file header and check on opening
+ *
  */
 public class VirtualPageFile implements Flushable, Closeable{
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -139,6 +141,7 @@ public class VirtualPageFile implements Flushable, Closeable{
         return readOnly;
     }
 
+    // Package private methods
     boolean isPageAvailable(int virtualFileNumber, int pageNumber){
         if (readOnly) {
             return pageNumber < getHeaderVirtualFilePageCount(virtualFileNumber);
@@ -147,7 +150,6 @@ public class VirtualPageFile implements Flushable, Closeable{
         }
     }
 
-    // Package private methods
     long appendPosition(int virtualFileNumber, int size) {
         // return the position to write at
         final long result = getAtomicVirtualFilePosition(virtualFileNumber).getAndAdd(size);
@@ -320,7 +322,7 @@ public class VirtualPageFile implements Flushable, Closeable{
                 .mapToObj(AtomicInteger::new)
                 .toArray(AtomicInteger[]::new);
 
-        long nextPosition = Arrays.stream(lastPagePositions).mapToLong(AtomicLong::get).max().orElse(0L);
+        long lastStartPosition = Arrays.stream(lastPagePositions).mapToLong(AtomicLong::get).max().orElse(0L);
 
         try {
             pageTableBuffer = channel.map(mapMode, headerSize, tableSize);
@@ -329,13 +331,13 @@ public class VirtualPageFile implements Flushable, Closeable{
             throw new UncheckedIOException("unable to map page locations for path: " + filePath, e);
         }
 
-        if (nextPosition == 0) {
+        if (lastStartPosition == 0) {
             nextPagePosition = new AtomicLong(headerSize + tableSize);
 
-        } else if (nextPosition < headerSize ){
-            throw new IllegalStateException("file position " + nextPosition + " is less than header size: " + headerSize + " in file " + filePath);
+        } else if (lastStartPosition < headerSize ){
+            throw new IllegalStateException("file position " + lastStartPosition + " is less than header size: " + headerSize + " in file " + filePath);
         } else {
-            nextPagePosition = new AtomicLong(nextPosition);
+            nextPagePosition = new AtomicLong(lastStartPosition + pageSize + 16);
         }
 
         // TODO Check file size on startup and try to recover pages from the head and tail pointers on the pages?
@@ -344,7 +346,11 @@ public class VirtualPageFile implements Flushable, Closeable{
     private long getPageStart(int virtualFileNumber, int pageNumber) {
         if (pageNumber == -1) return -1L;
         int index = PAGES_PER_VIRUAL_FILE * virtualFileNumber + pageNumber;
-        return pageTable.get(index);
+        long result = pageTable.get(index);
+        if (result < headerSize + tableSize){
+            throw new IllegalStateException("Invalid page position in page table for file " + virtualFileNumber + " page " + pageNumber);
+        }
+        return result;
     }
 
     private void putPageStart(int virtualFileNumber, int pageNumber, long position){

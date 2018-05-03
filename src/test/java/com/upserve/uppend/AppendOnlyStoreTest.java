@@ -30,7 +30,8 @@ public class AppendOnlyStoreTest {
     public ExpectedException thrown = ExpectedException.none();
 
     @Before
-    public void initialize() {
+    public void initialize() throws IOException {
+        SafeDeleting.removeDirectory(path);
         store = newStore();
         store.clear();
     }
