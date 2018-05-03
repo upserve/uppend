@@ -22,7 +22,6 @@ public class AutoFlusher {
     private static final ThreadFactory threadFactory;
     public static final ExecutorService flushExecPool;
 
-
     public static final ForkJoinPool flusherWorkPool;
 
     public static Function<String, ForkJoinPool.ForkJoinWorkerThreadFactory> threadFactoryFunction;

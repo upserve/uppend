@@ -33,9 +33,7 @@ public abstract class Partition {
         return partitiondDir.resolve("blockedLongs");
     }
 
-    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, boolean readOnly) {
-
-
+    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
         this.longKeyFile = longKeyFile;
         this.metadataBlobFile = metadataBlobFile;
 
@@ -61,6 +59,7 @@ public abstract class Partition {
                                 new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
                                 new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
                                 lookupCache,
+                                flushThreshold,
                                 readOnly
                         )
                 )
@@ -70,8 +69,6 @@ public abstract class Partition {
     int keyHash(LookupKey key) {
         return hashFunction.hashBytes(key.bytes()).asInt() % hashSize;
     }
-
-
 
     public static Path metadataPath(Path partitionDir){
         return partitionDir.resolve("keyMetadata");

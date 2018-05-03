@@ -33,9 +33,9 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
         lookupCache = builder.buildLookupCache(getName());
 
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
 
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
     }
 
     @Override

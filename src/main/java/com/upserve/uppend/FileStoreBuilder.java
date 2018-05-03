@@ -50,7 +50,9 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     // Store Options
     public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
+    public static final int DEFAULT_FLUSH_THRESHOLD = 1000;
     int flushDelaySeconds = DEFAULT_FLUSH_DELAY_SECONDS;
+    int flushThreshold = DEFAULT_FLUSH_THRESHOLD;
     Path dir = null;
     MetricRegistry storeMetricsRegistry = null;
     boolean storeMetrics = false;
@@ -136,6 +138,12 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withFlushDelaySeconds(int flushDelaySeconds) {
         this.flushDelaySeconds = flushDelaySeconds;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
+    public T withFlushThreshold(int flushThreshold) {
+        this.flushThreshold = flushThreshold;
         return (T) this;
     }
 
@@ -252,6 +260,8 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     public int getFlushDelaySeconds() {
         return flushDelaySeconds;
     }
+
+    public int getFlushThreshold() { return flushThreshold; }
 
     public Path getDir() {
         return dir;

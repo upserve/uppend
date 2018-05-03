@@ -92,18 +92,6 @@ public class AppendOnlyStoreTest {
     public void testAppendWhileFlushing() throws Exception {
         ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
 
-        Thread flusherThread = new Thread(() -> {
-            while (true) {
-                try {
-                    store.flush();
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-        });
-        flusherThread.start();
-
         ExecutorService executor = new ForkJoinPool();
         Future future = executor.submit(() -> {
                     new Random(314159)
@@ -138,10 +126,7 @@ public class AppendOnlyStoreTest {
                             });
                 });
 
-        future.get(300_000, TimeUnit.MILLISECONDS);
-
-        flusherThread.interrupt();
-        flusherThread.join(200);
+        future.get(30_000, TimeUnit.MILLISECONDS);
     }
 
     @Test

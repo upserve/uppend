@@ -84,7 +84,7 @@ public class CounterStoreTest {
     }
 
     @Test
-    public void testClear() throws Exception {
+    public void testClear() {
         assertEquals(null, store.set("partition", "foo", 7));
         store.clear();
         assertEquals(null, store.get("partition", "foo"));

@@ -1,6 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
+import com.upserve.uppend.AutoFlusher;
 import com.upserve.uppend.blobs.*;
 import org.slf4j.Logger;
 
@@ -18,10 +19,14 @@ public class LookupData implements Flushable {
 
     private final PartitionLookupCache partitionLookupCache;
 
+    private final AtomicInteger writeCacheCounter;
+
+    private final int flushThreshold;
+
     // The container for stuff we need to write - Only new keys can be in the write cache
-    private final ConcurrentHashMap<LookupKey, Long> writeCache;
+    final ConcurrentHashMap<LookupKey, Long> writeCache;
     // keys written but not yet written to the metadata live here
-    private final ConcurrentHashMap<LookupKey, Long> flushCache;
+    final ConcurrentHashMap<LookupKey, Long> flushCache;
 
     private final boolean readOnly;
 
@@ -37,6 +42,10 @@ public class LookupData implements Flushable {
     private AtomicInteger metaDataGeneration;
 
     public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, boolean readOnly) {
+        this(keyLongBlobs, metadataBlobs, lookupCache, -1, readOnly);
+    }
+
+    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold, boolean readOnly) {
 
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
@@ -45,6 +54,8 @@ public class LookupData implements Flushable {
 
         this.readOnly = readOnly;
 
+        this.flushThreshold = flushThreshold;
+
         if (readOnly) {
             writeCache = null;
             flushCache = null;
@@ -52,6 +63,8 @@ public class LookupData implements Flushable {
             writeCache = new ConcurrentHashMap<>();
             flushCache = new ConcurrentHashMap<>();
         }
+
+        writeCacheCounter = new AtomicInteger();
 
         metaDataGeneration = new AtomicInteger();
 
@@ -78,6 +91,12 @@ public class LookupData implements Flushable {
         return metadataBlobs;
     }
 
+    private void flushThreshold(){
+        if (flushThreshold != -1 && writeCacheCounter.getAndIncrement() == flushThreshold) {
+            AutoFlusher.flusherWorkPool.submit(this::flush);
+        }
+    }
+
     /**
      * Set the value of the key if it does not exist and return the new value. If it does exist, return the existing value.
      *
@@ -95,6 +114,7 @@ public class LookupData implements Flushable {
                 if (existingValue == null) {
                     long val = allocateLongFunc.getAsLong();
                     ref[0] = val;
+                    flushThreshold();
                     return val;
 
                 } else {
@@ -126,6 +146,7 @@ public class LookupData implements Flushable {
                 Long existingValue = getCached(k);
                 if (existingValue == null) {
                     ref[0] = value;
+                    flushThreshold();
                     return value;
 
                 } else {
@@ -157,6 +178,7 @@ public class LookupData implements Flushable {
                 Long existingValue = getCached(writeKey);
                 if (existingValue == null) {
                     ref[0] = delta;
+                    flushThreshold();
                     return delta; // must write a new key with delta as the value when we flush
 
                 } else {
@@ -197,6 +219,7 @@ public class LookupData implements Flushable {
                 Long existingValue = getCached(writeKey);
                 if (existingValue == null) {
                     ref[0] = null;
+                    flushThreshold();
                     return value; // must write a new key with the value when we flush
 
                 } else {
@@ -305,100 +328,124 @@ public class LookupData implements Flushable {
         }
     }
 
+    void flushWriteCache(LookupMetadata currentMetadata){
+
+        Set<LookupKey> keys = writeCacheKeySetCopy();
+
+        // Now stream the keys and do sorted merge join on the keyStorageOrder from the current metadata
+
+        int currentMetadataGeneration = currentMetadata.getMetadataGeneration();
+        log.debug("Flushing {} entries", keys.size());
+
+        try {
+            // Write lock while we move entries from the writeCache to the flush cache
+            // This does not block new inserts - only scan operations that need a consistent view of the flushCache and writeCache
+            writeLock.lock();
+            keys.stream()
+                    .peek(key -> {
+                        // Check the metadata generation of the LookupKeys
+                        if (key.getMetaDataGeneration() != currentMetadataGeneration) {
+                            // Update the index of the key for the current metadata generation for so we can insert it correctly
+                            currentMetadata.findKey(keyLongBlobs, key);
+                        }
+                    })
+                    .forEach(key -> {
+                                writeCache.computeIfPresent(key, (k, v) -> {
+                                    flushCache.put(k, v);
+
+                                    final long pos = keyLongBlobs.append(v, k.bytes());
+                                    key.setPosition(pos);
+
+                                    return null;
+                                });
+                            }
+
+                    );
+
+        } finally {
+            writeLock.unlock();
+        }
+
+        log.debug("flushed keys");
+
+    }
+
+    void generateMetaData(LookupMetadata currentMetadata){
+        long[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
+
+        int flushSize = flushCache.size();
+
+        // Update the counter and flush again if there are still more entries in the write cache than the threshold
+        if (flushThreshold != -1 && writeCacheCounter.addAndGet(-flushSize) > flushThreshold){
+            AutoFlusher.flusherWorkPool.submit(this::flush);
+        }
+
+        long[] newKeySortOrder = new long[currentKeySortOrder.length + flushSize];
+
+        Map<Integer, List<LookupKey>> newKeysGroupedBySortOrderIndex = flushCache.keySet().stream().collect(Collectors.groupingBy(LookupKey::getInsertAfterSortIndex, Collectors.toList()));
+
+        int index = 0;
+
+        LookupKey minKey = currentMetadata.getMinKey();
+        LookupKey maxKey = currentMetadata.getMaxKey();
+
+        List<LookupKey> newEntries = null;
+
+        for (int i = -1; i < currentKeySortOrder.length; i++) {
+            newEntries = newKeysGroupedBySortOrderIndex.getOrDefault(i, Collections.emptyList());
+            newEntries.sort(LookupKey::compareTo);
+
+            if (i == -1) {
+                if (newEntries.size() > 0) minKey = newEntries.get(0);
+            } else {
+                newKeySortOrder[index] = currentKeySortOrder[i];
+                index++;
+            }
+
+            for(LookupKey key: newEntries){
+                newKeySortOrder[index] = key.getPosition();
+                index++;
+            }
+
+            if (i == currentKeySortOrder.length - 1 && newEntries.size() > 0){
+                maxKey = newEntries.get(newEntries.size() - 1);
+            }
+        }
+
+        log.debug("Finished creating sortOrder");
+
+        try {
+            LookupMetadata metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet());
+            partitionLookupCache.putMetadata(this, metadata);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write new metadata!", e);
+        }
+    }
+
+    void flushCacheToReadCache() {
+        Iterator<Map.Entry<LookupKey, Long>> iterator = flushCache.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<LookupKey, Long> entry = iterator.next();
+            partitionLookupCache.putLookup(entry.getKey(), entry.getValue());
+            iterator.remove();
+        }
+    }
+
+
     @Override
-    public synchronized void flush() throws IOException {
+    public synchronized void flush() {
         if (readOnly) throw new RuntimeException("Can not flush read only LookupData");
 
-        log.debug("starting flush");
         if (writeCache.size() > 0) {
-
-            Set<LookupKey> keys = writeCacheKeySetCopy();
+            log.debug("starting flush");
 
             LookupMetadata currentMetadata = partitionLookupCache.getMetadata(this);
 
-            // Now stream the keys and do sorted merge join on the keyStorageOrder from the current metadata
+            flushWriteCache(currentMetadata);
 
-            int currentMetadataGeneration = currentMetadata.getMetadataGeneration();
-            log.debug("Flushing {} entries", keys.size());
+            generateMetaData(currentMetadata);
 
-            try {
-                // Write lock while we move entries from the writeCache to the flush cache
-                // This does not block new inserts - only scan operations that need a consistent view of the flushCache and writeCache
-                writeLock.lock();
-                keys.stream()
-                        .peek(key -> {
-                            // Check the metadata generation of the LookupKeys
-                            if (key.getMetaDataGeneration() != currentMetadataGeneration) {
-                                // Update the index of the key for the current metadata generation for so we can insert it correctly
-                                currentMetadata.findKey(keyLongBlobs, key);
-                            }
-                        })
-                        .forEach(key -> {
-                                    writeCache.computeIfPresent(key, (k, v) -> {
-                                        flushCache.put(k, v);
-
-                                        final long pos = keyLongBlobs.append(v, k.bytes());
-                                        key.setPosition(pos);
-
-                                        return null;
-                                    });
-                                }
-
-                        );
-
-            } finally {
-                writeLock.unlock();
-            }
-
-            log.debug("flushed keys");
-
-            long[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
-
-            long[] newKeySortOrder = new long[currentKeySortOrder.length + keys.size()];
-
-            Map<Integer, List<LookupKey>> newKeysGroupedBySortOrderIndex = flushCache.keySet().stream().collect(Collectors.groupingBy(LookupKey::getInsertAfterSortIndex, Collectors.toList()));
-
-            int index = 0;
-
-            LookupKey minKey = currentMetadata.getMinKey();
-            LookupKey maxKey = currentMetadata.getMaxKey();
-
-            List<LookupKey> newEntries = null;
-
-            for (int i = -1; i < currentKeySortOrder.length; i++) {
-                newEntries = newKeysGroupedBySortOrderIndex.getOrDefault(i, Collections.emptyList());
-                newEntries.sort(LookupKey::compareTo);
-
-                if (i == -1) {
-                    if (newEntries.size() > 0) minKey = newEntries.get(0);
-                } else {
-                    newKeySortOrder[index] = currentKeySortOrder[i];
-                    index++;
-                }
-
-                for(LookupKey key: newEntries){
-                    newKeySortOrder[index] = key.getPosition();
-                    index++;
-                }
-
-                if (i == currentKeySortOrder.length - 1 && newEntries.size() > 0){
-                    maxKey = newEntries.get(newEntries.size() - 1);
-                }
-            }
-
-            log.debug("Finished creating sortOrder");
-
-            partitionLookupCache.putMetadata(this,
-                    LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet())
-            );
-
-            Iterator<Map.Entry<LookupKey, Long>> iterator = flushCache.entrySet().iterator();
-            while (iterator.hasNext()) {
-                Map.Entry<LookupKey, Long> entry = iterator.next();
-                partitionLookupCache.putLookup(entry.getKey(), entry.getValue());
-                iterator.remove();
-            }
-
+            flushCacheToReadCache();
             log.debug("flushed");
         }
     }

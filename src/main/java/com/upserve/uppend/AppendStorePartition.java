@@ -29,7 +29,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return partitiondDir.resolve("blockedLongs");
     }
 
-    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache) {
+    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache) {
         validatePartition(partition);
         Path partitiondDir = parentDir.resolve(partition);
         try {
@@ -45,10 +45,10 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, false, keyPageCache);
 
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
     }
 
-    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
+    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
         validatePartition(partition);
         Path partitiondDir = parentDir.resolve(partition);
 
@@ -61,11 +61,11 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, readOnly, keyPageCache);
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
     }
 
-    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, readOnly);
+    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
+        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, readOnly);
 
 
         this.blocks = blocks;
@@ -73,8 +73,6 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         blobs = IntStream.range(0, hashSize)
                 .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(virtualFileNumber, blobsFile))
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
-
-
     }
 
     int keyHash(LookupKey key) {
@@ -146,13 +144,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     public void flush() throws IOException {
         log.debug("Starting flush for partition: {}", lookupCache.getPartition());
 
-        Arrays.stream(lookups).parallel().forEach(lookupData -> {
-            try {
-                lookupData.flush();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to flush!", e);
-            }
-        });
+        Arrays.stream(lookups).parallel().forEach(LookupData::flush);
 
         longKeyFile.flush();
         metadataBlobFile.flush();
