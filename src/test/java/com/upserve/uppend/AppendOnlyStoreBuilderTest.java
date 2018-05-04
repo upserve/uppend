@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
 import com.codahale.metrics.MetricRegistry;
-import com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.Test;
 

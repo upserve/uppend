@@ -12,7 +12,8 @@ import java.util.stream.Stream;
 
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AppendOnlyStoreWithMetricsTest {
@@ -33,7 +34,7 @@ public class AppendOnlyStoreWithMetricsTest {
     public void testAppend() {
         assertEquals(0, metrics.timer(getFullMetricName(store, WRITE_TIMER_METRIC_NAME)).getCount());
         assertEquals(0, metrics.meter(getFullMetricName(store, WRITE_BYTES_METER_METRIC_NAME)).getCount());
-        byte[] val = new byte[] { 0x01, 0x02, 0x03 };
+        byte[] val = new byte[]{0x01, 0x02, 0x03};
         instance.append("partition", "key", val);
         verify(store).append("partition", "key", val);
         assertNotEquals(0, metrics.timer(getFullMetricName(store, WRITE_TIMER_METRIC_NAME)).getCount());

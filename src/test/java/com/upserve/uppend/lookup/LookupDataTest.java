@@ -8,7 +8,7 @@ import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -434,7 +434,7 @@ public class LookupDataTest {
                     data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
                 });
 
-        assertLookupKeyCache(100_000, 0, 0,  0);
+        assertLookupKeyCache(100_000, 0, 0, 0);
         assertLookupPagesCache(0, 0, 0, 0);
         assertLookupMetadataCache(0, 0, 0, 0);
 
@@ -445,7 +445,7 @@ public class LookupDataTest {
                     data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
                 });
 
-        assertLookupKeyCache(0, 100_000, 100_000,  0);
+        assertLookupKeyCache(0, 100_000, 100_000, 0);
         assertLookupPagesCache(233307, 104, 104, 0);
         assertLookupMetadataCache(99999, 1, 1, 0);
     }

@@ -7,15 +7,15 @@ import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.stream.Collectors;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 /**
  * All snippets and examples from the docs should exist as tests here so that
  * the build fails if they stop working.
- *
+ * <p>
  * If you add a new snippet in the README, or the wiki, please also add it
  * here, so that it will be continuously tested.
- *
+ * <p>
  * If you update this file, please also update the corresponding document
  * section.
  */

@@ -3,16 +3,17 @@ package com.upserve.uppend;
 import com.upserve.uppend.util.*;
 import org.junit.*;
 
-import java.io.*;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 public class BlockedLongsTest {
     private Path path = Paths.get("build/test/tmp/block");

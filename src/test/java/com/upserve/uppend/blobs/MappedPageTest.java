@@ -31,9 +31,9 @@ public class MappedPageTest {
     public void before() throws IOException {
         SafeDeleting.removeDirectory(rootPath);
         Files.createDirectories(rootPath);
-        try(FileChannel file = FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ)){
-            rwPage =  new MappedPage(file.map(FileChannel.MapMode.READ_WRITE, 0, pageSize));
-            roPage =  new MappedPage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
+        try (FileChannel file = FileChannel.open(filePath, StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ)) {
+            rwPage = new MappedPage(file.map(FileChannel.MapMode.READ_WRITE, 0, pageSize));
+            roPage = new MappedPage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
         }
 
     }
@@ -44,8 +44,8 @@ public class MappedPageTest {
         final MappedPage page;
         thrown.expect(IOException.class);
         thrown.expectMessage("Channel not open for writing - cannot extend file to required size");
-        try(FileChannel file = FileChannel.open(readOnlyFilePath, StandardOpenOption.READ)){
-            page =  new MappedPage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
+        try (FileChannel file = FileChannel.open(readOnlyFilePath, StandardOpenOption.READ)) {
+            page = new MappedPage(file.map(FileChannel.MapMode.READ_ONLY, 0, pageSize));
         }
     }
 
@@ -80,7 +80,7 @@ public class MappedPageTest {
     }
 
     @Test
-    public void testMultipleWrites(){
+    public void testMultipleWrites() {
         putGetHelper(42, 13, 84);
         putGetHelper(95, 1, 512);
 
@@ -89,7 +89,7 @@ public class MappedPageTest {
     }
 
     @Test
-    public void testMultipleMaps(){
+    public void testMultipleMaps() {
         putGetHelper(rwPage, roPage, 42, 13, 84);
         putGetHelper(rwPage, roPage, 95, 1, 512);
 
@@ -98,13 +98,13 @@ public class MappedPageTest {
     }
 
     /**
-     *                        | region of comparison  |
-     *              ______________________________________________
-     *             |  offset  |   expectedSize        |  unused   |  Buffer
-     *             *––––––––––––––––––––––––––––––––––––––––––––––*
-     *   _____________________________________________
-     *  |   pagePosition      |   expectedSize        |  Page
-     *  *–––––––––––––––––––––––––––––––––––––––––––––*
+     * | region of comparison  |
+     * ______________________________________________
+     * |  offset  |   expectedSize        |  unused   |  Buffer
+     * *––––––––––––––––––––––––––––––––––––––––––––––*
+     * _____________________________________________
+     * |   pagePosition      |   expectedSize        |  Page
+     * *–––––––––––––––––––––––––––––––––––––––––––––*
      *
      * @param bufferSize The size of the byte[] buffer to test with
      * @param bufferOffset The offset from which to test in the buffer
@@ -122,7 +122,7 @@ public class MappedPageTest {
 
         byte[] result = new byte[bufferSize];
         System.arraycopy(result, 0, expected, 0, bufferOffset); // blank the offset values for comparison
-        System.arraycopy(result, expectedSize + bufferOffset, expected , expectedSize + bufferOffset, max(bufferSize - expectedSize - bufferOffset, 0)); // blank the values past the end of the page
+        System.arraycopy(result, expectedSize + bufferOffset, expected, expectedSize + bufferOffset, max(bufferSize - expectedSize - bufferOffset, 0)); // blank the values past the end of the page
 
         assertEquals(expectedSize, reader.get(pagePosition, result, bufferOffset));
         assertArrayEquals(expected, result);

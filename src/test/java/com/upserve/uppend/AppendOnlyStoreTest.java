@@ -97,37 +97,37 @@ public class AppendOnlyStoreTest {
 
         ExecutorService executor = new ForkJoinPool();
         Future future = executor.submit(() -> {
-                    new Random(314159)
-                            .longs(500_000, 0, 10_000)
-                            .parallel()
-                            .forEach(val -> {
-                                String key = String.valueOf(val);
+            new Random(314159)
+                    .longs(500_000, 0, 10_000)
+                    .parallel()
+                    .forEach(val -> {
+                        String key = String.valueOf(val);
 
-                                testData.compute(key, (k, list) -> {
-                                    if (list == null) {
-                                        list = new ArrayList<>();
-                                    }
-                                    list.add(val + 5);
+                        testData.compute(key, (k, list) -> {
+                            if (list == null) {
+                                list = new ArrayList<>();
+                            }
+                            list.add(val + 5);
 
-                                    store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val + 5));
+                            store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val + 5));
 
-                                    long[] expected = list.stream().mapToLong(v -> v).toArray();
-                                    long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
+                            long[] expected = list.stream().mapToLong(v -> v).toArray();
+                            long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
 
-                                    if (expected.length != result.length) {
-                                        fail("Array lenth does not match");
-                                    }
+                            if (expected.length != result.length) {
+                                fail("Array lenth does not match");
+                            }
 
-                                    assertArrayEquals(
-                                            expected,
-                                            result
-                                    );
+                            assertArrayEquals(
+                                    expected,
+                                    result
+                            );
 
-                                    return list;
-                                });
+                            return list;
+                        });
 
-                            });
-                });
+                    });
+        });
 
         future.get(40_000, TimeUnit.MILLISECONDS);
     }

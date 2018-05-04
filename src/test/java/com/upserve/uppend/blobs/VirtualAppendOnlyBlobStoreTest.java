@@ -1,13 +1,11 @@
 package com.upserve.uppend.blobs;
 
 import com.google.common.primitives.Longs;
-import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.file.*;
-import java.util.Random;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
@@ -34,7 +32,7 @@ public class VirtualAppendOnlyBlobStoreTest {
         executorService = new ForkJoinPool();
     }
 
-    public void setup(int pageSize){
+    public void setup(int pageSize) {
         PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
         virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
     }
@@ -46,7 +44,7 @@ public class VirtualAppendOnlyBlobStoreTest {
     }
 
     @Test
-    public void testSimple(){
+    public void testSimple() {
         setup(25);
         IntStream.range(0, NUMBER_OF_STORES)
                 .parallel()
@@ -76,13 +74,13 @@ public class VirtualAppendOnlyBlobStoreTest {
         IntStream
                 .rangeClosed(0, times)
                 .forEach(timeCalled -> {
-                    byte[] bytes;
-                    bytes = blobStore.read(timeCalled * (recordSize * 2));
-                    assertEquals(sampleValue("f", virtualBlobStoreNumber, timeCalled), new String(bytes));
-                    bytes = blobStore.read(recordSize + timeCalled * (recordSize * 2));
-                    assertEquals(sampleValue("b", virtualBlobStoreNumber, timeCalled), new String(bytes));
-                }
-        );
+                            byte[] bytes;
+                            bytes = blobStore.read(timeCalled * (recordSize * 2));
+                            assertEquals(sampleValue("f", virtualBlobStoreNumber, timeCalled), new String(bytes));
+                            bytes = blobStore.read(recordSize + timeCalled * (recordSize * 2));
+                            assertEquals(sampleValue("b", virtualBlobStoreNumber, timeCalled), new String(bytes));
+                        }
+                );
     }
 
     private String sampleValue(String head, int virtualStoreNumber, int times) {

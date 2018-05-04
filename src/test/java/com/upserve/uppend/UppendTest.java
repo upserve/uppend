@@ -25,7 +25,7 @@ public class UppendTest {
         assertTrue(Files.exists(path));
         store.flush();
         ReadOnlyAppendOnlyStore store2 = Uppend.store(path).buildReadOnly();
-        assertArrayEquals(new String[] { "bar" }, store2.read("partition", "foo").map(String::new).toArray());
+        assertArrayEquals(new String[]{"bar"}, store2.read("partition", "foo").map(String::new).toArray());
         store.close();
         store2.close();
         SafeDeleting.removeTempPath(path);

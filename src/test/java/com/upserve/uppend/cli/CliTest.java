@@ -6,7 +6,8 @@ import org.junit.*;
 import java.io.*;
 import java.nio.file.Paths;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class CliTest {
     private static final PrintStream origErr = System.err;

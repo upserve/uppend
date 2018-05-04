@@ -16,12 +16,11 @@ package com.upserve.uppend.metrics;
  * limitations under the License.
  */
 
-        import com.codahale.metrics.MetricRegistry;
-        import com.github.benmanes.caffeine.cache.Caffeine;
-        import com.github.benmanes.caffeine.cache.LoadingCache;
-        import org.junit.Test;
+import com.codahale.metrics.MetricRegistry;
+import com.github.benmanes.caffeine.cache.*;
+import org.junit.Test;
 
-        import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertEquals;
 
 /**
  * An example of exporting stats to Dropwizard Metrics (http://metrics.dropwizard.io).

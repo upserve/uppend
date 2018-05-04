@@ -126,7 +126,7 @@ public class CounterStoreTest {
         store.increment("partition$three", "three", 3);
         store.increment("partition-four", "four", 4);
         store.increment("_2016-01-02", "five", 5);
-        assertArrayEquals(new String[] { "_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two" }, store.partitions().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two"}, store.partitions().sorted().toArray(String[]::new));
     }
 
     @Test
@@ -184,7 +184,7 @@ public class CounterStoreTest {
 
         store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
 
-        assertArrayEquals(new String[] { "2017-11-30" }, store.partitions().toArray(String[]::new));
+        assertArrayEquals(new String[]{"2017-11-30"}, store.partitions().toArray(String[]::new));
         assertEquals(Long.valueOf(5), store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
         assertEquals(Long.valueOf(1), store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
         assertEquals(Long.valueOf(1), store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));

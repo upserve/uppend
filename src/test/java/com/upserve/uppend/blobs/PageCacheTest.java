@@ -1,20 +1,16 @@
 package com.upserve.uppend.blobs;
 
-import com.github.benmanes.caffeine.cache.stats.*;
-import com.google.common.primitives.Longs;
 import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
-import java.io.*;
-import java.nio.*;
+import java.io.IOException;
 import java.nio.file.*;
-import java.util.Random;
 import java.util.concurrent.*;
 
-import static org.hamcrest.core.IsInstanceOf.any;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 public class PageCacheTest {
     private final String name = "page_cache_test";
@@ -66,7 +62,7 @@ public class PageCacheTest {
     }
 
     @Test
-    public void testGetPageFlush(){
+    public void testGetPageFlush() {
         setup(false);
 
         final long position = 1284;
@@ -86,7 +82,7 @@ public class PageCacheTest {
     }
 
     @Test
-    public void testGetPageSize(){
+    public void testGetPageSize() {
         setup(false);
         assertEquals(512, instance.getPageSize());
     }

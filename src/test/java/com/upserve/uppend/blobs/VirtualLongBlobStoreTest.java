@@ -1,19 +1,16 @@
 package com.upserve.uppend.blobs;
 
 import com.google.common.primitives.Longs;
-import com.upserve.uppend.AppendOnlyStoreBuilder;
-import com.upserve.uppend.util.*;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
-import java.io.*;
+import java.io.IOException;
 import java.nio.file.*;
 import java.util.Random;
 import java.util.concurrent.*;
 import java.util.stream.*;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
 public class VirtualLongBlobStoreTest {
 
@@ -34,7 +31,7 @@ public class VirtualLongBlobStoreTest {
         executorService = new ForkJoinPool();
     }
 
-    private void setup(int pageSize){
+    private void setup(int pageSize) {
         PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
         virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
     }
@@ -46,7 +43,7 @@ public class VirtualLongBlobStoreTest {
     }
 
     @Test
-    public void testSimple(){
+    public void testSimple() {
         setup(1200);
         IntStream.range(0, NUMBER_OF_STORES)
                 .parallel()
@@ -70,7 +67,7 @@ public class VirtualLongBlobStoreTest {
         // Write twice to this store
         pos = blobStore.append(virtualBlobStoreNumber * times, sampleValue("f", virtualBlobStoreNumber, times).getBytes());
         assertEquals(times * (recordSize * 2), pos);
-        pos = blobStore.append(virtualBlobStoreNumber * times +1, sampleValue("b", virtualBlobStoreNumber, times).getBytes());
+        pos = blobStore.append(virtualBlobStoreNumber * times + 1, sampleValue("b", virtualBlobStoreNumber, times).getBytes());
         assertEquals(recordSize + times * (recordSize * 2), pos);
 
         IntStream
@@ -159,9 +156,9 @@ public class VirtualLongBlobStoreTest {
 
         byte[] bytes = new byte[40];
         page0.get(0, bytes, 0);
-        assertArrayEquals(new byte[]{0,0,0,18,0,0,0,0,0,0,0,1,109,109,109,109,109,109,95,48,48,48,48,49,95,48,48,48,48,48,0,0,0,0,0,0,0,0,0,18}, bytes);
+        assertArrayEquals(new byte[]{0, 0, 0, 18, 0, 0, 0, 0, 0, 0, 0, 1, 109, 109, 109, 109, 109, 109, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18}, bytes);
         page1.get(0, bytes, 0);
-        assertArrayEquals(new byte[]{0,0,0,0,0,0,0,2,110,110,110,110,110,110,95,48,48,48,48,49,95,48,48,48,48,49,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, bytes);
+        assertArrayEquals(new byte[]{0, 0, 0, 0, 0, 0, 0, 2, 110, 110, 110, 110, 110, 110, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, bytes);
     }
 
     @Test
@@ -210,7 +207,7 @@ public class VirtualLongBlobStoreTest {
                 "writer"
         );
 
-        Thread reader = new Thread(() ->LongStream
+        Thread reader = new Thread(() -> LongStream
                 .range(0, 100_000)
                 .parallel()
                 .forEach(val -> {

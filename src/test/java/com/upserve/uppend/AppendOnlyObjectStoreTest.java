@@ -1,16 +1,17 @@
 package com.upserve.uppend;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
-import java.util.*;
+import java.util.Arrays;
 import java.util.stream.Stream;
 
-import static org.junit.Assert.*;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AppendOnlyObjectStoreTest {
@@ -45,6 +46,7 @@ public class AppendOnlyObjectStoreTest {
             return new Data(new String(d));
         }
     }
+
     static final byte[] SERIALIZED01 = "SERIALIZED01".getBytes();
     static final Data DESERIALIZED01 = new Data("SERIALIZED01");
 
