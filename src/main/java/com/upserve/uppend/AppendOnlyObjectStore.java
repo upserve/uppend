@@ -49,8 +49,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      *
      * @param partition the key under which to retrieve
      * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of the stored objects
+     * @throws IllegalArgumentException if partition is invalid
      */
     public Stream<T> read(String partition, String key) {
         return store.read(partition, key).map(deserializer);
@@ -62,8 +62,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of the stored objects in storage order
+     * @throws IllegalArgumentException if partition is invalid
      */
     public Stream<T> readSequential(String partition, String key) {
         return store.readSequential(partition, key).map(deserializer);
@@ -74,8 +74,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return the stored object, or null if none
+     * @throws IllegalArgumentException if partition is invalid
      */
     public T readLast(String partition, String key) {
         return deserializer.apply(store.readLast(partition, key));
@@ -85,8 +85,8 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
      * Enumerate the keys in the data store
      *
      * @param partition the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of string keys
+     * @throws IllegalArgumentException if partition is invalid
      */
     public Stream<String> keys(String partition) {
         return store.keys(partition);

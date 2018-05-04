@@ -2,15 +2,15 @@ package com.upserve.uppend;
 
 import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.stats.*;
-import com.upserve.uppend.blobs.*;
+import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.lookup.LookupCache;
 import com.upserve.uppend.metrics.MetricsStatsCounter;
 
 import java.nio.file.Path;
 import java.util.concurrent.*;
-import java.util.function.*;
+import java.util.function.Supplier;
 
-public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
+public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     static final String LOOKUP_PAGE_CACHE_METRICS = "LookupPageCache";
     static final String BLOB_PAGE_CACHE_METRICS = "BlobPageCache";
@@ -60,7 +60,6 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     boolean storeMetrics = false;
     MetricRegistry cacheMetricsRegistry = null;
     boolean cacheMetrics = false;
-
 
 
     // Long lookup Cache Options
@@ -125,19 +124,19 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withLookupKeyCacheExecutorService(ExecutorService lookupKeyCacheExecutorService){
+    public T withLookupKeyCacheExecutorService(ExecutorService lookupKeyCacheExecutorService) {
         this.lookupKeyCacheExecutorService = lookupKeyCacheExecutorService;
         return (T) this;
     }
 
     @SuppressWarnings("unchecked")
-    public T withLookupMetaDataCacheExecutorService(ExecutorService lookupMetaDataCacheExecutorService){
+    public T withLookupMetaDataCacheExecutorService(ExecutorService lookupMetaDataCacheExecutorService) {
         this.lookupMetaDataCacheExecutorService = lookupMetaDataCacheExecutorService;
         return (T) this;
     }
 
     @SuppressWarnings("unchecked")
-    public T withLookupPageCacheExecutorService(ExecutorService lookupPageCacheExecutorService){
+    public T withLookupPageCacheExecutorService(ExecutorService lookupPageCacheExecutorService) {
         this.lookupPageCacheExecutorService = lookupPageCacheExecutorService;
         return (T) this;
     }
@@ -163,6 +162,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     /**
      * The builder will wrap the built store in a class that computes storeMetrics for each operation
+     *
      * @param metrics a CodaHale storeMetrics registry
      * @return the builder
      */
@@ -175,6 +175,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     /**
      * Apply a MetricsCounter to the Caffeine Caches used by the store
+     *
      * @return the builder
      */
     @SuppressWarnings("unchecked")
@@ -185,6 +186,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     /**
      * Apply a MetricsCounter to the Caffeine Caches used by the store using a CodaHale MetricsRegistry as the counter
+     *
      * @param metrics a CodaHale storeMetrics registry
      * @return the builder
      */
@@ -197,10 +199,11 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     /**
      * Return a StatsCounterSupplier for use in the Caffeine builder or null if cacheMetrics is false
+     *
      * @param elements the string elements to use in registering metrics for this cache
      * @return the Supplier or null
      */
-    public Supplier<StatsCounter> metricsSupplier(String...elements) {
+    public Supplier<StatsCounter> metricsSupplier(String... elements) {
         if (!cacheMetrics) return null;
         if (cacheMetricsRegistry != null) {
             return () -> new MetricsStatsCounter(cacheMetricsRegistry, String.join(".", elements));
@@ -219,7 +222,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
         );
     }
 
-    public LookupCache buildLookupCache(String metricsPrefix){
+    public LookupCache buildLookupCache(String metricsPrefix) {
         return new LookupCache(
                 getInitialLookupKeyCacheSize(),
                 getMaximumLookupKeyCacheWeight(),
@@ -270,7 +273,9 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
         return flushDelaySeconds;
     }
 
-    public int getFlushThreshold() { return flushThreshold; }
+    public int getFlushThreshold() {
+        return flushThreshold;
+    }
 
     public Path getDir() {
         return dir;
@@ -292,9 +297,13 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
         return initialMetaDataCacheSize;
     }
 
-    public int getMetadataPageSize() { return metaDataPageSize; }
+    public int getMetadataPageSize() {
+        return metaDataPageSize;
+    }
 
-    public int getMetadataTTL() { return metadataTTL; }
+    public int getMetadataTTL() {
+        return metadataTTL;
+    }
 
     public ExecutorService getLookupKeyCacheExecutorService() {
         return lookupKeyCacheExecutorService;

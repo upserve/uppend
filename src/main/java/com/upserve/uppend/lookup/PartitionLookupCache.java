@@ -1,8 +1,6 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.blobs.PageCache;
-
-import java.util.function.*;
+import java.util.function.Function;
 
 /**
  * AppendStorePartition level view of the store lookup cache
@@ -13,7 +11,7 @@ public class PartitionLookupCache {
     private final String partition;
 
 
-    public static PartitionLookupCache create(String partition, LookupCache lookupCache){
+    public static PartitionLookupCache create(String partition, LookupCache lookupCache) {
         return new PartitionLookupCache(partition.intern(), lookupCache);
     }
 
@@ -22,23 +20,23 @@ public class PartitionLookupCache {
         this.lookupCache = lookupCache;
     }
 
-    public String getPartition(){
+    public String getPartition() {
         return partition;
     }
 
-    public void putLookup(LookupKey key, long val){
+    public void putLookup(LookupKey key, long val) {
         lookupCache.putLookup(new PartitionLookupKey(partition, key), val);
     }
 
-    public Long getLong(LookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader){
+    public Long getLong(LookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader) {
         return lookupCache.getLong(new PartitionLookupKey(partition, lookupKey), cacheLoader);
     }
 
-    public LookupMetadata getMetadata(LookupData key){
+    public LookupMetadata getMetadata(LookupData key) {
         return lookupCache.getMetadata(key);
     }
 
-    public void putMetadata(LookupData key, LookupMetadata value){
+    public void putMetadata(LookupData key, LookupMetadata value) {
         lookupCache.putMetadata(key, value);
     }
 

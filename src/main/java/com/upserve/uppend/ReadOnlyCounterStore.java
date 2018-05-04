@@ -1,8 +1,8 @@
 package com.upserve.uppend;
 
 import java.util.Map;
-import java.util.function.*;
-import java.util.stream.*;
+import java.util.function.ObjLongConsumer;
+import java.util.stream.Stream;
 
 public interface ReadOnlyCounterStore extends AutoCloseable {
     /**
@@ -10,8 +10,8 @@ public interface ReadOnlyCounterStore extends AutoCloseable {
      *
      * @param partition the partition to getLookupData
      * @param key the key to getLookupData
-     * @throws IllegalArgumentException if partition is invalid
      * @return the value for the given partition and key, or Null if not found
+     * @throws IllegalArgumentException if partition is invalid
      */
     Long get(String partition, String key);
 
@@ -19,8 +19,8 @@ public interface ReadOnlyCounterStore extends AutoCloseable {
      * Enumerate the keys for a given partition
      *
      * @param partition the partition under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of string keys
+     * @throws IllegalArgumentException if partition is invalid
      */
     Stream<String> keys(String partition);
 

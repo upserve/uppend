@@ -44,15 +44,15 @@ public class AutoFlusher {
 
 
         threadFactoryFunction = name -> pool ->
-            {
-                final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
-                worker.setName(name + worker.getPoolIndex());
-                return worker;
-            };
+        {
+            final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+            worker.setName(name + worker.getPoolIndex());
+            return worker;
+        };
 
 
         forkJoinPoolFunction = name -> new ForkJoinPool(Runtime.getRuntime().availableProcessors(), threadFactoryFunction.apply(name), null, false);
-        
+
         flusherWorkPool = forkJoinPoolFunction.apply("flush-worker");
 
     }

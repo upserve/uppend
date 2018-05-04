@@ -25,7 +25,7 @@ public class BulkAppender {
     }
 
     public void addBulkAppendBytes(long pos, byte[] bytes) {
-        System.arraycopy(bytes,0, bulkBytes, (int) (pos - initialPosition), bytes.length);
+        System.arraycopy(bytes, 0, bulkBytes, (int) (pos - initialPosition), bytes.length);
     }
 
     public void finishBulkAppend() {

@@ -1,8 +1,10 @@
 package com.upserve.uppend.cli;
 
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
 import java.io.*;
+import java.nio.file.Paths;
 
 import static org.junit.Assert.*;
 
@@ -18,7 +20,8 @@ public class CliTest {
     private String out;
 
     @Before
-    public void setUp() {
+    public void setUp() throws IOException {
+        SafeDeleting.removeDirectory(Paths.get("build/test/cli/bench"));
         System.setErr(newErr);
         System.setOut(newOut);
     }

@@ -1,13 +1,10 @@
 package com.upserve.uppend.lookup;
 
-import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.*;
 import com.github.benmanes.caffeine.cache.stats.*;
-import com.upserve.uppend.blobs.PageCache;
-import com.upserve.uppend.metrics.MetricsStatsCounter;
 import org.slf4j.Logger;
 
-import java.io.*;
+import java.io.Flushable;
 import java.lang.invoke.MethodHandles;
 import java.util.concurrent.*;
 import java.util.function.*;
@@ -28,7 +25,7 @@ public class LookupCache implements Flushable {
                 .executor(executorServiceKeyCache)
                 .initialCapacity(initialKeyCapacity)
                 .maximumWeight(maximumKeyWeight)  // bytes
-                .<PartitionLookupKey, Long>weigher((k ,v)-> k.weight());
+                .<PartitionLookupKey, Long>weigher((k, v) -> k.weight());
 
         if (keyCacheMetricsSupplier != null) {
             keyCacheBuilder = keyCacheBuilder.recordStats(keyCacheMetricsSupplier);
@@ -37,12 +34,12 @@ public class LookupCache implements Flushable {
         keyLongLookupCache = keyCacheBuilder.<PartitionLookupKey, Long>build();
 
 
-         Caffeine<LookupData, LookupMetadata> metadataCacheBuilder = Caffeine
+        Caffeine<LookupData, LookupMetadata> metadataCacheBuilder = Caffeine
                 .<LookupData, LookupMetadata>newBuilder()
                 .executor(executorServiceMetaDataCache)
                 .initialCapacity(intialMetaDataCapacity)
                 .maximumWeight(maximumMetaDataWeight)
-                .<LookupData, LookupMetadata>weigher((k ,v) -> v.weight());
+                .<LookupData, LookupMetadata>weigher((k, v) -> v.weight());
 
         if (metadataTTL > 0) {
             metadataCacheBuilder.expireAfterWrite(metadataTTL, TimeUnit.SECONDS);
@@ -54,17 +51,17 @@ public class LookupCache implements Flushable {
 
         lookupMetaDataCache = metadataCacheBuilder
                 .<LookupData, LookupMetadata>build(lookupData -> LookupMetadata.open(
-                lookupData.getMetadataBlobs(),
-                lookupData.getMetaDataGeneration()
-        ));
+                        lookupData.getMetadataBlobs(),
+                        lookupData.getMetaDataGeneration()
+                ));
     }
 
 
-    public void putLookup(PartitionLookupKey key, long val){
+    public void putLookup(PartitionLookupKey key, long val) {
         keyLongLookupCache.put(key, val);
     }
 
-    public Long getLong(PartitionLookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader){
+    public Long getLong(PartitionLookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader) {
         return keyLongLookupCache.get(lookupKey, cacheLoader);
     }
 

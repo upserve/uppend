@@ -3,7 +3,7 @@ package com.upserve.uppend.lookup;
 import com.upserve.uppend.blobs.*;
 import org.slf4j.Logger;
 
-import java.io.*;
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,7 +46,7 @@ public class LookupMetadata {
         bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration){
+    public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration) {
         if (metadataBlobs.isPageAllocated(0L)) {
             byte[] bytes = metadataBlobs.read(0L);
             return new LookupMetadata(bytes, metadataGeneration);
@@ -80,13 +80,14 @@ public class LookupMetadata {
         this.metadataGeneration = metadataGeneration;
 
         bisectKeys = new ConcurrentHashMap<>();
-        }
+    }
 
     /**
      * Finds the value associated with a key or null if not present using bisect on the sorted storage order
      * If the result is null (key not found) the key is marked with the generation of the metadata used and the
      * sortIndex it should be inserted after.
      * If the result is not null (key was found) the key is marked with its position in the longBlob file.
+     *
      * @param longBlobStore The longBlobStore to read keys and values
      * @param key the key to find and mark
      * @return the position of the key
@@ -96,7 +97,7 @@ public class LookupMetadata {
 
         key.setMetaDataGeneration(metadataGeneration);
 
-        if (numKeys == 0){
+        if (numKeys == 0) {
             key.setInsertAfterSortIndex(-1);
             return null;
         }
@@ -140,7 +141,8 @@ public class LookupMetadata {
         do {
             midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);
 
-            if (log.isTraceEnabled()) log.trace("reading {}: [{}, {}], [{}, {}], {}", key, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
+            if (log.isTraceEnabled())
+                log.trace("reading {}: [{}, {}], [{}, {}], {}", key, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
 
             keyPosition = keyStorageOrder[midpointKeyIndex];
             // Cache only the most frequently used midpoint keys
@@ -163,7 +165,7 @@ public class LookupMetadata {
             }
 
             bisectCount++;
-        } while ((keyIndexLower +1) < keyIndexUpper);
+        } while ((keyIndexLower + 1) < keyIndexUpper);
 
         key.setInsertAfterSortIndex(keyIndexLower); // Insert it in the sort order after this key
         return null;
@@ -195,7 +197,7 @@ public class LookupMetadata {
                 '}';
     }
 
-    public int getMetadataGeneration(){
+    public int getMetadataGeneration() {
         return metadataGeneration;
     }
 
@@ -203,19 +205,19 @@ public class LookupMetadata {
         return numKeys;
     }
 
-    public int getNumKeys(){
+    public int getNumKeys() {
         return numKeys;
     }
 
-    public long[] getKeyStorageOrder(){
+    public long[] getKeyStorageOrder() {
         return keyStorageOrder;
     }
 
-    public LookupKey getMinKey(){
+    public LookupKey getMinKey() {
         return minKey;
     }
 
-    public LookupKey getMaxKey(){
+    public LookupKey getMaxKey() {
         return maxKey;
     }
 }

@@ -15,15 +15,12 @@ package com.upserve.uppend.metrics;
  * limitations under the License.
  */
 
-import static java.util.Objects.requireNonNull;
+import com.codahale.metrics.*;
+import com.github.benmanes.caffeine.cache.stats.*;
 
 import java.util.concurrent.TimeUnit;
 
-import com.codahale.metrics.Meter;
-import com.codahale.metrics.MetricRegistry;
-import com.codahale.metrics.Timer;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.github.benmanes.caffeine.cache.stats.StatsCounter;
+import static java.util.Objects.requireNonNull;
 
 /**
  * A {@link StatsCounter} instrumented with Dropwizard Metrics.

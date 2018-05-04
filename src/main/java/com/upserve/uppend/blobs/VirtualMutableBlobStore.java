@@ -16,7 +16,6 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
     }
 
     public void write(long position, byte[] bytes) {
-        // TODO Need to create a LockedPage for this to work across multiple threads / JVM
         super.write(position, byteRecord(bytes));
     }
 
@@ -42,11 +41,11 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
         }
     }
 
-    public static int recordSize(byte[] inputBytes){
+    public static int recordSize(byte[] inputBytes) {
         return inputBytes.length + 8;
     }
 
-    public static byte[] byteRecord(byte[] inputBytes){
+    public static byte[] byteRecord(byte[] inputBytes) {
         byte[] result = new byte[recordSize(inputBytes)];
         System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
         System.arraycopy(hashFunction.hashBytes(inputBytes).asBytes(), 0, result, 4, 4);

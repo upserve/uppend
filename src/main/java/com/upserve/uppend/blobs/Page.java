@@ -6,5 +6,6 @@ package com.upserve.uppend.blobs;
  */
 public interface Page {
     int get(int pagePosition, byte[] dst, int bufferOffset);
+
     int put(int pagePosition, byte[] src, int bufferOffset);
 }

@@ -34,7 +34,7 @@ public class VirtualLongBlobStoreTest {
         executorService = new ForkJoinPool();
     }
 
-    public void setup(int pageSize){
+    private void setup(int pageSize){
         PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
         virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
     }
@@ -96,17 +96,6 @@ public class VirtualLongBlobStoreTest {
     }
 
     @Test
-    public void testClear() throws IOException {
-        setup(1200);
-        testVirtualBlobStore(4, 0);
-        testVirtualBlobStore(4, 1);
-
-        virtualPageFile.clear();
-        testVirtualBlobStore(4, 0);
-        testVirtualBlobStore(4, 1);
-    }
-
-    @Test
     public void testClose() throws IOException {
         setup(1200);
         IntStream.range(0, NUMBER_OF_STORES)
@@ -143,13 +132,19 @@ public class VirtualLongBlobStoreTest {
 
         byte[] bytes = new byte[40];
         page0.get(0, bytes, 0);
-        assertArrayEquals(new byte[]{0,0,0,13,0,0,0,0,0,0,0,1,109,95,48,48,48,48,49,95,48,48,48,48,48,0,0,0,13,0,0,0,0,0,0,0,2,110,95,48}, bytes);
+        assertArrayEquals(new byte[]{0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 1, 109, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 48, 0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 2, 110, 95, 48}, bytes);
         page1.get(0, bytes, 0);
-        assertArrayEquals(new byte[]{48,48,48,49,95,48,48,48,48,49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, bytes);
+        assertArrayEquals(new byte[]{48, 48, 48, 49, 95, 48, 48, 48, 48, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, bytes);
 
-        virtualPageFile.clear();
+    }
 
+    @Test
+    public void testAdjustedPageAlignment() throws IOException {
         // If the Long would naturally fall on a page break - the page start is aligned
+        setup(40);
+
+        VirtualLongBlobStore blobStore = new VirtualLongBlobStore(1, virtualPageFile);
+
         blobStore = new VirtualLongBlobStore(1, virtualPageFile);
         assertEquals(0, blobStore.append(1L, sampleValue("mmmmmm", 1, 0).getBytes()));
         assertEquals(36, blobStore.append(2L, sampleValue("nnnnnn", 1, 1).getBytes()));
@@ -159,7 +154,10 @@ public class VirtualLongBlobStoreTest {
         assertEquals(2L, blobStore.readLong(36));
         assertArrayEquals(sampleValue("nnnnnn", 1, 1).getBytes(), blobStore.readBlob(36));
 
-        bytes = new byte[40];
+        Page page0 = virtualPageFile.getExistingPage(1, 0);
+        Page page1 = virtualPageFile.getExistingPage(1, 1);
+
+        byte[] bytes = new byte[40];
         page0.get(0, bytes, 0);
         assertArrayEquals(new byte[]{0,0,0,18,0,0,0,0,0,0,0,1,109,109,109,109,109,109,95,48,48,48,48,49,95,48,48,48,48,48,0,0,0,0,0,0,0,0,0,18}, bytes);
         page1.get(0, bytes, 0);
@@ -201,13 +199,9 @@ public class VirtualLongBlobStoreTest {
     @Test
     public void testConcurrentLongAccess() throws InterruptedException {
         setup(120);
-
         Random random = new Random();
-
         VirtualLongBlobStore blobStore = new VirtualLongBlobStore(5, virtualPageFile);
-
         long position = blobStore.append(0, "ShahBam".getBytes());
-
 
         Thread writer = new Thread(() -> random
                 .longs(100_000, 0, 1000)
@@ -231,7 +225,5 @@ public class VirtualLongBlobStoreTest {
 
         writer.join();
         reader.join();
-
     }
-
 }

@@ -129,7 +129,7 @@ public class AppendOnlyStoreTest {
                             });
                 });
 
-        future.get(30_000, TimeUnit.MILLISECONDS);
+        future.get(40_000, TimeUnit.MILLISECONDS);
     }
 
     @Test

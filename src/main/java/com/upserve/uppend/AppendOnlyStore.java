@@ -3,7 +3,6 @@ package com.upserve.uppend;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 
 import java.io.Flushable;
-import java.util.stream.Stream;
 
 /**
  * Add byte arrays under a key and partition, and retrieve them. Note the
@@ -15,8 +14,8 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, Aut
      * Append a byte array under a given partition and key
      *
      * @param partition the partition to store under
-     * @param key       the key to store under
-     * @param value     the value to append
+     * @param key the key to store under
+     * @param value the value to append
      * @throws IllegalArgumentException if partition is invalid
      */
     void append(String partition, String key, byte[] value);
@@ -42,12 +41,16 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, Aut
 
     /**
      * Get the name of this store - the last element in the path
+     *
      * @return the name
      */
     String getName();
 
     CacheStats getBlobPageCacheStats();
+
     CacheStats getKeyPageCacheStats();
+
     CacheStats getLookupKeyCacheStats();
+
     CacheStats getMetadataCacheStats();
 }

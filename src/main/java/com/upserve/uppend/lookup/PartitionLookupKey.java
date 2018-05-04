@@ -6,7 +6,7 @@ public class PartitionLookupKey {
     private final LookupKey lookupKey;
     private final String partition;
 
-    public PartitionLookupKey(String partition, LookupKey lookupKey){
+    public PartitionLookupKey(String partition, LookupKey lookupKey) {
         this.partition = partition;
         this.lookupKey = lookupKey;
     }
@@ -29,7 +29,7 @@ public class PartitionLookupKey {
         return Objects.hash(lookupKey, partition);
     }
 
-    public int weight(){
+    public int weight() {
         return lookupKey.byteLength();
     }
 }

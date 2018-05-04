@@ -1,6 +1,6 @@
 package com.upserve.uppend.lookup;
 
-import java.nio.charset.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public class LookupKey implements Comparable<LookupKey> {
@@ -17,8 +17,9 @@ public class LookupKey implements Comparable<LookupKey> {
             throw new NullPointerException("null string given");
         }
 
-        for(char c: stringValue.toCharArray()){
-            if (c > 128) throw new IllegalArgumentException("The key '" + stringValue + "' contains a non ascii character: " + c);
+        for (char c : stringValue.toCharArray()) {
+            if (c > 128)
+                throw new IllegalArgumentException("The key '" + stringValue + "' contains a non ascii character: " + c);
         }
 
         bytes = stringValue.getBytes(StandardCharsets.US_ASCII);
@@ -26,7 +27,7 @@ public class LookupKey implements Comparable<LookupKey> {
         position = -1;
     }
 
-    public LookupKey(byte[] bytesValue){
+    public LookupKey(byte[] bytesValue) {
         if (bytesValue == null) {
             throw new NullPointerException("null bytes given");
         }
@@ -35,11 +36,11 @@ public class LookupKey implements Comparable<LookupKey> {
         position = -1;
     }
 
-    int getInsertAfterSortIndex(){
+    int getInsertAfterSortIndex() {
         return insertAfterSortIndex;
     }
 
-    void setInsertAfterSortIndex(int value){
+    void setInsertAfterSortIndex(int value) {
         insertAfterSortIndex = value;
     }
 
@@ -55,11 +56,11 @@ public class LookupKey implements Comparable<LookupKey> {
         return new String(bytes, StandardCharsets.US_ASCII);
     }
 
-    long getPosition(){
+    long getPosition() {
         return position;
     }
 
-    void setPosition(long position){
+    void setPosition(long position) {
         this.position = position;
     }
 

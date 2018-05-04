@@ -27,7 +27,7 @@ public class BenchmarkReader implements Runnable {
             return;
         }
         log.info("starting reader...");
-        long tic = -1*System.currentTimeMillis();
+        long tic = -1 * System.currentTimeMillis();
         longStream.forEach(longFunction::apply);
         log.info(
                 String.format(

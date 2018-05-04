@@ -12,8 +12,8 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
      * @param partition the partition to increment under
      * @param key the key to increment under
      * @param value the value to set
-     * @throws IllegalArgumentException if partition is invalid
      * @return the old value of the counter or Null if it was previously unset
+     * @throws IllegalArgumentException if partition is invalid
      */
     Long set(String partition, String key, long value);
 
@@ -23,8 +23,8 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
      *
      * @param partition the partition to increment under
      * @param key the key to increment under
-     * @throws IllegalArgumentException if partition is invalid
      * @return the new value of the counter
+     * @throws IllegalArgumentException if partition is invalid
      */
     default long increment(String partition, String key) {
         return increment(partition, key, 1);
@@ -37,8 +37,8 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
      * @param partition the partition to increment under
      * @param key the key to increment under
      * @param delta the amount to add to the current value
-     * @throws IllegalArgumentException if partition is invalid
      * @return the new value of the counter
+     * @throws IllegalArgumentException if partition is invalid
      */
     long increment(String partition, String key, long delta);
 
@@ -63,6 +63,7 @@ public interface CounterStore extends ReadOnlyCounterStore, Trimmable, AutoClose
 
     /**
      * getValue the name of the counter store - the last element in the path
+     *
      * @return the name of the datastore for reporting purposes
      */
     String getName();

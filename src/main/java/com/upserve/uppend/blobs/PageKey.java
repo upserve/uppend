@@ -7,7 +7,7 @@ public class PageKey {
     private final Path filePath;
     private final long position;
 
-    PageKey(Path filePath, long position){
+    PageKey(Path filePath, long position) {
         this.filePath = filePath;
         this.position = position;
     }

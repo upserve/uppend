@@ -12,10 +12,8 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.Lock;
-import java.util.function.*;
+import java.util.function.Supplier;
 import java.util.stream.*;
-
-import static com.upserve.uppend.AutoFlusher.flusherWorkPool;
 
 public class BlockedLongs implements AutoCloseable, Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -71,7 +69,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         // size | -next
         // prev | -last
         StandardOpenOption[] openOptions;
-        if (readOnly){
+        if (readOnly) {
             openOptions = new StandardOpenOption[]{StandardOpenOption.READ};
         } else {
             openOptions = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
@@ -142,7 +140,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      * @return the number of bytes
      */
     public long size() {
-        if (readOnly){
+        if (readOnly) {
             return posBuf.getLong(0);
         } else {
             return posMem.get();
@@ -152,7 +150,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
 
-        if (readOnly) throw new RuntimeException("Can not append a read only blocked longs file: "+ file);
+        if (readOnly) throw new RuntimeException("Can not append a read only blocked longs file: " + file);
         // size | -next
         // prev | -last
 
@@ -204,7 +202,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return LongStream.empty();
         }
 
-        if (pos < 0 || pos > size()){
+        if (pos < 0 || pos > size()) {
             log.error("Bad position value {} in file {} of size {}", pos, file, size());
             return LongStream.empty();
         }
@@ -307,12 +305,12 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void close() throws IOException {
         log.debug("closing {}", file);
 
-        if (readOnly){
+        if (readOnly) {
             blocks.close();
             blocksPos.close();
             return;
         }
-        
+
         IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
             flush();

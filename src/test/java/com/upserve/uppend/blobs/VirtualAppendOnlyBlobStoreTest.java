@@ -90,17 +90,6 @@ public class VirtualAppendOnlyBlobStoreTest {
     }
 
     @Test
-    public void testClear() throws IOException {
-        setup(25);
-        testVirtualBlobStore(4, 0);
-        testVirtualBlobStore(4, 1);
-
-        virtualPageFile.clear();
-        testVirtualBlobStore(4, 0);
-        testVirtualBlobStore(4, 1);
-    }
-
-    @Test
     public void testClose() throws IOException {
         setup(25);
         IntStream.range(0, NUMBER_OF_STORES)

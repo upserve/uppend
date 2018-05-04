@@ -1,6 +1,7 @@
 package com.upserve.uppend.blobs;
 
 import org.slf4j.Logger;
+
 import java.lang.invoke.MethodHandles;
 
 public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
@@ -17,7 +18,7 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
         return pos;
     }
 
-    public long getPosition(){
+    public long getPosition() {
         return super.getPosition();
     }
 
@@ -35,7 +36,7 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
         return inputBytes.length + 4;
     }
 
-    public static byte[] byteRecord(byte[] inputBytes){
+    public static byte[] byteRecord(byte[] inputBytes) {
         byte[] result = new byte[recordSize(inputBytes)];
         System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
         System.arraycopy(inputBytes, 0, result, 4, inputBytes.length);

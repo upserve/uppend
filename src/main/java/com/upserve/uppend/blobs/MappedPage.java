@@ -14,6 +14,7 @@ public class MappedPage implements Page {
 
     /**
      * Constructor for a MappedPage
+     *
      * @param buffer the mapped byte buffer representing a page of a file
      */
     public MappedPage(MappedByteBuffer buffer) {
@@ -33,7 +34,7 @@ public class MappedPage implements Page {
         localBuffer.position(pagePosition);
         localBuffer.get(dst, bufferOffset, actualRead);
 
-        return  actualRead;
+        return actualRead;
     }
 
     @Override

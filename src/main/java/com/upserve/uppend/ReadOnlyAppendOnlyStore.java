@@ -14,8 +14,8 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a parallel stream of the stored byte arrays
+     * @throws IllegalArgumentException if partition is invalid
      */
     Stream<byte[]> read(String partition, String key);
 
@@ -25,8 +25,8 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of the stored byte arrays in storage order
+     * @throws IllegalArgumentException if partition is invalid
      */
     Stream<byte[]> readSequential(String partition, String key);
 
@@ -36,8 +36,8 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      *
      * @param partition the partition under which to retrieve
      * @param key the key under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return the stored byte array, or null if none
+     * @throws IllegalArgumentException if partition is invalid
      */
     byte[] readLast(String partition, String key);
 
@@ -45,8 +45,8 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      * Enumerate the keys for a given partition
      *
      * @param partition the partition under which to retrieve
-     * @throws IllegalArgumentException if partition is invalid
      * @return a stream of string keys
+     * @throws IllegalArgumentException if partition is invalid
      */
     Stream<String> keys(String partition);
 

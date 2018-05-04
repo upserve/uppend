@@ -1,8 +1,7 @@
 package com.upserve.uppend;
 
-import com.codahale.metrics.MetricRegistry;
-import com.upserve.uppend.blobs.*;
-import com.upserve.uppend.metrics.*;
+import com.upserve.uppend.blobs.PageCache;
+import com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics;
 
 import java.util.concurrent.*;
 
@@ -25,28 +24,28 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     private ExecutorService blobCacheExecutorService = ForkJoinPool.commonPool();
 
     // Blocked Long Options
-    public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock){
+    public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock) {
         this.blobsPerBlock = blobsPerBlock;
         return this;
     }
 
     // Blob Cache Options
-    public AppendOnlyStoreBuilder withBlobPageSize(int blobPageSize){
+    public AppendOnlyStoreBuilder withBlobPageSize(int blobPageSize) {
         this.blobPageSize = blobPageSize;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withMaximumBlobCacheSize(int maximumBlobCacheSize){
+    public AppendOnlyStoreBuilder withMaximumBlobCacheSize(int maximumBlobCacheSize) {
         this.maximumBlobCacheSize = maximumBlobCacheSize;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withInitialBlobCacheSize(int initialBlobCacheSize){
+    public AppendOnlyStoreBuilder withInitialBlobCacheSize(int initialBlobCacheSize) {
         this.initialBlobCacheSize = initialBlobCacheSize;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withBlobCacheExecutorService(ExecutorService blobCacheExecutorService){
+    public AppendOnlyStoreBuilder withBlobCacheExecutorService(ExecutorService blobCacheExecutorService) {
         this.blobCacheExecutorService = blobCacheExecutorService;
         return this;
     }
@@ -56,8 +55,9 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     }
 
     public AppendOnlyStore build(boolean readOnly) {
-        if (readOnly && flushDelaySeconds != DEFAULT_FLUSH_DELAY_SECONDS) throw new IllegalStateException("Can not set flush delay seconds in read only mode");
-        AppendOnlyStore store = new FileAppendOnlyStore( readOnly, this);
+        if (readOnly && flushDelaySeconds != DEFAULT_FLUSH_DELAY_SECONDS)
+            throw new IllegalStateException("Can not set flush delay seconds in read only mode");
+        AppendOnlyStore store = new FileAppendOnlyStore(readOnly, this);
         if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry());
         return store;
     }
@@ -76,13 +76,13 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
         );
     }
 
-    public static AppendOnlyStoreBuilder getDefaultTestBuilder(){
+    public static AppendOnlyStoreBuilder getDefaultTestBuilder() {
         return getDefaultTestBuilder(ForkJoinPool.commonPool());
     }
 
-    public static AppendOnlyStoreBuilder getDefaultTestBuilder(ExecutorService testService){
+    public static AppendOnlyStoreBuilder getDefaultTestBuilder(ExecutorService testService) {
         return new AppendOnlyStoreBuilder()
-                .withBlobPageSize(64*1024)
+                .withBlobPageSize(64 * 1024)
                 .withBlobsPerBlock(30)
                 .withInitialBlobCacheSize(64)
                 .withMaximumBlobCacheSize(128)
@@ -94,7 +94,7 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
                 .withMaximumMetaDataCacheWeight(100 * 1024)
                 .withLookupMetaDataCacheExecutorService(testService)
                 .withLongLookupHashSize(16)
-                .withLookupPageSize(16*1024)
+                .withLookupPageSize(16 * 1024)
                 .withLookupPageCacheExecutorService(testService)
                 .withCacheMetrics();
 

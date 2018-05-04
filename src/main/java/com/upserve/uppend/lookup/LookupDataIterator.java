@@ -2,7 +2,7 @@ package com.upserve.uppend.lookup;
 
 import java.util.Iterator;
 import java.util.concurrent.atomic.*;
-import java.util.function.*;
+import java.util.function.LongFunction;
 
 public class LookupDataIterator<T> implements Iterator<T> {
 
@@ -37,7 +37,7 @@ public class LookupDataIterator<T> implements Iterator<T> {
     public T next() {
         int index = keyIndex.getAndIncrement();
 
-        if (index < positions.length){
+        if (index < positions.length) {
             return reader.apply(positions[index]); // Read but do not cache these keys - easy to add but is it helpful?
         } else {
             return writeCacheKeyIterator.next();

@@ -10,7 +10,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.function.*;
+import java.util.function.ObjLongConsumer;
 import java.util.stream.*;
 
 public class CounterStorePartition extends Partition implements Flushable, Closeable {
@@ -45,7 +45,7 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
     }
 
-    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly){
+    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
         super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, readOnly);
     }
 
@@ -82,10 +82,10 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         IntStream.range(0, hashSize)
                 .parallel()
                 .boxed()
-                .forEach(virtualFileNumber -> lookups[virtualFileNumber].scan((keyLookup,value) -> callback.accept(keyLookup.string(), value)));
+                .forEach(virtualFileNumber -> lookups[virtualFileNumber].scan((keyLookup, value) -> callback.accept(keyLookup.string(), value)));
     }
 
-    Stream<String> keys(){
+    Stream<String> keys() {
         return IntStream.range(0, hashSize)
                 .parallel()
                 .boxed()

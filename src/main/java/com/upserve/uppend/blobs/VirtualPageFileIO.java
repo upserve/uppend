@@ -5,9 +5,8 @@ import com.upserve.uppend.util.ThreadLocalByteBuffers;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
-import java.nio.*;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.*;
+import java.nio.ByteBuffer;
+import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.Supplier;
 
 public class VirtualPageFileIO {
@@ -27,7 +26,8 @@ public class VirtualPageFileIO {
 
         lastPage = new AtomicStampedReference<>(null, -1);
 
-        if (virtualFileNumber > virtualPageFile.getVirtualFiles()) throw new IllegalStateException("Requested a virtual file " + virtualFileNumber + " which is greater than the max allocated " + virtualPageFile.getVirtualFiles());
+        if (virtualFileNumber > virtualPageFile.getVirtualFiles())
+            throw new IllegalStateException("Requested a virtual file " + virtualFileNumber + " which is greater than the max allocated " + virtualPageFile.getVirtualFiles());
     }
 
     long appendPageAlignedPosition(int size, int lowBound, int highBound) {
@@ -39,7 +39,7 @@ public class VirtualPageFileIO {
         return virtualPageFile.nextAlignedPosition(position, lowBound, highBound);
     }
 
-    public boolean isReadOnly(){
+    public boolean isReadOnly() {
         return virtualPageFile.isReadOnly();
     }
 
@@ -47,35 +47,35 @@ public class VirtualPageFileIO {
         return virtualPageFile.isPageAvailable(virtualFileNumber, virtualPageFile.pageNumber(position));
     }
 
-    long appendPosition(int size){
+    long appendPosition(int size) {
         return virtualPageFile.appendPosition(virtualFileNumber, size);
     }
 
-    long getPosition(){
+    long getPosition() {
         return virtualPageFile.getPosition(virtualFileNumber);
     }
 
-    void writeInt(long pos, int val){
+    void writeInt(long pos, int val) {
         write(pos, int2bytes(val));
     }
 
-    static byte[] int2bytes(int val){
+    static byte[] int2bytes(int val) {
         ByteBuffer intBuf = LOCAL_INT_BUFFER.get();
         intBuf.putInt(val).flip();
         return intBuf.array();
     }
 
-    void writeLong(long pos, long val){
+    void writeLong(long pos, long val) {
         write(pos, long2bytes(val));
     }
 
-    static byte[] long2bytes(long val){
+    static byte[] long2bytes(long val) {
         ByteBuffer longBuf = LOCAL_LONG_BUFFER.get();
         longBuf.putLong(val).flip();
         return longBuf.array();
     }
 
-    void write(long pos, byte[] bytes){
+    void write(long pos, byte[] bytes) {
         if (bytes.length == 0) {
             throw new IllegalArgumentException("Can not write empty bytes!");
         }
@@ -99,7 +99,7 @@ public class VirtualPageFileIO {
         int bytesWritten;
         bytesWritten = page.put(virtualPageFile.pagePosition(pos), bytes, offset);
 
-        if (bytesWritten < (bytes.length - offset)){
+        if (bytesWritten < (bytes.length - offset)) {
             bytesWritten += writePagedOffset(pos + bytesWritten, bytes, offset + bytesWritten);
         }
         return bytesWritten;
@@ -119,7 +119,7 @@ public class VirtualPageFileIO {
         return Longs.fromByteArray(buf);
     }
 
-    void read(long pos, byte[] buf){
+    void read(long pos, byte[] buf) {
         if (buf.length == 0) return;
         final int result = readPagedOffset(pos, buf, 0);
         if (result != buf.length) {
@@ -141,7 +141,7 @@ public class VirtualPageFileIO {
         int bytesRead;
         bytesRead = page.get(virtualPageFile.pagePosition(pos), buf, offset);
 
-        if (bytesRead < (buf.length - offset)){
+        if (bytesRead < (buf.length - offset)) {
             // TODO see if it is faster to use the head pointer to the next page start rather than recursion here?
             bytesRead += readPagedOffset(pos + bytesRead, buf, offset + bytesRead);
         }

@@ -11,6 +11,7 @@ import java.io.*;
  */
 public class Varint {
     private static final long[] MAX_VARINT_AT_SIZE = new long[9];
+
     static {
         for (int size = 1; size < 9; size++) {
             // every byte contains 7 bits of value plus one bit for continuation
@@ -44,7 +45,7 @@ public class Varint {
      */
     public static long readLong(InputStream in) throws IOException {
         long value = 0;
-        for(int shift = 0; shift < 64; shift += 7) {
+        for (int shift = 0; shift < 64; shift += 7) {
             int b = in.read();
             value |= (long) (b & 127) << shift;
             if (b < 128) {

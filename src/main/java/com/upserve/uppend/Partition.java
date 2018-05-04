@@ -5,7 +5,7 @@ import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
 import org.slf4j.Logger;
 
-import java.io.*;
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.stream.*;
@@ -70,22 +70,22 @@ public abstract class Partition {
         return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
     }
 
-    public static Path metadataPath(Path partitionDir){
+    public static Path metadataPath(Path partitionDir) {
         return partitionDir.resolve("keyMetadata");
     }
 
-    public static Path keysPath(Path partitionDir){
+    public static Path keysPath(Path partitionDir) {
         return partitionDir.resolve("keys");
     }
 
-    public static Stream<String> listPartitions(Path partitiondPath){
+    public static Stream<String> listPartitions(Path partitiondPath) {
         try {
             return Files.list(partitiondPath).filter(path -> Files.exists(metadataPath(path))).map(path -> path.toFile().getName());
-        } catch (NoSuchFileException e){
+        } catch (NoSuchFileException e) {
             log.debug("Partitions director does not exist: {}", partitiondPath);
             return Stream.empty();
 
-        } catch (IOException e){
+        } catch (IOException e) {
             log.error("Unable to list partitions in {}", partitiondPath, e);
             return Stream.empty();
         }

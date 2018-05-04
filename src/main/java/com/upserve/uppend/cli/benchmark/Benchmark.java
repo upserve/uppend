@@ -4,7 +4,6 @@ import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
-import com.upserve.uppend.AppendOnlyStoreBuilder;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -37,29 +36,33 @@ public class Benchmark {
     private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
 
-    private final ForkJoinPool runPool;
+    private final ForkJoinPool writerPool;
+    private final ForkJoinPool readerPool;
 
     private volatile boolean isDone = false;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int metadataPageSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds) {
+    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int metadataPageSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds, int blockSize, int flushThreshold) {
         this.mode = mode;
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
-        this.maxKeys = maxKeys; // max ~ 10,000,000
+        this.maxKeys = maxKeys; // max ~ 100,000,000
 
         if (Files.exists(path)) {
             log.warn("Location already exists: appending to {}", path);
         }
 
         ForkJoinPool cachePool = forkJoinPoolFunction.apply("cache-worker");
-        runPool = forkJoinPoolFunction.apply("benchmark-worker");;
+        writerPool = forkJoinPoolFunction.apply("benchmark-writer");
+        ;
+        readerPool = forkJoinPoolFunction.apply("benchmark-reader");
+        ;
 
         // TODO add a reader pool!
         metrics = new MetricRegistry();
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)
-                .withBlobsPerBlock(14)
+                .withBlobsPerBlock(blockSize)
                 .withLongLookupHashSize(hashSize)
                 .withInitialLookupKeyCacheSize(keyCachesize)
                 .withMaximumLookupKeyCacheWeight(keyCachesize * 256) // based on key size
@@ -67,6 +70,7 @@ public class Benchmark {
                 .withMaximumBlobCacheSize(blobPageCacheSize)
                 .withInitialLookupPageCacheSize(keyPageCacheSize)
                 .withMaximumLookupPageCacheSize(keyPageCacheSize)
+                .withFlushThreshold(flushThreshold)
                 .withInitialMetaDataCacheSize(metadataCacheSize)
                 .withInitialMetaDataPageSize(metadataPageSize)
                 .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
@@ -118,7 +122,7 @@ public class Benchmark {
                 random.longs(count, 0, range).parallel(),
                 longInt -> {
                     byte[] myBytes = bytes(longInt);
-                    testInstance.append(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys), myBytes);
+                    testInstance.append(partition(longInt, maxPartitions), key(longInt / maxPartitions, maxKeys), myBytes);
                     return myBytes.length;
                 }
         );
@@ -127,7 +131,7 @@ public class Benchmark {
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
                 random.longs(count, 0, range).parallel(),
-                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt/maxPartitions, maxKeys))
+                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt / maxPartitions, maxKeys))
                         .mapToInt(theseBytes -> theseBytes.length)
                         .sum()
         );
@@ -148,7 +152,7 @@ public class Benchmark {
     }
 
     public static String key(long integer, int maxKeys) {
-        return String.format("%08X", integer % maxKeys);
+        return String.format("%09X", integer % maxKeys);
     }
 
     private static String partition(long integer, int maxPartitions) {
@@ -156,7 +160,7 @@ public class Benchmark {
     }
 
     public static byte[] bytes(long integer) {
-        int length =(int) (integer % 1024);
+        int length = (int) (integer % 1024);
         byte[] bytes = new byte[length];
         Arrays.fill(bytes, (byte) 0);
         return bytes;
@@ -168,7 +172,7 @@ public class Benchmark {
         final Meter writeBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + WRITE_BYTES_METER_METRIC_NAME);
 
         final Meter readBytesMeter;
-        final Supplier<Long>  readCounter;
+        final Supplier<Long> readCounter;
 
         if (mode.equals(BenchmarkMode.scan)) {
             readCounter = () -> metrics.getMeters().get(testInstance.getName() + "." + SCAN_KEYS_METER_METRIC_NAME).getCount();
@@ -236,16 +240,15 @@ public class Benchmark {
             }
         };
     }
+
     public void run() throws InterruptedException, ExecutionException {
         log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
 
-
-
-        Future writerFuture = runPool.submit(writer);
+        Future writerFuture = writerPool.submit(writer);
 
         Thread.sleep(sleep * 1000); // give the writer a head start...
 
-        Future readerFuture = runPool.submit(reader);
+        Future readerFuture = readerPool.submit(reader);
         Thread.sleep(100);
 
         java.util.Timer watcherTimer = new java.util.Timer();

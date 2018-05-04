@@ -4,17 +4,17 @@ import com.github.benmanes.caffeine.cache.*;
 import com.github.benmanes.caffeine.cache.stats.*;
 import org.slf4j.Logger;
 
-import java.io.*;
+import java.io.Flushable;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
 import java.util.Optional;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
 import java.util.function.*;
 
 /**
  * A cache of memory mapped file pages
  * <p>
- * TODO Concurrent writes to random new pages cause the JVM to crash
+ * Concurrent writes to random new pages cause the JVM to crash in JDK < 9
  * Attempted solution to force the buffer when it extends the file failed to fix the issue. See testHammerPageCache
  * Uppend should not make concurrent writes to multiple pages in normal operation - unless blobs are larger than a page
  */
@@ -45,7 +45,7 @@ public class PageCache implements Flushable {
 
     }
 
-    public int getPageSize(){
+    public int getPageSize() {
         return pageSize;
     }
 
@@ -53,7 +53,7 @@ public class PageCache implements Flushable {
         return pageCache.get(new PageKey(path, pos), pageLoader);
     }
 
-    Optional<Page> getIfPresent(VirtualPageFile virtualPageFile, long pos){
+    Optional<Page> getIfPresent(VirtualPageFile virtualPageFile, long pos) {
         return Optional.ofNullable(pageCache.getIfPresent(new PageKey(virtualPageFile.getFilePath(), pos)));
     }
 

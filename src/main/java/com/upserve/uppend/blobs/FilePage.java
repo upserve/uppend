@@ -1,7 +1,7 @@
 package com.upserve.uppend.blobs;
 
 import java.io.*;
-import java.nio.*;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
 import static java.lang.Integer.min;
@@ -17,11 +17,12 @@ public class FilePage implements Page {
 
     /**
      * Constructor for a FilePage
-\     */
+     * \
+     */
     public FilePage(FileChannel channel, long pageStart, int pageSize) {
-       this.channel = channel;
-       this.pageStart = pageStart;
-       this.pageSize = pageSize;
+        this.channel = channel;
+        this.pageStart = pageStart;
+        this.pageSize = pageSize;
 
     }
 
@@ -44,7 +45,7 @@ public class FilePage implements Page {
 
         if (channelRead != actualRead) throw new IllegalStateException("Failed to read past end of file");
 
-        return  actualRead;
+        return actualRead;
     }
 
     @Override

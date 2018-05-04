@@ -10,7 +10,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.function.*;
+import java.util.function.BiConsumer;
 import java.util.stream.*;
 
 public class AppendStorePartition extends Partition implements Flushable, Closeable {
@@ -113,10 +113,10 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 .parallel()
                 .boxed()
                 .flatMap(virtualFileNumber ->
-                    lookups[virtualFileNumber].scan().map(entry -> Maps.immutableEntry(
-                            entry.getKey().string(),
-                            blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read)
-                    ))
+                        lookups[virtualFileNumber].scan().map(entry -> Maps.immutableEntry(
+                                entry.getKey().string(),
+                                blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read)
+                        ))
                 );
     }
 
@@ -127,7 +127,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 .boxed()
                 .forEach(virtualFileNumber ->
                         lookups[virtualFileNumber].scan().forEach(entry -> callback.accept(entry.getKey().string(), blocks.values(entry.getValue()).mapToObj(blobs[virtualFileNumber]::read))
-                ));
+                        ));
     }
 
     Stream<String> keys() {

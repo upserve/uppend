@@ -20,8 +20,10 @@ import java.util.concurrent.Callable;
         footerHeading = "%n"
 )
 public class CommandBenchmark implements Callable<Void> {
-    @Parameters(index = "0", description = "Benchmark mode (read|write|readwrite|scan)") BenchmarkMode mode;
-    @Parameters(index = "1", description = "Store path") Path path;
+    @Parameters(index = "0", description = "Benchmark mode (read|write|readwrite|scan)")
+    BenchmarkMode mode;
+    @Parameters(index = "1", description = "Store path")
+    Path path;
 
     @Option(names = {"-p", "--max-partitions"}, description = "Max partitions")
     int maxPartitions = 1;
@@ -53,6 +55,12 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-f", "--flush-delay"}, description = "Flush delay (sec)")
     int flushDelay = AppendOnlyStoreBuilder.DEFAULT_FLUSH_DELAY_SECONDS;
 
+    @Option(names = {"-d", "--flush-threshold"}, description = "Flush Threshold Size")
+    int flushThreshold = AppendOnlyStoreBuilder.DEFAULT_FLUSH_THRESHOLD;
+
+    @Option(names = {"-l", "--block-size"}, description = "Block Size")
+    int blockSize = AppendOnlyStoreBuilder.DEFAULT_BLOBS_PER_BLOCK;
+
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
     boolean help;
@@ -60,7 +68,7 @@ public class CommandBenchmark implements Callable<Void> {
     @Override
     public Void call() throws Exception {
         Benchmark benchmark = new Benchmark(
-                mode, path, maxPartitions, maxKeys, count, hashSize, keyCacheSize, metadataCacheSize, metadataPageSize, blobPageCacheSize, keyPageCacheSize, flushDelay
+                mode, path, maxPartitions, maxKeys, count, hashSize, keyCacheSize, metadataCacheSize, metadataPageSize, blobPageCacheSize, keyPageCacheSize, flushDelay, blockSize, flushThreshold
         );
         benchmark.run();
         return null;

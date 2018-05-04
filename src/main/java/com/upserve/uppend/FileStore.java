@@ -1,8 +1,5 @@
 package com.upserve.uppend;
 
-import com.codahale.metrics.MetricRegistry;
-import com.github.benmanes.caffeine.cache.stats.*;
-import com.upserve.uppend.metrics.MetricsStatsCounter;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -12,7 +9,7 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.*;
+import java.util.function.Function;
 
 abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -46,9 +43,7 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
         if (!readOnly) {
             lockPath = dir.resolve("lock");
 
-            if (flushDelaySeconds < 0)
-                throw new IllegalArgumentException("Flush delay can not be negative: " + flushDelaySeconds);
-            AutoFlusher.register(flushDelaySeconds, this);
+            if (flushDelaySeconds > 0) AutoFlusher.register(flushDelaySeconds, this);
 
             try {
                 lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -138,7 +133,7 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
         }
 
         if (!readOnly) {
-            AutoFlusher.deregister(this);
+            if (flushDelaySeconds > 0) AutoFlusher.deregister(this);
         }
 
         try {

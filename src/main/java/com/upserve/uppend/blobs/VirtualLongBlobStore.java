@@ -2,8 +2,6 @@ package com.upserve.uppend.blobs;
 
 
 import com.google.common.collect.Maps;
-import com.upserve.uppend.lookup.LookupKey;
-import groovy.util.MapEntry;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -29,16 +27,16 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
         return pos;
     }
 
-    public long getPosition(){
+    public long getPosition() {
         return super.getPosition();
     }
 
-    public void writeLong(long pos, long val){
+    public void writeLong(long pos, long val) {
         super.writeLong(pos + 4, val);
     }
 
     public long readLong(long pos) {
-        return super.readLong(pos+4);
+        return super.readLong(pos + 4);
     }
 
     public byte[] readBlob(long pos) {
@@ -62,6 +60,7 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
         long lastPosition = getPosition() - 1;
         return new Iterator<>() {
             long position = 0;
+
             @Override
             public boolean hasNext() {
                 return position < lastPosition;
@@ -82,7 +81,7 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
         return inputBytes.length + 12;
     }
 
-    public static byte[] byteRecord(long val, byte[] inputBytes){
+    public static byte[] byteRecord(long val, byte[] inputBytes) {
         byte[] result = new byte[recordSize(inputBytes)];
         System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
         System.arraycopy(long2bytes(val), 0, result, 4, 8);
