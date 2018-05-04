@@ -296,8 +296,34 @@ public class LookupData implements Flushable {
      * @return Long value or null if not present
      */
     private Long findValueFor(LookupKey key) {
-        LookupMetadata lookupMetadata = partitionLookupCache.getMetadata(this);
+        LookupMetadata lookupMetadata;
+        try {
+            lookupMetadata = partitionLookupCache.getMetadata(this);
+        } catch (IllegalStateException e) {
+            if (readOnly){
+                // Try again and let the exception bubble if it fails
+                lookupMetadata = partitionLookupCache.getMetadata(this);
+            } else {
+                lookupMetadata = repairMetadata();
+            }
+        }
+
         return lookupMetadata.findKey(keyLongBlobs, key);
+    }
+
+    private synchronized LookupMetadata repairMetadata() {
+        long[] sortedPositions = keyLongBlobs.positionBlobStream()
+                .sorted(Comparator.comparing(entry -> new LookupKey(entry.getValue())))
+                .mapToLong(Map.Entry::getKey)
+                .toArray();
+        try {
+            int sortedPositionsSize = sortedPositions.length;
+            LookupKey minKey = sortedPositionsSize > 0 ? readKey(sortedPositions[0]) : null;
+            LookupKey maxKey = sortedPositionsSize > 0 ? readKey(sortedPositions[sortedPositionsSize - 1]) : null;
+            return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet());
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to write repaired metadata!", e);
+        }
     }
 
     int getMetaDataGeneration(){

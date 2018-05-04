@@ -2,7 +2,7 @@ package com.upserve.uppend.blobs;
 
 import com.google.common.primitives.Longs;
 import com.upserve.uppend.AppendOnlyStoreBuilder;
-import com.upserve.uppend.util.SafeDeleting;
+import com.upserve.uppend.util.*;
 import org.junit.*;
 
 import java.io.*;
@@ -13,6 +13,7 @@ import java.util.stream.*;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.fail;
 
 public class VirtualLongBlobStoreTest {
 
@@ -196,4 +197,41 @@ public class VirtualLongBlobStoreTest {
             assertEquals(Longs.fromByteArray(entry.getValue()), val);
         });
     }
+
+    @Test
+    public void testConcurrentLongAccess() throws InterruptedException {
+        setup(120);
+
+        Random random = new Random();
+
+        VirtualLongBlobStore blobStore = new VirtualLongBlobStore(5, virtualPageFile);
+
+        long position = blobStore.append(0, "ShahBam".getBytes());
+
+
+        Thread writer = new Thread(() -> random
+                .longs(100_000, 0, 1000)
+                .parallel()
+                .forEach(val -> blobStore.writeLong(position, val)),
+                "writer"
+        );
+
+        Thread reader = new Thread(() ->LongStream
+                .range(0, 100_000)
+                .parallel()
+                .forEach(val -> {
+                    long result = blobStore.readLong(position);
+                    if (0 > result || result >= 1000) fail("Value was corrupted!");
+                }),
+                "reader"
+        );
+
+        writer.start();
+        reader.start();
+
+        writer.join();
+        reader.join();
+
+    }
+
 }

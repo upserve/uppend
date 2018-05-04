@@ -185,6 +185,20 @@ public class VirtualPageFile implements Flushable, Closeable{
         return result;
     }
 
+    long nextAlignedPosition(long position, int lowBound, int highBound) {
+        int naturalPageStartPosition = pagePosition(position);
+        int availableSpace = pageSize - naturalPageStartPosition;
+
+        if (availableSpace >= highBound){
+            return position;
+        } else if(availableSpace <= lowBound){
+            return position;
+        } else {
+            return position + availableSpace - lowBound;
+        }
+    }
+
+
     long getPosition(int virtualFileNumber){
         if (readOnly){
             return getHeaderVirtualFilePosition(virtualFileNumber);
@@ -342,6 +356,15 @@ public class VirtualPageFile implements Flushable, Closeable{
 
         // TODO Check file size on startup and try to recover pages from the head and tail pointers on the pages?
     }
+
+    private void detectCorruption(int virtualFileNumber) {
+
+
+
+
+
+    }
+
 
     private long getPageStart(int virtualFileNumber, int pageNumber) {
         if (pageNumber == -1) return -1L;

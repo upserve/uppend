@@ -1,6 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.google.common.primitives.Ints;
 import com.upserve.uppend.AppendOnlyStoreBuilder;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
@@ -27,7 +28,6 @@ public class LookupDataTest {
     private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
     private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder
             .getDefaultTestBuilder()
-            .withLookupPageSize(32*1024)
             .withMaximumLookupKeyCacheWeight(1024 * 1024);
 
     private final PageCache pageCache = defaults.buildLookupPageCache(name);
@@ -425,7 +425,7 @@ public class LookupDataTest {
         assertEquals(0, data.writeCache.size());
 
         assertLookupKeyCache(0, 0, 0, 0);
-        assertLookupPagesCache(0, 52, 0, 0);
+        assertLookupPagesCache(0, 104, 0, 0);
         lookupPageCacheStats.set(pageCache.stats());
         assertLookupMetadataCache(1, 0, 0, 0);
 
@@ -446,7 +446,7 @@ public class LookupDataTest {
                 });
 
         assertLookupKeyCache(0, 100_000, 100_000,  0);
-        assertLookupPagesCache(187467, 52, 52, 0);
+        assertLookupPagesCache(233307, 104, 104, 0);
         assertLookupMetadataCache(99999, 1, 1, 0);
     }
 
@@ -522,6 +522,54 @@ public class LookupDataTest {
         data.keys().forEach(key -> {
             throw new IllegalStateException("should not have called this");
         });
+    }
 
+    @Test
+    public void testLoadReadOnlyMetadata() {
+        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, partitionLookupCache, true);
+
+        mutableBlobStore.write(0, Ints.toByteArray(50));
+        mutableBlobStore.write(4, Ints.toByteArray(284482732)); // Check checksum
+
+        thrown.expect(IllegalStateException.class);
+        thrown.expectMessage("Checksum did not match for the requested blob");
+
+        data.getValue(new LookupKey("foobar"));
+    }
+
+    @Test
+    public void testLoadReadRepairMetadata() {
+        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, partitionLookupCache, false);
+
+        Random random = new Random();
+        LongStream.range(0, 100_000)
+                .parallel()
+                .forEach(val -> {
+                    byte[] bytes = new byte[(int) (val % 64)];
+                    random.nextBytes(bytes);
+                    data.put(new LookupKey(bytes), val);
+                });
+
+        data.flush();
+
+        LookupMetadata expected = lookupCache.getMetadata(data);
+
+        mutableBlobStore.write(0, Ints.toByteArray(50));
+        mutableBlobStore.write(4, Ints.toByteArray(284482732)); // Check checksum
+
+        lookupCache.flush();
+
+        // Do read repair!
+        assertNull(data.getValue(new LookupKey("foobarChew - MeToo")));
+
+        LookupMetadata result = lookupCache.getMetadata(data);
+
+        // It is a new object!
+        assertNotEquals(expected, result);
+
+        assertEquals(expected.getMinKey(), result.getMinKey());
+        assertEquals(expected.getMaxKey(), result.getMaxKey());
+
+        assertArrayEquals(expected.getKeyStorageOrder(), result.getKeyStorageOrder());
     }
 }

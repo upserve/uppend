@@ -36,7 +36,7 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
 
-        if (!(Files.exists(metadataPath(partentDir)) && Files.exists(keysPath(partentDir)))) return null;
+        if (!(Files.exists(metadataPath(partitiondDir)) && Files.exists(keysPath(partitiondDir)))) return null;
 
 
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);

@@ -35,6 +35,10 @@ public class VirtualPageFileIO {
         return virtualPageFile.appendPageAlignedPosition(virtualFileNumber, size, lowBound, highBound);
     }
 
+    long nextAlignedPosition(long position, int lowBound, int highBound) {
+        return virtualPageFile.nextAlignedPosition(position, lowBound, highBound);
+    }
+
     public boolean isReadOnly(){
         return virtualPageFile.isReadOnly();
     }

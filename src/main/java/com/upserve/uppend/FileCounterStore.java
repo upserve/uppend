@@ -100,6 +100,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
                 });
         partitionMap.clear();
         lookupCache.flush();
+        keyPageCache.flush();
     }
 
     @Override

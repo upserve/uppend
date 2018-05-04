@@ -29,6 +29,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     public static final long DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT = 1_000_000;
     public static final int DEFAULT_INITIAL_METADATA_CACHE_SIZE = 1000;
     public static final int DEFAULT_METADATA_PAGE_SIZE = 4096;
+    public static final int DEFAULT_METADATA_TTL = 0; // Off by default!
 
     int lookupHashSize = DEFAULT_LOOKUP_HASH_SIZE;
 
@@ -41,6 +42,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
 
     long maximumMetaDataCacheWeight = DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT;
     int initialMetaDataCacheSize = DEFAULT_INITIAL_METADATA_CACHE_SIZE;
+    int metadataTTL = DEFAULT_METADATA_TTL;
 
     int metaDataPageSize = DEFAULT_METADATA_PAGE_SIZE;
 
@@ -113,6 +115,12 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withInitialMetaDataPageSize(int metaDataPageSize) {
         this.metaDataPageSize = metaDataPageSize;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
+    public T withMetadataTTL(int metadataTTL) {
+        this.metadataTTL = metadataTTL;
         return (T) this;
     }
 
@@ -219,6 +227,7 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
                 metricsSupplier(metricsPrefix, LOOKUP_KEY_CACHE_METRICS),
                 getInitialMetaDataCacheSize(),
                 getMaximumMetaDataCacheWeight(),
+                getMetadataTTL(),
                 getLookupMetaDataCacheExecutorService(),
                 metricsSupplier(metricsPrefix, METADATA_CACHE_METRICS)
         );
@@ -284,6 +293,8 @@ public class FileStoreBuilder <T extends FileStoreBuilder<T>> {
     }
 
     public int getMetadataPageSize() { return metaDataPageSize; }
+
+    public int getMetadataTTL() { return metadataTTL; }
 
     public ExecutorService getLookupKeyCacheExecutorService() {
         return lookupKeyCacheExecutorService;

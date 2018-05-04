@@ -71,7 +71,6 @@ public class LookupKey implements Comparable<LookupKey> {
         return bytes.length;
     }
 
-    // TODO optimize compareTo, equals and hashCode using the byte[]
     @Override
     public int compareTo(LookupKey o) {
         return Arrays.compare(bytes, o.bytes);

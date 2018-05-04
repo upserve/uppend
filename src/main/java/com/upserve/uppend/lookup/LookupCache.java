@@ -21,7 +21,7 @@ public class LookupCache implements Flushable {
     private final LoadingCache<LookupData, LookupMetadata> lookupMetaDataCache;
 
 
-    public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
+    public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, int metadataTTL, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
 
         Caffeine<PartitionLookupKey, Long> keyCacheBuilder = Caffeine
                 .<PartitionLookupKey, Long>newBuilder()
@@ -44,7 +44,9 @@ public class LookupCache implements Flushable {
                 .maximumWeight(maximumMetaDataWeight)
                 .<LookupData, LookupMetadata>weigher((k ,v) -> v.weight());
 
-         //TODO add TTL for read only stores on metadata
+        if (metadataTTL > 0) {
+            metadataCacheBuilder.expireAfterWrite(metadataTTL, TimeUnit.SECONDS);
+        }
 
         if (metadataCacheMetricsSupplier != null) {
             metadataCacheBuilder = metadataCacheBuilder.recordStats(metadataCacheMetricsSupplier);

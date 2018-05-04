@@ -1,12 +1,9 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.blobs.VirtualLongBlobStore;
-
 import java.util.Iterator;
 import java.util.concurrent.atomic.*;
 import java.util.function.*;
 
-// TODO Use the metadata sort order in the iterator to provide the position!
 public class LookupDataIterator<T> implements Iterator<T> {
 
     private AtomicInteger keyIndex;

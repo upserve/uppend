@@ -37,7 +37,7 @@ public class CounterStoreTest {
     }
 
     @After
-    public void cleanUp() {
+    public void tearDown() {
         try {
             store.close();
         } catch (Exception e) {
@@ -85,14 +85,14 @@ public class CounterStoreTest {
         store = newStore();
         assertEquals(Long.valueOf(10), store.get("partition", "foo"));
         assertEquals(Long.valueOf(3), store.get("partition", "bar"));
-        assertEquals(null, store.get("partition", "baz"));
+        assertNull(store.get("partition", "baz"));
     }
 
     @Test
     public void testClear() {
-        assertEquals(null, store.set("partition", "foo", 7));
+        assertNull(store.set("partition", "foo", 7));
         store.clear();
-        assertEquals(null, store.get("partition", "foo"));
+        assertNull(store.get("partition", "foo"));
         assertEquals(0, store.partitions().count());
         assertEquals(0, store.keys("partition").count());
     }
@@ -105,7 +105,7 @@ public class CounterStoreTest {
 
     @Test
     public void testPurge() throws Exception {
-        assertEquals(null, store.set("partition", "foo", 7));
+        assertNull(store.set("partition", "foo", 7));
         store.trim();
         assertEquals(Long.valueOf(7), store.get("partition", "foo"));
         assertEquals(8L, store.increment("partition", "foo"));
@@ -160,7 +160,7 @@ public class CounterStoreTest {
         store.increment("partition_one", "one", 1);
         store.increment("partition_two", "one", 1);
 
-        Map<String, Long> result = new TreeMap<>();
+        ConcurrentMap<String, Long> result = new ConcurrentHashMap<>();
         store.scan("partition_one", result::put);
 
         Map<String, Long> expected = ImmutableMap.of(
@@ -191,11 +191,7 @@ public class CounterStoreTest {
     }
 
     @Test
-    public void testParallel() throws Exception {
-        store.close();
-        store = CounterStoreBuilder.getDefaultTestBuilder().withDir(Paths.get("build/test/file-append-only-store")).build();
-        store.clear();
-
+    public void testParallelWriteThenRead() throws Exception {
         final int numKeys = 1000;
         final int totalIncrements = 1_000_000;
         log.info("parallel: starting {} keys, {} total increments", numKeys, totalIncrements);
