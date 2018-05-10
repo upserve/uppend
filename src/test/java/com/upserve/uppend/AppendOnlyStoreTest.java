@@ -98,7 +98,7 @@ public class AppendOnlyStoreTest {
         ExecutorService executor = new ForkJoinPool();
         Future future = executor.submit(() -> {
             new Random(314159)
-                    .longs(500_000, 0, 10_000)
+                    .longs(100_000, 0, 5_000)
                     .parallel()
                     .forEach(val -> {
                         String key = String.valueOf(val);

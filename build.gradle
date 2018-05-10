@@ -34,7 +34,8 @@ task wrapper(type: Wrapper) {
     gradleVersion = '4.4'
 }
 
-gradleLint.rules += 'unused-dependency'
+// TODO unused-dependency is broken - claims all dependencies are unused!
+//gradleLint.rules += 'unused-dependency'
 
 apply plugin: 'java'
 apply plugin: 'maven'
@@ -60,7 +61,7 @@ dependencies {
 
     testCompile 'junit:junit:4.12'
     testCompile 'org.apache.logging.log4j:log4j-api:2.8'
-    testCompile 'org.mockito:mockito-core:2.7.13'
+    testCompile 'org.mockito:mockito-core:2.18.3'
 
     gradleLint.ignore {
         // gradle-lint doesn't like log4j because it's not used directly

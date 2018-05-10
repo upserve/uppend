@@ -25,7 +25,7 @@ public class UppendMainTest {
     @Test
     public void testMain() throws Exception {
         Uppend.main("--help");
-        String errStr = errStream.toString();
-        assertTrue("didn't find expected 'Usage: uppend' in main stderr output: " + errStr, errStr.contains("Usage: uppend"));
+        String outStr = outStream.toString();
+        assertTrue("didn't find expected 'Usage: uppend' in main stderr output: " + outStr, outStr.contains("Usage: uppend"));
     }
 }
