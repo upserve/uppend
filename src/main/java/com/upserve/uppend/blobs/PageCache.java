@@ -14,7 +14,7 @@ import java.util.function.*;
 /**
  * A cache of memory mapped file pages
  * <p>
- * Concurrent writes to random new pages cause the JVM to crash in JDK < 9
+ * Concurrent writes to random new pages cause the JVM to crash in JDK less than 9
  * Attempted solution to force the buffer when it extends the file failed to fix the issue. See testHammerPageCache
  * Uppend should not make concurrent writes to multiple pages in normal operation - unless blobs are larger than a page
  */

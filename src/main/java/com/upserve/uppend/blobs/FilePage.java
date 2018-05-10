@@ -16,10 +16,12 @@ public class FilePage implements Page {
     private final long pageStart;
 
     /**
-     * Constructor for a FilePage
-     * \
+     * Constructor for a file channel backed page
+     * @param channel the open file channel
+     * @param pageStart the start of the page
+     * @param pageSize the page size
      */
-    public FilePage(FileChannel channel, long pageStart, int pageSize) {
+    FilePage(FileChannel channel, long pageStart, int pageSize) {
         this.channel = channel;
         this.pageStart = pageStart;
         this.pageSize = pageSize;
