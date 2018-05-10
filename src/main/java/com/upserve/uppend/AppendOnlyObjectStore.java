@@ -153,4 +153,10 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     public String getName() {
         return store.getName();
     }
+
+    public long keyCount() { return store.keyCount(); }
+
+    public AppendOnlyStore getStore() {
+        return store;
+    }
 }
