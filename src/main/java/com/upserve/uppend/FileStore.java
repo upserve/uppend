@@ -25,7 +25,7 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
     private final FileChannel lockChan;
     private final FileLock lock;
 
-    private final AtomicBoolean isClosed;
+    protected final AtomicBoolean isClosed;
 
     FileStore(Path dir, int flushDelaySeconds, boolean readOnly) {
         this.dir = dir;

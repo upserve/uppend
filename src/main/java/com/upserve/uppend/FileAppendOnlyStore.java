@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
+import java.nio.channels.ClosedChannelException;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.Stream;
@@ -171,7 +172,15 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         partitionMap.values().parallelStream().forEach(appendStorePartition -> {
             try {
                 appendStorePartition.flush();
+            } catch (ClosedChannelException e){
+                if (isClosed.get()) {
+                    log.debug("Tried to flush a closed store {}", dir, e);
+                } else {
+                    throw new UncheckedIOException("Error flushing store " + dir, e);
+                }
+
             } catch (IOException e) {
+                if (isClosed.get())
                 throw new UncheckedIOException("Error flushing store " + dir, e);
             }
         });
