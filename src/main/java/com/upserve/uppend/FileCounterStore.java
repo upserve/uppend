@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.lookup.LookupCache;
 import org.slf4j.Logger;
@@ -77,6 +78,31 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     @Override
     public void scan(String partition, ObjLongConsumer<String> callback) {
         getIfPresent(partition).ifPresent(partitionObject -> partitionObject.scan(callback));
+    }
+
+    @Override
+    public CacheStats getKeyPageCacheStats() {
+        return keyPageCache.stats();
+    }
+
+    @Override
+    public CacheStats getLookupKeyCacheStats() {
+        return lookupCache.keyStats();
+    }
+
+    @Override
+    public CacheStats getMetadataCacheStats() {
+        return lookupCache.metadataStats();
+    }
+
+    @Override
+    public long keyCount() {
+        return listPartitions(partionPath(dir))
+                .map(this::getIfPresent)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .mapToLong(CounterStorePartition::keyCount)
+                .sum();
     }
 
     @Override

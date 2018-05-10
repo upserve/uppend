@@ -1,5 +1,7 @@
 package com.upserve.uppend;
 
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
+
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
@@ -7,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * Reader interface to an append-only store
  */
-public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
+public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable {
     /**
      * Read byte arrays that have been stored under a given partition and key in
      * parallel
@@ -74,4 +76,14 @@ public interface ReadOnlyAppendOnlyStore extends AutoCloseable {
      * @param callback function to call for each key and stream of values
      */
     void scan(String partition, BiConsumer<String, Stream<byte[]>> callback);
+
+    CacheStats getBlobPageCacheStats();
+
+    CacheStats getKeyPageCacheStats();
+
+    CacheStats getLookupKeyCacheStats();
+
+    CacheStats getMetadataCacheStats();
+
+    long keyCount();
 }

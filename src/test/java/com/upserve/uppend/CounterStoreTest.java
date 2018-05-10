@@ -120,6 +120,20 @@ public class CounterStoreTest {
     }
 
     @Test
+    public void testKeyCount() {
+        assertEquals(0, store.keyCount());
+        store.increment("foo", "bar");
+        store.increment("foo", "bar");
+        store.increment("fooTwo", "bar");
+        store.increment("fooTwo", "barOne");
+        assertEquals(0, store.keyCount());
+        store.flush();
+        assertEquals(3, store.keyCount());
+        store.clear();
+        assertEquals(0, store.keyCount());
+    }
+
+    @Test
     public void testPartitions() throws Exception {
         store.increment("partition_one", "one", 1);
         store.increment("partition_two", "two", 2);

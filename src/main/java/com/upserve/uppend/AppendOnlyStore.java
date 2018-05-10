@@ -9,7 +9,7 @@ import java.io.Flushable;
  * expectation that the byte arrays are appended to the value, which is an
  * ever-growing list of byte arrays.
  */
-public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, AutoCloseable, Flushable {
+public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Flushable {
     /**
      * Append a byte array under a given partition and key
      *
@@ -45,12 +45,4 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, Trimmable, Aut
      * @return the name
      */
     String getName();
-
-    CacheStats getBlobPageCacheStats();
-
-    CacheStats getKeyPageCacheStats();
-
-    CacheStats getLookupKeyCacheStats();
-
-    CacheStats getMetadataCacheStats();
 }

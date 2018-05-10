@@ -202,6 +202,11 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
+    public long keyCount() {
+        return store.keyCount();
+    }
+
+    @Override
     public void trim() {
         final Timer.Context context = trimTimer.time();
         try {

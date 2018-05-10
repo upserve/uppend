@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
+import java.util.Arrays;
 import java.util.stream.*;
 
 public abstract class Partition {
@@ -116,5 +117,9 @@ public abstract class Partition {
 
     private static boolean isValidPartitionCharPart(char c) {
         return Character.isJavaIdentifierPart(c) || c == '-';
+    }
+
+    public long keyCount() {
+        return Arrays.stream(lookups).mapToLong(LookupData::keyCount).sum();
     }
 }

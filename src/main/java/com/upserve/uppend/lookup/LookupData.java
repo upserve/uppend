@@ -359,6 +359,14 @@ public class LookupData implements Flushable {
         }
     }
 
+    /**
+     * Only counts flushed keys.
+     * @return the number of keys
+     */
+    public int keyCount() {
+        return partitionLookupCache.getMetadata(this).getNumKeys();
+    }
+
     void flushWriteCache(LookupMetadata currentMetadata) {
 
         Set<LookupKey> keys = writeCacheKeySetCopy();

@@ -133,6 +133,20 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
+    public void testKeyCount() {
+        assertEquals(0, store.keyCount());
+        store.append("foo", "bar", "bytes".getBytes());
+        store.append("foo", "bar", "bytes".getBytes());
+        store.append("foo", "barone", "bytes".getBytes());
+        store.append("footwo", "barone", "bytes".getBytes());
+        assertEquals(0, store.keyCount());
+        store.flush();
+        assertEquals(3, store.keyCount());
+        store.clear();
+        assertEquals(0, store.keyCount());
+    }
+
+    @Test
     public void testClearThenClose() throws Exception {
         store.clear();
         store.close();

@@ -1,6 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.CounterStore;
 
 import java.util.Map;
@@ -116,6 +117,26 @@ public class CounterStoreWithMetrics implements CounterStore {
         } finally {
             context.stop();
         }
+    }
+
+    @Override
+    public CacheStats getKeyPageCacheStats() {
+        return store.getKeyPageCacheStats();
+    }
+
+    @Override
+    public CacheStats getLookupKeyCacheStats() {
+        return store.getLookupKeyCacheStats();
+    }
+
+    @Override
+    public CacheStats getMetadataCacheStats() {
+        return store.getMetadataCacheStats();
+    }
+
+    @Override
+    public long keyCount() {
+        return store.keyCount();
     }
 
     @Override

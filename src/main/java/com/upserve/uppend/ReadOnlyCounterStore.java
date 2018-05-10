@@ -1,10 +1,12 @@
 package com.upserve.uppend;
 
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
+
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
 import java.util.stream.Stream;
 
-public interface ReadOnlyCounterStore extends AutoCloseable {
+public interface ReadOnlyCounterStore extends Trimmable, AutoCloseable {
     /**
      * Get the value for a given partition and key
      *
@@ -48,4 +50,12 @@ public interface ReadOnlyCounterStore extends AutoCloseable {
      * @param callback function to call for each key and value
      */
     void scan(String partition, ObjLongConsumer<String> callback);
+
+    CacheStats getKeyPageCacheStats();
+
+    CacheStats getLookupKeyCacheStats();
+
+    CacheStats getMetadataCacheStats();
+
+    long keyCount();
 }

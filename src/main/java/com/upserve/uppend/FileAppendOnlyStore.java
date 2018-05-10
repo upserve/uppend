@@ -63,6 +63,16 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     }
 
     @Override
+    public long keyCount() {
+        return listPartitions(partionPath(dir))
+                .map(this::getIfPresent)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .mapToLong(AppendStorePartition::keyCount)
+                .sum();
+    }
+
+    @Override
     public void append(String partition, String key, byte[] value) {
         log.trace("appending for partition '{}', key '{}'", partition, key);
         if (readOnly) throw new RuntimeException("Can not append to store opened in read only mode:" + dir);
