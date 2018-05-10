@@ -35,6 +35,6 @@ public class Cli implements Callable<Void> {
     public static void main(String... args) throws Exception {
         CommandLine cmd = new CommandLine(new Cli());
         cmd.registerConverter(Path.class, (p) -> Paths.get(p));
-        cmd.parseWithHandler(new RunLast(), System.err, args);
+        cmd.parseWithHandler(new RunLast(), args);
     }
 }
