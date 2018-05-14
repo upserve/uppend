@@ -14,12 +14,12 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
 
     // Blob Cache Options
     public static final int DEFAULT_BLOB_PAGE_SIZE = 4 * 1024 * 1024;
-    public static final int DEFAULT_MAXIMUM_BLOB_CACHE_SIZE = 1024;
-    public static final int DEFAULT_INITIAL_BLOB_CACHE_SIZE = 256;
+    public static final int DEFAULT_MAXIMUM_CACHED_BLOB_PAGES = 1024;
+    public static final int DEFAULT_INITIAL_BLOB_PAGE_CACHE_SIZE = 256;
 
     private int blobPageSize = DEFAULT_BLOB_PAGE_SIZE;
-    private int maximumBlobCacheSize = DEFAULT_MAXIMUM_BLOB_CACHE_SIZE;
-    private int initialBlobCacheSize = DEFAULT_INITIAL_BLOB_CACHE_SIZE;
+    private int maximumCachedBlobPages = DEFAULT_MAXIMUM_CACHED_BLOB_PAGES;
+    private int initialBlobPageCacheSize = DEFAULT_INITIAL_BLOB_PAGE_CACHE_SIZE;
 
     private ExecutorService blobCacheExecutorService = ForkJoinPool.commonPool();
 
@@ -36,12 +36,12 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     }
 
     public AppendOnlyStoreBuilder withMaximumBlobCacheSize(int maximumBlobCacheSize) {
-        this.maximumBlobCacheSize = maximumBlobCacheSize;
+        this.maximumCachedBlobPages = maximumBlobCacheSize;
         return this;
     }
 
     public AppendOnlyStoreBuilder withInitialBlobCacheSize(int initialBlobCacheSize) {
-        this.initialBlobCacheSize = initialBlobCacheSize;
+        this.initialBlobPageCacheSize = initialBlobCacheSize;
         return this;
     }
 
@@ -69,8 +69,8 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     public PageCache buildBlobPageCache(String metricsPrefix) {
         return new PageCache(
                 getBlobPageSize(),
-                getInitialBlobCacheSize(),
-                getMaximumBlobCacheSize(),
+                getInitialBlobPageCacheSize(),
+                getMaximumCachedBlobPages(),
                 getBlobCacheExecutorService(),
                 metricsSupplier(metricsPrefix, BLOB_PAGE_CACHE_METRICS)
         );
@@ -108,12 +108,12 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
         return blobPageSize;
     }
 
-    public int getMaximumBlobCacheSize() {
-        return maximumBlobCacheSize;
+    public int getMaximumCachedBlobPages() {
+        return maximumCachedBlobPages;
     }
 
-    public int getInitialBlobCacheSize() {
-        return initialBlobCacheSize;
+    public int getInitialBlobPageCacheSize() {
+        return initialBlobPageCacheSize;
     }
 
     public ExecutorService getBlobCacheExecutorService() {
@@ -125,8 +125,8 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
         return "AppendOnlyStoreBuilder{" +
                 "blobsPerBlock=" + blobsPerBlock +
                 ", blobPageSize=" + blobPageSize +
-                ", maximumBlobCacheSize=" + maximumBlobCacheSize +
-                ", initialBlobCacheSize=" + initialBlobCacheSize +
+                ", maximumCachedBlobPages=" + maximumCachedBlobPages +
+                ", initialBlobPageCacheSize=" + initialBlobPageCacheSize +
                 ", blobCacheExecutorService=" + blobCacheExecutorService +
                 ", lookupHashSize=" + lookupHashSize +
                 ", lookupPageSize=" + lookupPageSize +

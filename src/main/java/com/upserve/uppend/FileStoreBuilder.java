@@ -43,7 +43,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     long maximumMetaDataCacheWeight = DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT;
     int initialMetaDataCacheSize = DEFAULT_INITIAL_METADATA_CACHE_SIZE;
     int metadataTTL = DEFAULT_METADATA_TTL;
-
     int metaDataPageSize = DEFAULT_METADATA_PAGE_SIZE;
 
     ExecutorService lookupKeyCacheExecutorService = ForkJoinPool.commonPool();

@@ -44,7 +44,7 @@ public class CommandBenchmark implements Callable<Void> {
     int metadataCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_METADATA_CACHE_SIZE;
 
     @Option(names = {"-b", "--blob-page-cache-size"}, description = "Blob Page Cache size")
-    int blobPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_BLOB_CACHE_SIZE;
+    int blobPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_MAXIMUM_CACHED_BLOB_PAGES;
 
     @Option(names = {"-s", "--key-page-cache-size"}, description = "Key Page Cache size")
     int keyPageCacheSize = AppendOnlyStoreBuilder.DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE;
