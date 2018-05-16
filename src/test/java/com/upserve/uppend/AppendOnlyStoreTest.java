@@ -19,9 +19,12 @@ public class AppendOnlyStoreTest {
     private final Path path = Paths.get("build/test/file-append-only-store");
 
     private AppendOnlyStore newStore() {
-        return AppendOnlyStoreBuilder.getDefaultTestBuilder().withDir(path).build(false);
+        return newStore(false);
     }
 
+    private AppendOnlyStore newStore(boolean readOnly) {
+        return AppendOnlyStoreBuilder.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
+    }
     private AppendOnlyStore store;
 
     @Rule
@@ -31,7 +34,6 @@ public class AppendOnlyStoreTest {
     public void initialize() throws IOException {
         SafeDeleting.removeDirectory(path);
         store = newStore();
-        store.clear();
     }
 
     @After
@@ -40,8 +42,6 @@ public class AppendOnlyStoreTest {
             store.close();
         } catch (Exception e) {
             throw new AssertionError("Should not raise: {}", e);
-        } finally {
-            SafeDeleting.removeDirectory(Paths.get("build/test/file-append-only-store"));
         }
     }
 
@@ -60,6 +60,29 @@ public class AppendOnlyStoreTest {
         results.clear();
         store.read("partition", "qux").map(String::new).forEach(results::add);
         assertArrayEquals(new String[]{"xyzzy"}, results.stream().sorted().toArray(String[]::new));
+    }
+
+    @Test
+    public void testEmptyReadOnlyStore() throws Exception {
+        cleanUp();
+
+        store = newStore(true);
+
+        assertEquals(0, store.keyCount());
+        assertEquals(0, store.partitions().count());
+        assertEquals(0, store.read("foo", "bar").count());
+        assertEquals(0, store.scan("bob").count());
+
+        try (AppendOnlyStore readWriteStore = newStore(false)) {
+
+            readWriteStore.append("foo", "bar", "bytes".getBytes());
+            readWriteStore.flush();
+
+            assertEquals(1, store.keyCount());
+            assertEquals(1, store.partitions().count());
+            assertEquals(1, store.read("foo", "bar").count());
+            assertEquals(1, store.scan("foo").count());
+        }
     }
 
     @Test

@@ -12,7 +12,7 @@ import java.util.stream.Stream;
  * convenience typed-access to the deserialized form in an append-only
  * multi-map.
  */
-public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
+public class AppendOnlyObjectStore<T> implements AutoCloseable, RegisteredFlushable {
     private final AppendOnlyStore store;
     private final Function<T, byte[]> serializer;
     private final Function<byte[], T> deserializer;
@@ -139,6 +139,16 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, Flushable {
     @Override
     public void close() throws Exception {
         store.close();
+    }
+
+    @Override
+    public void register(int seconds) {
+        store.register(seconds);
+    }
+
+    @Override
+    public void deregister() {
+        store.deregister();
     }
 
     @Override

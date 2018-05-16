@@ -129,7 +129,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    public void trimInternal() throws IOException {
+    public void trimInternal() {
         if (!readOnly) flushInternal();
         lookupCache.flush();
         keyPageCache.flush();
@@ -146,7 +146,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    protected void flushInternal() throws IOException {
+    protected void flushInternal() {
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
         partitionMap.values().parallelStream().forEach(counterStorePartition -> {
@@ -159,9 +159,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    protected void closeInternal() throws IOException {
-        flushInternal();
-
+    protected void closeInternal() {
         partitionMap.values().parallelStream().forEach(counterStorePartition -> {
             try {
                 counterStorePartition.close();

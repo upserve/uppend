@@ -21,7 +21,10 @@ public class CounterStoreTest {
     Path path = Paths.get("build/test/file-counter-store");
 
     private CounterStore newStore() {
-        return CounterStoreBuilder.getDefaultTestBuilder().withDir(path).build();
+        return newStore(false);
+    }
+    private CounterStore newStore(boolean readOnly) {
+        return CounterStoreBuilder.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
     }
 
     private CounterStore store;
@@ -32,7 +35,6 @@ public class CounterStoreTest {
     @Before
     public void initialize() throws IOException {
         SafeDeleting.removeDirectory(path);
-        Files.createDirectories(path.getParent());
         store = newStore();
     }
 
@@ -42,6 +44,29 @@ public class CounterStoreTest {
             store.close();
         } catch (Exception e) {
             throw new AssertionError("Should not raise: {}", e);
+        }
+    }
+
+    @Test
+    public void testEmptyReadOnlyStore() throws Exception {
+        tearDown();
+        store = newStore(true);
+
+        assertEquals(0, store.keyCount());
+        assertEquals(0, store.keys("foo").count());
+        assertEquals(0, store.partitions().count());
+        assertEquals(0, store.scan("foo").count());
+        assertNull(store.get("foo", "bar"));
+
+        try  (CounterStore readWriteStore = newStore(false)){
+            readWriteStore.increment("foo", "bar");
+            readWriteStore.flush();
+
+            assertEquals(1, store.keyCount());
+            assertEquals(1, store.keys("foo").count());
+            assertEquals(1, store.partitions().count());
+            assertEquals(1, store.scan("foo").count());
+            assertEquals(Long.valueOf(1), store.get("foo", "bar"));
         }
     }
 

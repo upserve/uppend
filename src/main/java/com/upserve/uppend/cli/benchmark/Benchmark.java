@@ -72,7 +72,7 @@ public class Benchmark {
                 .withMaximumLookupPageCacheSize(keyPageCacheSize)
                 .withFlushThreshold(flushThreshold)
                 .withInitialMetaDataCacheSize(metadataCacheSize)
-                .withInitialMetaDataPageSize(metadataPageSize)
+                .withMetaDataPageSize(metadataPageSize)
                 .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
                 .withFlushDelaySeconds(flushDelaySeconds)
                 .withLookupPageCacheExecutorService(cachePool)

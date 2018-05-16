@@ -5,7 +5,7 @@ import java.io.Flushable;
 /**
  * Keep counters for partitioned keys.
  */
-public interface CounterStore extends ReadOnlyCounterStore, Flushable {
+public interface CounterStore extends ReadOnlyCounterStore, RegisteredFlushable {
     /**
      * Set the counter under a given partition and key, to the given value
      *

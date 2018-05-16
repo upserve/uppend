@@ -77,7 +77,16 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         } finally {
             context.stop();
         }
+    }
 
+    @Override
+    public void register(int seconds) {
+        store.register(seconds);
+    }
+
+    @Override
+    public void deregister() {
+        store.deregister();
     }
 
     @Override

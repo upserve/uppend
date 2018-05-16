@@ -25,7 +25,7 @@ public class CounterStoreBuilder extends FileStoreBuilder<CounterStoreBuilder> {
             .withMaximumLookupKeyCacheWeight(100 * 1024)
             .withInitialMetaDataCacheSize(64)
             .withMaximumMetaDataCacheWeight(100 * 1024)
-            .withInitialMetaDataPageSize(1024)
+            .withMetaDataPageSize(1024)
             .withLongLookupHashSize(16)
             .withLookupPageSize(16 * 1024)
             .withCacheMetrics();

@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
-abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
+abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     protected final Path dir;
@@ -43,7 +43,7 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
         if (!readOnly) {
             lockPath = dir.resolve("lock");
 
-            if (flushDelaySeconds > 0) AutoFlusher.register(flushDelaySeconds, this);
+            if (flushDelaySeconds > 0) register(flushDelaySeconds);
 
             try {
                 lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -112,7 +112,15 @@ abstract class FileStore<T> implements AutoCloseable, Flushable, Trimmable {
         log.debug("Trimed {}", dir);
     }
 
-    ;
+    @Override
+    public void register(int seconds) {
+        AutoFlusher.register(seconds, this);
+    }
+
+    @Override
+    public void deregister() {
+        AutoFlusher.deregister(this);
+    }
 
     @Override
     public void flush() {

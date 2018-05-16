@@ -60,6 +60,16 @@ public class CounterStoreWithMetrics implements CounterStore {
     }
 
     @Override
+    public void register(int seconds) {
+        store.register(seconds);
+    }
+
+    @Override
+    public void deregister() {
+        store.deregister();
+    }
+
+    @Override
     public void flush() {
         final Timer.Context context = metricsFlushTimer.time();
         try {

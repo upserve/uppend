@@ -111,7 +111,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withInitialMetaDataPageSize(int metaDataPageSize) {
+    public T withMetaDataPageSize(int metaDataPageSize) {
         this.metaDataPageSize = metaDataPageSize;
         return (T) this;
     }
