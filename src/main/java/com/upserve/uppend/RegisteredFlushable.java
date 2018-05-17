@@ -6,6 +6,7 @@ public interface RegisteredFlushable extends Flushable {
 
     /**
      * Register this flushable with scheduled flusher
+     * @param seconds seconds between flushes
      */
     void register(int seconds);
 

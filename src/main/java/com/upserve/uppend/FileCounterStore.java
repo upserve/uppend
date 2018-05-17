@@ -3,6 +3,7 @@ package com.upserve.uppend;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.lookup.LookupCache;
+import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -112,17 +113,19 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
 
         log.trace("clearing");
 
-        listPartitions(partionPath(dir))
-                .map(this::getIfPresent)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .forEach(counterStorePartition -> {
-                    try {
-                        counterStorePartition.clear();
-                    } catch (IOException e) {
-                        throw new UncheckedIOException("Failed to clear counter store partition", e);
-                    }
-                });
+        partitionMap.values().stream().forEach(counterStorePartition -> {
+            try {
+                counterStorePartition.clear();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to clear counter store partition", e);
+            }
+        });
+
+        try {
+            SafeDeleting.removeDirectory(partionPath(dir));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to clear partitions directory", e);
+        }
         partitionMap.clear();
         lookupCache.flush();
         keyPageCache.flush();
