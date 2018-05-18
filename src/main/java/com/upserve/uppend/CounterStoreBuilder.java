@@ -12,7 +12,7 @@ public class CounterStoreBuilder extends FileStoreBuilder<CounterStoreBuilder> {
         if (readOnly && flushDelaySeconds != DEFAULT_FLUSH_DELAY_SECONDS)
             throw new IllegalStateException("Can not set flush delay seconds in read only mode");
         CounterStore store = new FileCounterStore(readOnly, this);
-        if (isStoreMetrics()) store = new CounterStoreWithMetrics(store, getStoreMetricsRegistry());
+        if (isStoreMetrics()) store = new CounterStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
         return store;
     }
 
@@ -21,6 +21,7 @@ public class CounterStoreBuilder extends FileStoreBuilder<CounterStoreBuilder> {
     }
 
     private static CounterStoreBuilder defaultTestBuilder = new CounterStoreBuilder()
+            .withStoreName("test")
             .withInitialLookupKeyCacheSize(64)
             .withMaximumLookupKeyCacheWeight(100 * 1024)
             .withInitialMetaDataCacheSize(64)

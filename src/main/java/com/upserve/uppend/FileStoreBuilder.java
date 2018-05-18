@@ -18,6 +18,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     static final String METADATA_CACHE_METRICS = "MetadataCache";
 
     // Long lookup Cache Options
+    public static final int DEFAULT_PARTITION_SIZE = 0;
     public static final int DEFAULT_LOOKUP_HASH_SIZE = 256;
     public static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 * 1024;
     public static final int DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE = 1024;
@@ -31,6 +32,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public static final int DEFAULT_METADATA_PAGE_SIZE = 4096;
     public static final int DEFAULT_METADATA_TTL = 0; // Off by default!
 
+    String storeName = "";
+    int partitionSize = DEFAULT_PARTITION_SIZE;
     int lookupHashSize = DEFAULT_LOOKUP_HASH_SIZE;
 
     int lookupPageSize = DEFAULT_LOOKUP_PAGE_SIZE;
@@ -56,10 +59,10 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     int flushThreshold = DEFAULT_FLUSH_THRESHOLD;
     Path dir = null;
     MetricRegistry storeMetricsRegistry = null;
+    String metricsRootName = "";
     boolean storeMetrics = false;
     MetricRegistry cacheMetricsRegistry = null;
     boolean cacheMetrics = false;
-
 
     // Long lookup Cache Options
     @SuppressWarnings("unchecked")
@@ -142,6 +145,18 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     // Append Store Options
     @SuppressWarnings("unchecked")
+    public T withStoreName(String storeName) {
+        this.storeName = storeName;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
+    public T withPartitionSize(int partitionSize) {
+        this.partitionSize = partitionSize;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
     public T withFlushDelaySeconds(int flushDelaySeconds) {
         this.flushDelaySeconds = flushDelaySeconds;
         return (T) this;
@@ -180,6 +195,17 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withCacheMetrics() {
         this.cacheMetrics = true;
+        return (T) this;
+    }
+
+    /**
+     * Use a root name for all metrics
+     *
+     * @return the builder
+     */
+    @SuppressWarnings("unchecked")
+    public T withMetricsRootName(String metricsRootName) {
+        this.metricsRootName = metricsRootName;
         return (T) this;
     }
 
@@ -315,4 +341,15 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public ExecutorService getLookupPageCacheExecutorService() {
         return lookupPageCacheExecutorService;
     }
+
+    public String getStoreName() {
+        return storeName.isEmpty() ? getDir().getFileName().toString() : storeName;
+    }
+
+    public int getPartitionSize(){ return partitionSize; }
+
+    public String getMetricsRootName(){ return metricsRootName; }
+
 }
+
+

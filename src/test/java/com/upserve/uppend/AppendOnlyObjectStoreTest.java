@@ -101,14 +101,8 @@ public class AppendOnlyObjectStoreTest {
 
     @Test
     public void testKeys() {
-        instance.keys("partition");
-        verify(store).keys("partition");
-    }
-
-    @Test
-    public void testPartitions() {
-        instance.partitions();
-        verify(store).partitions();
+        instance.keys();
+        verify(store).keys();
     }
 
     @Test

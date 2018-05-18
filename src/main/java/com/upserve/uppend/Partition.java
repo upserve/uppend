@@ -71,25 +71,12 @@ public abstract class Partition {
         return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
     }
 
-    public static Path metadataPath(Path partitionDir) {
+    static Path metadataPath(Path partitionDir) {
         return partitionDir.resolve("keyMetadata");
     }
 
-    public static Path keysPath(Path partitionDir) {
+    static Path keysPath(Path partitionDir) {
         return partitionDir.resolve("keys");
-    }
-
-    public static Stream<String> listPartitions(Path partitiondPath) {
-        try {
-            return Files.list(partitiondPath).filter(path -> Files.exists(metadataPath(path))).map(path -> path.toFile().getName());
-        } catch (NoSuchFileException e) {
-            log.debug("Partitions director does not exist: {}", partitiondPath);
-            return Stream.empty();
-
-        } catch (IOException e) {
-            log.error("Unable to list partitions in {}", partitiondPath, e);
-            return Stream.empty();
-        }
     }
 
     static void validatePartition(String partition) {

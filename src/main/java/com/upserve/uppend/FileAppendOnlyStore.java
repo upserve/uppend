@@ -13,8 +13,6 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
-import static com.upserve.uppend.Partition.listPartitions;
-
 public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -26,7 +24,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     private final Function<String, AppendStorePartition> createPartitionFunction;
 
     FileAppendOnlyStore(boolean readOnly, AppendOnlyStoreBuilder builder) {
-        super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
+        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
 
         blobPageCache = builder.buildBlobPageCache(getName());
 
@@ -34,9 +32,9 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
         lookupCache = builder.buildLookupCache(getName());
 
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
 
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
     }
 
     @Override
@@ -66,94 +64,73 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
     @Override
     public long keyCount() {
-        return listPartitions(partionPath(dir))
-                .map(this::getIfPresent)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+        return streamPartitions(partitionPath(dir))
                 .mapToLong(AppendStorePartition::keyCount)
                 .sum();
     }
 
     @Override
-    public void append(String partition, String key, byte[] value) {
-        log.trace("appending for partition '{}', key '{}'", partition, key);
+    public void append(String partitionEntropy, String key, byte[] value) {
+        log.trace("appending for partition '{}', key '{}'", partitionEntropy, key);
         if (readOnly) throw new RuntimeException("Can not append to store opened in read only mode:" + dir);
-        getOrCreate(partition).append(key, value);
+        getOrCreate(partitionEntropy).append(key, value);
     }
 
     @Override
-    public Stream<byte[]> read(String partition, String key) {
-        log.trace("reading in partition {} with key {}", partition, key);
+    public Stream<byte[]> read(String partitionEntropy, String key) {
+        log.trace("reading in partition {} with key {}", partitionEntropy, key);
 
-        return getIfPresent(partition)
+        return getIfPresent(partitionEntropy)
                 .map(partitionObject -> partitionObject.read(key))
                 .orElse(Stream.empty());
     }
 
     @Override
-    public Stream<byte[]> readSequential(String partition, String key) {
-        log.trace("reading sequential in partition {} with key {}", partition, key);
-        return getIfPresent(partition)
+    public Stream<byte[]> readSequential(String partitionEntropy, String key) {
+        log.trace("reading sequential in partition {} with key {}", partitionEntropy, key);
+        return getIfPresent(partitionEntropy)
                 .map(partitionObject -> partitionObject.readSequential(key))
                 .orElse(Stream.empty());
     }
 
-    public byte[] readLast(String partition, String key) {
-        log.trace("reading last in partition {} with key {}", partition, key);
-        return getIfPresent(partition)
+    public byte[] readLast(String partitionEntropy, String key) {
+        log.trace("reading last in partition {} with key {}", partitionEntropy, key);
+        return getIfPresent(partitionEntropy)
                 .map(partitionObject -> partitionObject.readLast(key))
                 .orElse(null);
     }
 
     @Override
-    public Stream<String> keys(String partition) {
-        log.trace("getting keys in partition {}", partition);
-        return getIfPresent(partition)
-                .map(AppendStorePartition::keys)
-                .orElse(Stream.empty());
+    public Stream<String> keys() {
+        log.trace("getting keys for {}", getName());
+        return streamPartitions(partitionPath(dir))
+                .flatMap(AppendStorePartition::keys);
     }
 
     @Override
-    public Stream<String> partitions() {
-        return listPartitions(partionPath(dir));
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan() {
+        return streamPartitions(partitionPath(dir))
+                .flatMap(AppendStorePartition::scan);
     }
 
     @Override
-    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
-        return getIfPresent(partition)
-                .map(AppendStorePartition::scan)
-                .orElse(Stream.empty());
-    }
-
-    @Override
-    public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
-        getIfPresent(partition)
-                .ifPresent(partitionObject -> partitionObject.scan(callback));
+    public void scan(BiConsumer<String, Stream<byte[]>> callback) {
+        streamPartitions(partitionPath(dir))
+                .forEach(partitionObject -> partitionObject.scan(callback));
     }
 
     @Override
     public void clear() {
-        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + dir);
-
+        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + name);
         log.trace("clearing");
 
-        partitionMap.values().stream().forEach(appendStorePartition -> {
-            try {
-                appendStorePartition.clear();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to clear counter store partition", e);
-            }
-        });
+        closeInternal();
 
         try {
-            SafeDeleting.removeDirectory(partionPath(dir));
+            SafeDeleting.removeDirectory(partitionPath(dir));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to clear partitions directory", e);
         }
-        partitionMap.clear();
-        lookupCache.flush();
-        blobPageCache.flush();
-        keyPageCache.flush();
     }
 
     @Override
@@ -170,21 +147,21 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     protected void flushInternal() {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
-        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
+        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + name);
 
         partitionMap.values().parallelStream().forEach(appendStorePartition -> {
             try {
                 appendStorePartition.flush();
-            } catch (ClosedChannelException e){
+            } catch (ClosedChannelException e) {
                 if (isClosed.get()) {
-                    log.debug("Tried to flush a closed store {}", dir, e);
+                    log.debug("Tried to flush a closed store {}", name, e);
                 } else {
-                    throw new UncheckedIOException("Error flushing store " + dir, e);
+                    throw new UncheckedIOException("Error flushing store " + name, e);
                 }
 
             } catch (IOException e) {
                 if (isClosed.get())
-                throw new UncheckedIOException("Error flushing store " + dir, e);
+                    throw new UncheckedIOException("Error flushing store " + name, e);
             }
         });
     }
@@ -203,10 +180,11 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
             try {
                 appendStorePartition.close();
             } catch (IOException e) {
-                throw new UncheckedIOException("Error closing store " + dir, e);
+                throw new UncheckedIOException("Error closing store " + name, e);
             }
         });
 
+        partitionMap.clear();
         lookupCache.flush();
         blobPageCache.flush();
         keyPageCache.flush();

@@ -12,8 +12,6 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
-import static com.upserve.uppend.Partition.listPartitions;
-
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -23,13 +21,13 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     private final Function<String, CounterStorePartition> createPartitionFunction;
 
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
-        super(builder.getDir(), builder.getFlushDelaySeconds(), readOnly);
+        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
 
         keyPageCache = builder.buildLookupPageCache(getName());
         lookupCache = builder.buildLookupCache(getName());
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
     }
 
     @Override
@@ -38,47 +36,43 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    public Long set(String partition, String key, long value) {
-        log.trace("setting {}={} in partition '{}'", key, value, partition);
+    public Long set(String partitionEntropy, String key, long value) {
+        log.trace("setting {}={} in partition '{}'", key, value, partitionEntropy);
         if (readOnly) throw new RuntimeException("Can not set value of counter store opened in read only mode:" + dir);
-        return getOrCreate(partition).set(key, value);
+        return getOrCreate(partitionEntropy).set(key, value);
     }
 
     @Override
-    public long increment(String partition, String key, long delta) {
-        log.trace("incrementing by {} key '{}' in partition '{}'", delta, key, partition);
+    public long increment(String partitionEntropy, String key, long delta) {
+        log.trace("incrementing by {} key '{}' in partition '{}'", delta, key, partitionEntropy);
         if (readOnly)
             throw new RuntimeException("Can not increment value of counter store opened in read only mode:" + dir);
-        return getOrCreate(partition).increment(key, delta);
+        return getOrCreate(partitionEntropy).increment(key, delta);
     }
 
     @Override
-    public Long get(String partition, String key) {
-        log.trace("getting value for key '{}' in partition '{}'", key, partition);
-        return getIfPresent(partition).map(partitionObject -> partitionObject.get(key)).orElse(null);
+    public Long get(String partitionEntropy, String key) {
+        log.trace("getting value for key '{}' in partition '{}'", key, partitionEntropy);
+        return getIfPresent(partitionEntropy).map(partitionObject -> partitionObject.get(key)).orElse(null);
     }
 
     @Override
-    public Stream<String> keys(String partition) {
-        log.trace("getting keys in partition {}", partition);
-        return getIfPresent(partition)
-                .map(CounterStorePartition::keys)
-                .orElse(Stream.empty());
+    public Stream<String> keys() {
+        log.trace("getting keys in {}", getName());
+        return streamPartitions(partitionPath(dir))
+                .flatMap(CounterStorePartition::keys);
     }
 
     @Override
-    public Stream<String> partitions() {
-        return listPartitions(partionPath(dir));
+    public Stream<Map.Entry<String, Long>> scan() {
+        return streamPartitions(partitionPath(dir))
+                .flatMap(CounterStorePartition::scan);
     }
 
     @Override
-    public Stream<Map.Entry<String, Long>> scan(String partition) {
-        return getIfPresent(partition).map(CounterStorePartition::scan).orElse(Stream.empty());
-    }
-
-    @Override
-    public void scan(String partition, ObjLongConsumer<String> callback) {
-        getIfPresent(partition).ifPresent(partitionObject -> partitionObject.scan(callback));
+    public void scan(ObjLongConsumer<String> callback) {
+        streamPartitions(partitionPath(dir))
+                .forEach(partitionObject -> partitionObject.scan(callback));
     }
 
     @Override
@@ -98,10 +92,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
 
     @Override
     public long keyCount() {
-        return listPartitions(partionPath(dir))
-                .map(this::getIfPresent)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
+        return streamPartitions(partitionPath(dir))
                 .mapToLong(CounterStorePartition::keyCount)
                 .sum();
     }
@@ -122,7 +113,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         });
 
         try {
-            SafeDeleting.removeDirectory(partionPath(dir));
+            SafeDeleting.removeDirectory(partitionPath(dir));
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to clear partitions directory", e);
         }

@@ -58,7 +58,7 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
         if (readOnly && flushDelaySeconds != DEFAULT_FLUSH_DELAY_SECONDS)
             throw new IllegalStateException("Can not set flush delay seconds in read only mode");
         AppendOnlyStore store = new FileAppendOnlyStore(readOnly, this);
-        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry());
+        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
         return store;
     }
 
@@ -82,6 +82,7 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
 
     public static AppendOnlyStoreBuilder getDefaultTestBuilder(ExecutorService testService) {
         return new AppendOnlyStoreBuilder()
+                .withStoreName("test")
                 .withBlobPageSize(64 * 1024)
                 .withBlobsPerBlock(30)
                 .withInitialBlobCacheSize(64)

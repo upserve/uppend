@@ -12,48 +12,58 @@ public class CounterStoreWithMetrics implements CounterStore {
     private final CounterStore store;
     private final MetricRegistry metrics;
 
+    public static final String SET_TIMER_METRIC_NAME = "setTimer";
+    public static final String INCREMENT_TIMER_METRIC_NAME = "incrementTimer";
+    public static final String FLUSH_TIMER_METRIC_NAME = "flushTimer";
+    public static final String GET_TIMER_METRIC_NAME = "getTimer";
+    public static final String KEYS_TIMER_METRIC_NAME = "keysTimer";
+    public static final String SCAN_TIMER_METRIC_NAME = "scanTimer";
+    public static final String CLEAR_TIMER_METRIC_NAME = "clearTimer";
+    public static final String CLOSE_TIMER_METRIC_NAME = "closeTimer";
+    public static final String TRIM_TIMER_METRIC_NAME = "trimTimer";
+
+    public static final String UPPEND_COUNTER_STORE = "uppendCounterStore";
+
     private final Timer metricsSetTimer;
     private final Timer metricsIncrementTimer;
     private final Timer metricsFlushTimer;
     private final Timer metricsGetTimer;
     private final Timer metricsKeysTimer;
-    private final Timer metricsPartitionsTimer;
     private final Timer metricsScanTimer;
     private final Timer metricsClearTimer;
     private final Timer metricsCloseTimer;
     private final Timer metricsTrimTimer;
 
-    public CounterStoreWithMetrics(CounterStore store, MetricRegistry metrics) {
+    public CounterStoreWithMetrics(CounterStore store, MetricRegistry metrics, String rootName) {
         this.store = store;
         this.metrics = metrics;
 
-        metricsSetTimer = metrics.timer("set");
-        metricsIncrementTimer = metrics.timer("increment");
-        metricsFlushTimer = metrics.timer("flush");
-        metricsGetTimer = metrics.timer("getLookupData");
-        metricsKeysTimer = metrics.timer("keys");
-        metricsPartitionsTimer = metrics.timer("partitions");
-        metricsScanTimer = metrics.timer("scan");
-        metricsClearTimer = metrics.timer("clear");
-        metricsCloseTimer = metrics.timer("close");
-        metricsTrimTimer = metrics.timer("trim");
+        metricsSetTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), SET_TIMER_METRIC_NAME));
+        metricsIncrementTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), INCREMENT_TIMER_METRIC_NAME));
+        metricsFlushTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), FLUSH_TIMER_METRIC_NAME));
+        metricsGetTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), GET_TIMER_METRIC_NAME));
+        metricsKeysTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), KEYS_TIMER_METRIC_NAME));
+        metricsScanTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), SCAN_TIMER_METRIC_NAME));
+        metricsClearTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), CLEAR_TIMER_METRIC_NAME));
+        metricsCloseTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), CLOSE_TIMER_METRIC_NAME));
+        metricsTrimTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_COUNTER_STORE, store.getName(), TRIM_TIMER_METRIC_NAME));
     }
 
     @Override
-    public Long set(String partition, String key, long value) {
+    public Long set(String partitionEntropy, String key, long value) {
         final Timer.Context context = metricsSetTimer.time();
         try {
-            return store.set(partition, key, value);
+            return store.set(partitionEntropy, key, value);
         } finally {
             context.stop();
         }
     }
 
     @Override
-    public long increment(String partition, String key, long delta) {
+    public long increment(String partitionEntropy, String key, long delta) {
         final Timer.Context context = metricsIncrementTimer.time();
         try {
-            return store.increment(partition, key, delta);
+            return store.increment(partitionEntropy, key, delta);
         } finally {
             context.stop();
         }
@@ -80,50 +90,40 @@ public class CounterStoreWithMetrics implements CounterStore {
     }
 
     @Override
-    public Long get(String partition, String key) {
+    public Long get(String partitionEntropy, String key) {
         final Timer.Context context = metricsGetTimer.time();
         try {
-            return store.get(partition, key);
+            return store.get(partitionEntropy, key);
         } finally {
             context.stop();
         }
     }
 
     @Override
-    public Stream<String> keys(String partition) {
+    public Stream<String> keys() {
         final Timer.Context context = metricsKeysTimer.time();
         try {
-            return store.keys(partition);
+            return store.keys();
         } finally {
             context.stop();
         }
     }
 
     @Override
-    public Stream<String> partitions() {
-        final Timer.Context context = metricsPartitionsTimer.time();
-        try {
-            return store.partitions();
-        } finally {
-            context.stop();
-        }
-    }
-
-    @Override
-    public Stream<Map.Entry<String, Long>> scan(String partition) {
+    public Stream<Map.Entry<String, Long>> scan() {
         final Timer.Context context = metricsScanTimer.time();
         try {
-            return store.scan(partition);
+            return store.scan();
         } finally {
             context.stop();
         }
     }
 
     @Override
-    public void scan(String partition, ObjLongConsumer<String> callback) {
+    public void scan(ObjLongConsumer<String> callback) {
         final Timer.Context context = metricsScanTimer.time();
         try {
-            store.scan(partition, callback);
+            store.scan(callback);
         } finally {
             context.stop();
         }

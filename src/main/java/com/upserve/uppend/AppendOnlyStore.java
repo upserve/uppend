@@ -13,12 +13,12 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, RegisteredFlus
     /**
      * Append a byte array under a given partition and key
      *
-     * @param partition the partition to store under
+     * @param partitionEntropy the partition to store under
      * @param key the key to store under
      * @param value the value to append
      * @throws IllegalArgumentException if partition is invalid
      */
-    void append(String partition, String key, byte[] value);
+    void append(String partitionEntropy, String key, byte[] value);
 
     /**
      * Flush any pending appends to durable storage. Will not return until

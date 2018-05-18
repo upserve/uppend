@@ -20,6 +20,8 @@ import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 public class Benchmark {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private static final String ROOT_NAME = "Root";
+    private static final String STORE_NAME = "Benchmark";
     private Runnable writer;
     private Runnable reader;
 
@@ -62,6 +64,8 @@ public class Benchmark {
         metrics = new MetricRegistry();
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)
+                .withStoreName(STORE_NAME)
+                .withMetricsRootName(ROOT_NAME)
                 .withBlobsPerBlock(blockSize)
                 .withLongLookupHashSize(hashSize)
                 .withInitialLookupKeyCacheSize(keyCachesize)
@@ -139,15 +143,8 @@ public class Benchmark {
 
     private Runnable scanReader(AppendOnlyStore appendOnlyStore) {
         return () -> {
-            LongStream
-                    .range(0, maxPartitions)
-                    .parallel()
-                    .mapToObj(val -> partition(val, maxPartitions))
-                    .flatMapToLong(parition -> {
-                        log.info("reading partition: {}", parition);
-                        return appendOnlyStore.scan(parition).parallel().mapToLong(entry -> entry.getValue().count());
-                    })
-                    .count();
+            long count = appendOnlyStore.scan().mapToLong(entry -> entry.getValue().count()).sum();
+            log.info("Scanned {} entries", count);
         };
     }
 
@@ -168,18 +165,18 @@ public class Benchmark {
 
     private TimerTask watcherTimer() {
 
-        final Timer writeTimer = metrics.getTimers().get(testInstance.getName() + "." + WRITE_TIMER_METRIC_NAME);
-        final Meter writeBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + WRITE_BYTES_METER_METRIC_NAME);
+        final Timer writeTimer = metrics.timer(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, WRITE_TIMER_METRIC_NAME));
+        final Meter writeBytesMeter = metrics.meter(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, WRITE_BYTES_METER_METRIC_NAME));
 
         final Meter readBytesMeter;
         final Supplier<Long> readCounter;
 
         if (mode.equals(BenchmarkMode.scan)) {
-            readCounter = () -> metrics.getMeters().get(testInstance.getName() + "." + SCAN_KEYS_METER_METRIC_NAME).getCount();
-            readBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + SCAN_BYTES_METER_METRIC_NAME);
+            readCounter = () -> metrics.meter(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, SCAN_KEYS_METER_METRIC_NAME)).getCount();
+            readBytesMeter = metrics.meter(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, SCAN_BYTES_METER_METRIC_NAME));
         } else {
-            readCounter = () -> metrics.getTimers().get(testInstance.getName() + "." + READ_TIMER_METRIC_NAME).getCount();
-            readBytesMeter = metrics.getMeters().get(testInstance.getName() + "." + READ_BYTES_METER_METRIC_NAME);
+            readCounter = () -> metrics.timer(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, READ_TIMER_METRIC_NAME)).getCount();
+            readBytesMeter = metrics.meter(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, READ_BYTES_METER_METRIC_NAME));
         }
 
 

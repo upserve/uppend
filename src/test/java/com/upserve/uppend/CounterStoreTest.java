@@ -53,9 +53,8 @@ public class CounterStoreTest {
         store = newStore(true);
 
         assertEquals(0, store.keyCount());
-        assertEquals(0, store.keys("foo").count());
-        assertEquals(0, store.partitions().count());
-        assertEquals(0, store.scan("foo").count());
+        assertEquals(0, store.keys().count());
+        assertEquals(0, store.scan().count());
         assertNull(store.get("foo", "bar"));
 
         try  (CounterStore readWriteStore = newStore(false)){
@@ -63,9 +62,8 @@ public class CounterStoreTest {
             readWriteStore.flush();
 
             assertEquals(1, store.keyCount());
-            assertEquals(1, store.keys("foo").count());
-            assertEquals(1, store.partitions().count());
-            assertEquals(1, store.scan("foo").count());
+            assertEquals(1, store.keys().count());
+            assertEquals(1, store.scan().count());
             assertEquals(Long.valueOf(1), store.get("foo", "bar"));
         }
     }
@@ -118,8 +116,8 @@ public class CounterStoreTest {
         assertNull(store.set("partition", "foo", 7));
         store.clear();
         assertNull(store.get("partition", "foo"));
-        assertEquals(0, store.partitions().count());
-        assertEquals(0, store.keys("partition").count());
+        assertEquals(0, store.keys().count());
+        assertEquals(0, store.scan().count());
     }
 
     @Test
@@ -159,25 +157,15 @@ public class CounterStoreTest {
     }
 
     @Test
-    public void testPartitions() throws Exception {
-        store.increment("partition_one", "one", 1);
-        store.increment("partition_two", "two", 2);
-        store.increment("partition$three", "three", 3);
-        store.increment("partition-four", "four", 4);
-        store.increment("_2016-01-02", "five", 5);
-        assertArrayEquals(new String[]{"_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two"}, store.partitions().sorted().toArray(String[]::new));
-    }
-
-    @Test
     public void testScan() {
         store.increment("partition_one", "one", 1);
         store.increment("partition_one", "two", 1);
         store.increment("partition_one", "three", 1);
         store.increment("partition_one", "one", 1);
-        store.increment("partition_two", "one", 1);
+        store.increment("partition_two", "five", 1);
 
         Map<String, Long> result = store
-                .scan("partition_one")
+                .scan()
                 .collect(Collectors.toMap(
                         Map.Entry::getKey,
                         Map.Entry::getValue
@@ -185,7 +173,8 @@ public class CounterStoreTest {
         Map<String, Long> expected = ImmutableMap.of(
                 "one", 2L,
                 "two", 1L,
-                "three", 1L
+                "three", 1L,
+                "five", 1L
         );
 
         assertEquals(expected, result);
@@ -197,22 +186,23 @@ public class CounterStoreTest {
         store.increment("partition_one", "two", 1);
         store.increment("partition_one", "three", 1);
         store.increment("partition_one", "one", 1);
-        store.increment("partition_two", "one", 1);
+        store.increment("partition_two", "five", 1);
 
         ConcurrentMap<String, Long> result = new ConcurrentHashMap<>();
-        store.scan("partition_one", result::put);
+        store.scan(result::put);
 
         Map<String, Long> expected = ImmutableMap.of(
                 "one", 2L,
                 "two", 1L,
-                "three", 1L
+                "three", 1L,
+                "five", 1L
         );
 
         assertEquals(expected, result);
     }
 
     @Test
-    public void testExample() throws Exception {
+    public void testExample() {
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
@@ -223,7 +213,6 @@ public class CounterStoreTest {
 
         store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
 
-        assertArrayEquals(new String[]{"2017-11-30"}, store.partitions().toArray(String[]::new));
         assertEquals(Long.valueOf(5), store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));
         assertEquals(Long.valueOf(1), store.get("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc"));
         assertEquals(Long.valueOf(1), store.get("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt"));

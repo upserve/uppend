@@ -14,7 +14,6 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String FLUSH_TIMER_METRIC_NAME = "flushTimer";
     public static final String READ_TIMER_METRIC_NAME = "readTimer";
     public static final String KEYS_TIMER_METRIC_NAME = "keysTimer";
-    public static final String PARTITIONS_TIMER_METRIC_NAME = "partitionsTimer";
     public static final String SCAN_TIMER_METRIC_NAME = "scanTimer";
     public static final String CLEAR_TIMER_METRIC_NAME = "clearTimer";
     public static final String CLOSE_TIMER_METRIC_NAME = "closeTimer";
@@ -25,6 +24,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String SCAN_BYTES_METER_METRIC_NAME = "scanBytesMeter";
     public static final String SCAN_KEYS_METER_METRIC_NAME = "scanKeysMeter";
 
+    public static final String UPPEND_APPEND_STORE = "uppendAppendStore";
+
     private final AppendOnlyStore store;
     private final MetricRegistry metrics;
 
@@ -32,7 +33,6 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Timer flushTimer;
     private final Timer readTimer;
     private final Timer keysTimer;
-    private final Timer partitionsTimer;
     private final Timer scanTimer;
     private final Timer clearTimer;
     private final Timer closeTimer;
@@ -43,37 +43,31 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Meter scanBytesMeter;
     private final Meter scanKeysMeter;
 
-    public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics) {
+    public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics, String rootName) {
         this.store = store;
         this.metrics = metrics;
 
-        writeTimer = metrics.timer(getFullMetricName(store, WRITE_TIMER_METRIC_NAME));
-        flushTimer = metrics.timer(getFullMetricName(store, FLUSH_TIMER_METRIC_NAME));
-        readTimer = metrics.timer(getFullMetricName(store, READ_TIMER_METRIC_NAME));
-        keysTimer = metrics.timer(getFullMetricName(store, KEYS_TIMER_METRIC_NAME));
-        partitionsTimer = metrics.timer(getFullMetricName(store, PARTITIONS_TIMER_METRIC_NAME));
-        scanTimer = metrics.timer(getFullMetricName(store, SCAN_TIMER_METRIC_NAME));
-        clearTimer = metrics.timer(getFullMetricName(store, CLEAR_TIMER_METRIC_NAME));
-        closeTimer = metrics.timer(getFullMetricName(store, CLOSE_TIMER_METRIC_NAME));
-        trimTimer = metrics.timer(getFullMetricName(store, PURGE_TIMER_METRIC_NAME));
+        writeTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), WRITE_TIMER_METRIC_NAME));
+        flushTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_METRIC_NAME));
+        readTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), READ_TIMER_METRIC_NAME));
+        keysTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), KEYS_TIMER_METRIC_NAME));
+        scanTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_TIMER_METRIC_NAME));
+        clearTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CLEAR_TIMER_METRIC_NAME));
+        closeTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CLOSE_TIMER_METRIC_NAME));
+        trimTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), PURGE_TIMER_METRIC_NAME));
 
-        writeBytesMeter = metrics.meter(getFullMetricName(store, WRITE_BYTES_METER_METRIC_NAME));
-        readBytesMeter = metrics.meter(getFullMetricName(store, READ_BYTES_METER_METRIC_NAME));
-        scanBytesMeter = metrics.meter(getFullMetricName(store, SCAN_BYTES_METER_METRIC_NAME));
-        scanKeysMeter = metrics.meter(getFullMetricName(store, SCAN_KEYS_METER_METRIC_NAME));
-
-    }
-
-    public static String getFullMetricName(AppendOnlyStore store, String metricName) {
-        return String.join(".", store.getName(), metricName);
+        writeBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), WRITE_BYTES_METER_METRIC_NAME));
+        readBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), READ_BYTES_METER_METRIC_NAME));
+        scanBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_BYTES_METER_METRIC_NAME));
+        scanKeysMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_KEYS_METER_METRIC_NAME));
     }
 
     @Override
-    public void append(String partition, String key, byte[] value) {
+    public void append(String partitionEntropy, String key, byte[] value) {
         final Timer.Context context = writeTimer.time();
         try {
             writeBytesMeter.mark(value.length);
-            store.append(partition, key, value);
+            store.append(partitionEntropy, key, value);
         } finally {
             context.stop();
         }
@@ -100,10 +94,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public Stream<byte[]> read(String partition, String key) {
+    public Stream<byte[]> read(String partitionEntropy, String key) {
         final Timer.Context context = readTimer.time();
         try {
-            return store.read(partition, key)
+            return store.read(partitionEntropy, key)
                     .peek(bytes -> readBytesMeter.mark(bytes.length));
         } finally {
             context.stop();
@@ -111,10 +105,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public Stream<byte[]> readSequential(String partition, String key) {
+    public Stream<byte[]> readSequential(String partitionEntropy, String key) {
         final Timer.Context context = readTimer.time();
         try {
-            return store.readSequential(partition, key)
+            return store.readSequential(partitionEntropy, key)
                     .peek(bytes -> readBytesMeter.mark(bytes.length));
         } finally {
             context.stop();
@@ -122,10 +116,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public byte[] readLast(String partition, String key) {
+    public byte[] readLast(String partitionEntropy, String key) {
         final Timer.Context context = readTimer.time();
         try {
-            byte[] bytes = store.readLast(partition, key);
+            byte[] bytes = store.readLast(partitionEntropy, key);
             readBytesMeter.mark(bytes.length);
             return bytes;
         } finally {
@@ -134,30 +128,20 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public Stream<String> keys(String partition) {
+    public Stream<String> keys() {
         final Timer.Context context = keysTimer.time();
         try {
-            return store.keys(partition);
+            return store.keys();
         } finally {
             context.stop();
         }
     }
 
     @Override
-    public Stream<String> partitions() {
-        final Timer.Context context = partitionsTimer.time();
-        try {
-            return store.partitions();
-        } finally {
-            context.stop();
-        }
-    }
-
-    @Override
-    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan() {
         final Timer.Context context = scanTimer.time();
         try {
-            return store.scan(partition)
+            return store.scan()
                     .peek(entry -> scanKeysMeter.mark(1))
                     .map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue().peek(bytes -> scanBytesMeter.mark(bytes.length))));
         } finally {
@@ -166,10 +150,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
+    public void scan(BiConsumer<String, Stream<byte[]>> callback) {
         final Timer.Context context = scanTimer.time();
         try {
-            store.scan(partition, callback);
+            store.scan(callback);
         } finally {
             context.stop();
         }

@@ -1,15 +1,20 @@
 package com.upserve.uppend;
 
+import com.google.common.hash.*;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.stream.Stream;
+
+import static com.google.common.math.IntMath.mod;
 
 abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -24,18 +29,32 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
+    protected final int partitionSize;
+    private final boolean hashPartitionValues;
 
     protected final AtomicBoolean isClosed;
 
-    FileStore(Path dir, int flushDelaySeconds, boolean readOnly) {
+    private static final int PARTITION_HASH_SEED = 626433832;
+    private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
+
+
+    FileStore(Path dir, int flushDelaySeconds, int partitionSize, boolean readOnly, String name) {
         this.dir = dir;
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
-
-        name = dir.getFileName().toString();
+        this.partitionSize = partitionSize;
+        if (partitionSize > 0) {
+            if (partitionSize > 9999) throw new IllegalArgumentException("Partition size is greater than 9999");
+            hashPartitionValues = true;
+            partitionMap = new ConcurrentHashMap<>(partitionSize);
+        } else {
+            partitionMap = new ConcurrentHashMap<>();
+            hashPartitionValues = false;
+        }
+        this.name = name;
 
         this.flushDelaySeconds = flushDelaySeconds;
 
@@ -59,12 +78,19 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
             lock = null;
         }
 
-        partitionMap = new ConcurrentHashMap<>();
-
         isClosed = new AtomicBoolean(false);
     }
 
-    protected static Path partionPath(Path dir) {
+    protected String partitionHash(String partition) {
+        if (hashPartitionValues) {
+            HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
+            return String.format("%04d", mod(hcode.asInt(), partitionSize));
+        } else {
+            return partition;
+        }
+    }
+
+    protected static Path partitionPath(Path dir) {
         return dir.resolve("partitions");
     }
 
@@ -72,26 +98,38 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
 
     abstract Function<String, T> getCreatePartitionFunction();
 
-    Optional<T> safeGet(String partition) {
-        if (readOnly) {
-            return getIfPresent(partition);
-        } else {
-            return Optional.of(getOrCreate(partition));
-        }
-    }
-
-    Optional<T> getIfPresent(String partition) {
+    Optional<T> getIfPresent(String partitionEntropy) {
         return Optional.ofNullable(partitionMap.computeIfAbsent(
-                partition,
+                partitionHash(partitionEntropy),
                 getOpenPartitionFunction()
         ));
     }
 
-    T getOrCreate(String partition) {
+    T getOrCreate(String partitionEntropy) {
         return partitionMap.computeIfAbsent(
-                partition,
+                partitionHash(partitionEntropy),
                 getCreatePartitionFunction()
         );
+    }
+
+    Stream<T> streamPartitions(Path partitiondPath) {
+        try {
+            Files
+                    .list(partitiondPath)
+                    .map(path -> path.toFile().getName())
+                    .forEach(partition -> partitionMap.computeIfAbsent(
+                            partition,
+                            getOpenPartitionFunction()
+                    ));
+        } catch (NoSuchFileException e) {
+            log.debug("Partitions director does not exist: {}", partitiondPath);
+            return Stream.empty();
+
+        } catch (IOException e) {
+            log.error("Unable to list partitions in {}", partitiondPath, e);
+            return Stream.empty();
+        }
+        return partitionMap.values().parallelStream();
     }
 
 
@@ -103,13 +141,13 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
 
     @Override
     public void trim() {
-        log.debug("Triming {}", dir);
+        log.debug("Triming {}", name);
         try {
             trimInternal();
         } catch (Exception e) {
-            log.error("unable to trim {}", dir, e);
+            log.error("unable to trim {}", name, e);
         }
-        log.debug("Trimed {}", dir);
+        log.debug("Trimed {}", name);
     }
 
     @Override
@@ -124,19 +162,19 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
 
     @Override
     public void flush() {
-        log.info("flushing {}", dir);
+        log.info("flushing {}", name);
         try {
             flushInternal();
         } catch (Exception e) {
-            log.error("unable to flush {}", dir, e);
+            log.error("unable to flush {}", name, e);
         }
-        log.info("flushed {}", dir);
+        log.info("flushed {}", name);
     }
 
     @Override
     public void close() {
         if (!isClosed.compareAndSet(false, true)) {
-            log.warn("close called twice on file store: " + dir);
+            log.warn("close called twice on file store: " + name);
             return;
         }
 
@@ -147,7 +185,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         try {
             closeInternal();
         } catch (Exception e) {
-            log.error("unable to close {}", dir, e);
+            log.error("unable to close {}", name, e);
         }
 
         if (!readOnly) {
