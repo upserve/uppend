@@ -151,6 +151,10 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
+    BlockStats blockedLongStats() {
+        return blocks.stats();
+    }
+
     void clear() throws IOException {
         longKeyFile.close();
         metadataBlobFile.close();

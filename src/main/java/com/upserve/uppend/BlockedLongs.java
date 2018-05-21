@@ -42,6 +42,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicInteger currentPage;
     private final boolean readOnly;
 
+    private final LongAdder appendCounter;
+    private final LongAdder allocCounter;
+    private final LongAdder valuesReadCounter;
+
+
     public BlockedLongs(Path file, int valuesPerBlock, boolean readOnly) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
@@ -62,6 +67,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (valuesPerBlock < 1) {
             throw new IllegalArgumentException("bad (< 1) values per block: " + valuesPerBlock);
         }
+
+        appendCounter = new LongAdder();
+        allocCounter = new LongAdder();
+        valuesReadCounter = new LongAdder();
 
         this.valuesPerBlock = valuesPerBlock;
         blockSize = 16 + valuesPerBlock * 8;
@@ -129,9 +138,18 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      */
     public long allocate() {
         log.trace("allocating block of {} bytes in {}", blockSize, file);
+        allocCounter.increment();
         long pos = posMem.getAndAdd(blockSize);
         posBuf.putLong(0, posMem.get());
         return pos;
+    }
+
+    /**
+     * get some stats about the blocked long store
+     * @return Stats about activity in this BlockedLongs
+     */
+    public BlockStats stats() {
+        return new BlockStats(currentPage.get() , size(), appendCounter.longValue(), allocCounter.longValue(), valuesReadCounter.longValue());
     }
 
     /**
@@ -149,10 +167,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public void append(final long pos, final long val) {
         log.trace("appending value {} to {} at {}", val, file, pos);
-
         if (readOnly) throw new RuntimeException("Can not append a read only blocked longs file: " + file);
         // size | -next
         // prev | -last
+
+        appendCounter.increment();
 
         Lock lock = stripedLocks.getAt((int) (pos % LOCK_SIZE));
         lock.lock();
@@ -196,6 +215,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     public LongStream values(Long pos) {
         log.trace("streaming values from {} at {}", file, pos);
+
+        valuesReadCounter.increment();
 
         if (pos == null) {
             // pos will be null for missing keys

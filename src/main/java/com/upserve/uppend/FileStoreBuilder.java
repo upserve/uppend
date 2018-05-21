@@ -200,7 +200,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     /**
      * Use a root name for all metrics
-     *
+     * @param metricsRootName the root name under which to register metrics from this store
      * @return the builder
      */
     @SuppressWarnings("unchecked")
@@ -248,6 +248,10 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     public LookupCache buildLookupCache(String metricsPrefix) {
+        return buildLookupCache(metricsPrefix, false);
+    }
+
+    public LookupCache buildLookupCache(String metricsPrefix, boolean readOnly) {
         return new LookupCache(
                 getInitialLookupKeyCacheSize(),
                 getMaximumLookupKeyCacheWeight(),
@@ -255,7 +259,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
                 metricsSupplier(metricsPrefix, LOOKUP_KEY_CACHE_METRICS),
                 getInitialMetaDataCacheSize(),
                 getMaximumMetaDataCacheWeight(),
-                getMetadataTTL(),
+                readOnly ? 0 : getMetadataTTL(),
                 getLookupMetaDataCacheExecutorService(),
                 metricsSupplier(metricsPrefix, METADATA_CACHE_METRICS)
         );

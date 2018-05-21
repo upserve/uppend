@@ -3,7 +3,7 @@ package com.upserve.uppend.metrics;
 import com.codahale.metrics.*;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.collect.Maps;
-import com.upserve.uppend.AppendOnlyStore;
+import com.upserve.uppend.*;
 
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -43,6 +43,13 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Meter scanBytesMeter;
     private final Meter scanKeysMeter;
 
+    /**
+     * Constructor for an Append only store with metrics wrapper
+     * Metrics Registry Key structure will be: ROOT_NAME.uppendAppendStore.STORE_NAME.METRIC_NAME
+     * @param store the append only store to wrap
+     * @param metrics the metrics registry to use
+     * @param rootName the root name for metrics from this store
+     */
     public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics, String rootName) {
         this.store = store;
         this.metrics = metrics;
@@ -192,6 +199,11 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     @Override
     public CacheStats getMetadataCacheStats() {
         return store.getMetadataCacheStats();
+    }
+
+    @Override
+    public BlockStats getBlockLongStats() {
+        return store.getBlockLongStats();
     }
 
     @Override

@@ -13,6 +13,8 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
+import static com.upserve.uppend.BlockStats.ZERO_STATS;
+
 public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -30,7 +32,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
         keyPageCache = builder.buildLookupPageCache(getName());
 
-        lookupCache = builder.buildLookupCache(getName());
+        lookupCache = builder.buildLookupCache(getName(), readOnly);
 
         openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
 
@@ -60,6 +62,11 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     public CacheStats getMetadataCacheStats() {
         return lookupCache.metadataStats();
+    }
+
+    @Override
+    public BlockStats getBlockLongStats() {
+        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(ZERO_STATS, BlockStats::add);
     }
 
     @Override
