@@ -8,7 +8,7 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
-import java.util.Arrays;
+import java.util.*;
 import java.util.stream.*;
 
 public abstract class Partition {
@@ -68,7 +68,11 @@ public abstract class Partition {
     }
 
     int keyHash(LookupKey key) {
-        return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
+        if (Objects.isNull(hashFunction)){
+            return 0;
+        } else {
+            return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
+        }
     }
 
     static Path metadataPath(Path partitionDir) {
