@@ -305,8 +305,10 @@ public class LookupData implements Flushable {
         } catch (IllegalStateException e) {
             if (readOnly) {
                 // Try again and let the exception bubble if it fails
+                log.warn("getMetaData failed for read only store - attempting to reload!", e);
                 lookupMetadata = partitionLookupCache.getMetadata(this);
             } else {
+                log.warn("getMetaData failed for read write store - attempting to repair it!", e);
                 lookupMetadata = repairMetadata();
             }
         }
