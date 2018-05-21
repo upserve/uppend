@@ -41,8 +41,6 @@ import java.util.stream.IntStream;
  * <p>
  * A fixed number of pages per virtual file are allocated at startup - exceeding this number would be... bad
  * TODO - fix this!
- * <p>
- * TODO put the number of virtual files and the page size in the file header and check on opening
  */
 public class VirtualPageFile implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -413,7 +411,7 @@ public class VirtualPageFile implements Flushable, Closeable {
     private long getValidPageStart(int virtualFileNumber, int pageNumber) {
         if (pageNumber == -1) return -1L;
         long result = getRawPageStart(virtualFileNumber, pageNumber);
-        if (result < headerSize + tableSize) {
+        if (result < headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE) {
             throw new IllegalStateException("Invalid page position in page table for file " + virtualFileNumber + " page " + pageNumber);
         }
         return result;
