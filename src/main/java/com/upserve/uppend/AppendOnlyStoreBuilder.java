@@ -55,8 +55,6 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     }
 
     public AppendOnlyStore build(boolean readOnly) {
-        if (readOnly && flushDelaySeconds != DEFAULT_FLUSH_DELAY_SECONDS)
-            throw new IllegalStateException("Can not set flush delay seconds in read only mode");
         AppendOnlyStore store = new FileAppendOnlyStore(readOnly, this);
         if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
         return store;
