@@ -9,7 +9,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.*;
 import java.util.function.*;
 import java.util.stream.*;
@@ -27,6 +27,8 @@ public class LookupData implements Flushable {
     final ConcurrentHashMap<LookupKey, Long> writeCache;
     // keys written but not yet written to the metadata live here
     final ConcurrentHashMap<LookupKey, Long> flushCache;
+
+    AtomicReference<LookupMetadata> flushReference;
 
     private final boolean readOnly;
 
@@ -59,9 +61,11 @@ public class LookupData implements Flushable {
         if (readOnly) {
             writeCache = null;
             flushCache = null;
+            flushReference = null;
         } else {
             writeCache = new ConcurrentHashMap<>();
             flushCache = new ConcurrentHashMap<>();
+            flushReference = new AtomicReference<>();
         }
 
         writeCacheCounter = new AtomicInteger();
@@ -300,16 +304,24 @@ public class LookupData implements Flushable {
      */
     private Long findValueFor(LookupKey key) {
         LookupMetadata lookupMetadata;
-        try {
-            lookupMetadata = partitionLookupCache.getMetadata(this);
-        } catch (IllegalStateException e) {
-            if (readOnly) {
+
+        if (readOnly){
+            try {
+                lookupMetadata = partitionLookupCache.getMetadata(this);
+            } catch (IllegalStateException e) {
                 // Try again and let the exception bubble if it fails
                 log.warn("getMetaData failed for read only store - attempting to reload!", e);
                 lookupMetadata = partitionLookupCache.getMetadata(this);
-            } else {
-                log.warn("getMetaData failed for read write store - attempting to repair it!", e);
-                lookupMetadata = repairMetadata();
+            }
+        } else {
+            lookupMetadata = flushReference.get();
+            if (Objects.isNull(lookupMetadata)) {
+                try {
+                    lookupMetadata = partitionLookupCache.getMetadata(this);
+                } catch (IllegalStateException e) {
+                    log.warn("getMetaData failed for read write store - attempting to repair it!", e);
+                    lookupMetadata = repairMetadata();
+                }
             }
         }
 
@@ -325,7 +337,9 @@ public class LookupData implements Flushable {
             int sortedPositionsSize = sortedPositions.length;
             LookupKey minKey = sortedPositionsSize > 0 ? readKey(sortedPositions[0]) : null;
             LookupKey maxKey = sortedPositionsSize > 0 ? readKey(sortedPositions[sortedPositionsSize - 1]) : null;
-            return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet());
+            LookupMetadata metadata = LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet());
+            partitionLookupCache.putMetadata(this, metadata);
+            return metadata;
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to write repaired metadata!", e);
         }
@@ -482,10 +496,14 @@ public class LookupData implements Flushable {
 
             LookupMetadata currentMetadata = partitionLookupCache.getMetadata(this);
 
-            flushWriteCache(currentMetadata);
+            flushReference.set(currentMetadata);
+            try {
+                flushWriteCache(currentMetadata);
 
-            generateMetaData(currentMetadata);
-
+                generateMetaData(currentMetadata);
+            } finally {
+                flushReference.set(null);
+            }
             flushCacheToReadCache();
             log.debug("flushed");
         }

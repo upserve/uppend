@@ -412,7 +412,7 @@ public class VirtualPageFile implements Flushable, Closeable {
         if (pageNumber == -1) return -1L;
         long result = getRawPageStart(virtualFileNumber, pageNumber);
         if (result < headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE) {
-            throw new IllegalStateException("Invalid page position in page table for file " + virtualFileNumber + " page " + pageNumber);
+            throw new IllegalStateException("Invalid page position " + result + "; in page table for file " + virtualFileNumber + " page " + pageNumber);
         }
         return result;
     }
