@@ -572,4 +572,39 @@ public class LookupDataTest {
 
         assertArrayEquals(expected.getKeyStorageOrder(), result.getKeyStorageOrder());
     }
+
+    @Test
+    public void testFlushWithAppendLoad() throws ExecutionException, InterruptedException {
+
+        // Force the metadata to be reloaded every time it is needed
+        LookupCache noCache = defaults.withMaximumMetaDataCacheWeight(0).withMaximumLookupKeyCacheWeight(0).buildLookupCache(name);
+
+        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, PartitionLookupCache.create("partition", noCache), 1, false);
+
+        int n = 500;
+
+        Thread flusher = new Thread(() -> {
+            for (int i = 0; i < n; i++) {
+                data.flush();
+            }
+        });
+
+
+        Random random = new Random();
+        Thread writer = new Thread(() ->
+                LongStream.range(0, 100_000)
+                        .forEach(val -> {
+                            byte[] bytes = new byte[(int) (val % 64)];
+                            random.nextBytes(bytes);
+                            data.put(new LookupKey(bytes), val);
+                        })
+        );
+
+        writer.start();
+        flusher.start();
+
+        writer.join();
+    }
+
+
 }

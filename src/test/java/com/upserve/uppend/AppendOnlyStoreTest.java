@@ -110,7 +110,6 @@ public class AppendOnlyStoreTest {
         assertEquals(2, store.read("partition", key).count());
     }
 
-    @Ignore
     @Test
     public void testAppendWhileFlushing() throws Exception {
         ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();

@@ -50,12 +50,9 @@ public class LookupCache implements Flushable {
         }
 
         lookupMetaDataCache = metadataCacheBuilder
-                .<LookupData, LookupMetadata>build(lookupData -> LookupMetadata.open(
-                        lookupData.getMetadataBlobs(),
-                        lookupData.getMetaDataGeneration()
-                ));
-    }
+                .<LookupData, LookupMetadata>build(LookupData::loadMetadata);
 
+    }
 
     public void putLookup(PartitionLookupKey key, long val) {
         keyLongLookupCache.put(key, val);
