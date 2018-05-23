@@ -128,10 +128,10 @@ public class AppendOnlyStoreTest {
                             }
                             list.add(val + 5);
 
-                            store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val + 5));
+                            store.append("_" + k.substring(0, 1), k, Longs.toByteArray(val + 5));
 
                             long[] expected = list.stream().mapToLong(v -> v).toArray();
-                            long[] result = store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray();
+                            long[] result = store.read("_" + k.substring(0, 1), k).mapToLong(Longs::fromByteArray).toArray();
 
                             if (expected.length != result.length) {
                                 fail("Array lenth does not match");

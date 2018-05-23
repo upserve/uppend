@@ -37,6 +37,8 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
         if (Arrays.equals(checksum, hashFunction.hashBytes(buf).asBytes())) {
             return buf;
         } else {
+            log.warn("Read at {} got size {}, checksum {} did not match bytes starting with {} (upto first 10)",
+                    pos, size, checksum,  Arrays.copyOfRange(buf, 0, 10 <= size ? 10 : size ));
             throw new IllegalStateException("Checksum did not match for the requested blob");
         }
     }

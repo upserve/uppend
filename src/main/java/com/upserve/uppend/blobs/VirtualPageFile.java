@@ -199,7 +199,7 @@ public class VirtualPageFile implements Flushable, Closeable {
     int pageNumber(long pos) {
         long result = (pos / (long) pageSize);
         if (result >= PAGES_PER_VIRUAL_FILE)
-            throw new IllegalStateException("The position " + pos + " exceeds the page limit for this file");
+            throw new IllegalStateException("The position " + pos + " exceeds the page limit for file" + getFilePath());
         return (int) result;
     }
 
@@ -264,7 +264,7 @@ public class VirtualPageFile implements Flushable, Closeable {
         this.pageSize = pageSize;
         this.pageCache = pageCache;
 
-        if (virtualFiles < 1) throw new IllegalArgumentException("virtualFiles must be greater than 0");
+        if (virtualFiles < 1) throw new IllegalArgumentException("virtualFiles must be greater than 0 in file: " + filePath);
 
         OpenOption[] openOptions;
         if (readOnly) {
@@ -296,15 +296,15 @@ public class VirtualPageFile implements Flushable, Closeable {
                 channel.read(intBuffer, 0);
                 int val = intBuffer.flip().getInt();
                 if (val != virtualFiles)
-                    throw new IllegalArgumentException("The specfied number of virtual files " + virtualFiles + " does not match the value in the datastore " + val);
+                    throw new IllegalArgumentException("The specfied number of virtual files " + virtualFiles + " does not match the value in the datastore " + val + " in file " + getFilePath());
 
                 channel.read(intBuffer, 4);
                 val = intBuffer.flip().getInt();
                 if (val != virtualFiles)
-                    throw new IllegalArgumentException("The specfied page size " + pageSize + " does not match the value in the datastore " + val);
+                    throw new IllegalArgumentException("The specfied page size " + pageSize + " does not match the value in the datastore " + val + " in file " + getFilePath());
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Unable to get file size", e);
+            throw new UncheckedIOException("Unable to get file size" + " in file " + getFilePath(), e);
         }
 
 
@@ -375,33 +375,33 @@ public class VirtualPageFile implements Flushable, Closeable {
 
         if (pageCount == 0) {
             if (virtualFilePosition != 0 || firstPageStart != 0 || finalPageStart != 0 || Arrays.stream(pageStarts).anyMatch(val -> val != 0)) {
-                throw new IllegalStateException("None zero positions for file with no pages!");
+                throw new IllegalStateException("None zero positions for file with no pages in file " + getFilePath());
             }
             return;
         }
 
         if (virtualFilePosition / pageSize > pageCount)
-            throw new IllegalStateException("The current virtual file position is outside the last page!");
+            throw new IllegalStateException("The current virtual file position is outside the last page in file " + getFilePath());
 
         if (firstPageStart != pageStarts[0])
-            throw new IllegalStateException("Header first pageStart does not match table page 0 start");
+            throw new IllegalStateException("Header first pageStart does not match table page 0 start in file " + getFilePath());
         if (finalPageStart != pageStarts[pageCount - 1])
-            throw new IllegalStateException("Header last pageStart does not match table page last start");
+            throw new IllegalStateException("Header last pageStart does not match table page last start in file " + getFilePath());
 
         long nextPageStart = firstPageStart;
         long lastPageStart = -1L;
         for (int page = 0; page < pageCount; page++) {
             if (nextPageStart != pageStarts[page])
-                throw new IllegalStateException("Head pointer does not match table page start");
+                throw new IllegalStateException("Head pointer does not match table page start in file " + getFilePath());
             if (readTailPointer(nextPageStart) != lastPageStart)
-                throw new IllegalStateException("Corrupt tail pointer in first page");
+                throw new IllegalStateException("Corrupt tail pointer in first page in file " + getFilePath());
 
             lastPageStart = nextPageStart;
 
             nextPageStart = readHeadPointer(nextPageStart);
         }
 
-        if (nextPageStart != -1) throw new IllegalStateException("Last head pointer not equal -1");
+        if (nextPageStart != -1) throw new IllegalStateException("Last head pointer not equal -1 in file " + getFilePath());
     }
 
     private long getRawPageStart(int virtualFileNumber, int pageNumber) {
@@ -412,7 +412,10 @@ public class VirtualPageFile implements Flushable, Closeable {
         if (pageNumber == -1) return -1L;
         long result = getRawPageStart(virtualFileNumber, pageNumber);
         if (result < headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE) {
-            throw new IllegalStateException("Invalid page position " + result + "; in page table for file " + virtualFileNumber + " page " + pageNumber);
+            throw new IllegalStateException("Invalid page position " + result + " is in the file header; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
+        }
+        if ((result - (headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE)) % (pageSize + 16) != 0 ) {
+            throw new IllegalStateException("Invalid page position " + result + " is not aligned with pageSize " + pageSize + " + 16 ; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
         }
         return result;
     }
