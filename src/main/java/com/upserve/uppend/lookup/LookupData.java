@@ -349,14 +349,14 @@ public class LookupData implements Flushable {
     }
 
     private synchronized LookupMetadata repairMetadata() {
-        long[] sortedPositions = keyLongBlobs.positionBlobStream()
+        int[] sortedPositions = keyLongBlobs.positionBlobStream()
                 .sorted(Comparator.comparing(entry -> new LookupKey(entry.getValue())))
-                .mapToLong(Map.Entry::getKey)
+                .mapToInt(entry -> entry.getKey().intValue())
                 .toArray();
         try {
             int sortedPositionsSize = sortedPositions.length;
-            LookupKey minKey = sortedPositionsSize > 0 ? readKey(sortedPositions[0]) : null;
-            LookupKey maxKey = sortedPositionsSize > 0 ? readKey(sortedPositions[sortedPositionsSize - 1]) : null;
+            LookupKey minKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[0]) : null;
+            LookupKey maxKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[sortedPositionsSize - 1]) : null;
             return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet());
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to write repaired metadata!", e);
@@ -427,8 +427,13 @@ public class LookupData implements Flushable {
                                 writeCache.computeIfPresent(key, (k, v) -> {
                                     flushCache.put(k, v);
 
+                                    if (k.byteLength() > 256) log.warn("Key length greater than 256: {}", key.toString());
                                     final long pos = keyLongBlobs.append(v, k.bytes());
-                                    key.setPosition(pos);
+                                    if (pos > Integer.MAX_VALUE) {
+                                        // TODO is there a way to deal with this?
+                                        throw new IllegalStateException("Maximum key store size exceeded!");
+                                    }
+                                    key.setPosition((int) pos);
 
                                     return null;
                                 });
@@ -445,7 +450,7 @@ public class LookupData implements Flushable {
     }
 
     void generateMetaData(LookupMetadata currentMetadata) {
-        long[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
+        int[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
 
         int flushSize = flushCache.size();
 
@@ -454,7 +459,7 @@ public class LookupData implements Flushable {
             AutoFlusher.flusherWorkPool.submit(this::flush);
         }
 
-        long[] newKeySortOrder = new long[currentKeySortOrder.length + flushSize];
+        int[] newKeySortOrder = new int[currentKeySortOrder.length + flushSize];
 
         Map<Integer, List<LookupKey>> newKeysGroupedBySortOrderIndex = flushCache.keySet().stream().collect(Collectors.groupingBy(LookupKey::getInsertAfterSortIndex, Collectors.toList()));
 
@@ -560,12 +565,12 @@ public class LookupData implements Flushable {
         flushCache.clear();
     }
 
-    private long[] getKeyPosition() {
+    private int[] getKeyPosition() {
         if (readOnly) {
             return getMetadata().getKeyStorageOrder();
         } else {
-            return LongStream.concat(
-                    flushCache.keySet().stream().mapToLong(LookupKey::getPosition),
+            return IntStream.concat(
+                    flushCache.keySet().stream().mapToInt(LookupKey::getPosition),
                     Arrays.stream(getMetadata().getKeyStorageOrder())
             ).distinct().toArray();
         }
@@ -621,7 +626,7 @@ public class LookupData implements Flushable {
     }
 
     public void scan(BiConsumer<LookupKey, Long> keyValueFunction) {
-        final long[] positions;
+        final int[] positions;
         final Map<LookupKey, Long> writeCacheCopy;
         try {
             consistentWriteCacheReadLock.lock(); // Read lock the WriteCache while initializing the data to scan

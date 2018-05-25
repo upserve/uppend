@@ -7,14 +7,14 @@ import java.util.function.LongFunction;
 public class LookupDataIterator<T> implements Iterator<T> {
 
     private AtomicInteger keyIndex;
-    private final long[] positions;
+    private final int[] positions;
     private final int numKeys;
     private final Iterator<T> writeCacheKeyIterator;
     LongFunction<T> reader;
 
     private final AtomicLong position = new AtomicLong();
 
-    LookupDataIterator(long[] positions, int writeCacheSize, Iterator<T> writeCacheKeyIterator, LongFunction<T> reader) {
+    LookupDataIterator(int[] positions, int writeCacheSize, Iterator<T> writeCacheKeyIterator, LongFunction<T> reader) {
         // Get a snapshot of the keys
         this.positions = positions;
         this.writeCacheKeyIterator = writeCacheKeyIterator;

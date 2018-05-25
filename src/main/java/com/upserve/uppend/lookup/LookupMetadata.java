@@ -18,11 +18,11 @@ public class LookupMetadata {
     private final int numKeys;
     private final LookupKey minKey;
     private final LookupKey maxKey;
-    private final long[] keyStorageOrder;
+    private final int[] keyStorageOrder;
 
-    private final ConcurrentHashMap<Long, LookupKey> bisectKeys;
+    private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
 
-    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
                 minKey,
@@ -36,7 +36,7 @@ public class LookupMetadata {
         return newMetadata;
     }
 
-    LookupMetadata(LookupKey minKey, LookupKey maxKey, long[] keyStorageOrder, int metadataGeneration) {
+    LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
         this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
         this.maxKey = maxKey;
@@ -51,7 +51,7 @@ public class LookupMetadata {
             byte[] bytes = metadataBlobs.read(0L);
             return new LookupMetadata(bytes, metadataGeneration);
         } else {
-            return new LookupMetadata(null, null, new long[0], metadataGeneration);
+            return new LookupMetadata(null, null, new int[0], metadataGeneration);
         }
     }
 
@@ -70,9 +70,9 @@ public class LookupMetadata {
             buffer.get(maxKeyBytes);
             maxKey = new LookupKey(maxKeyBytes);
 
-            LongBuffer lbuf = buffer.asLongBuffer();
-            keyStorageOrder = new long[numKeys];
-            lbuf.get(keyStorageOrder);
+            IntBuffer ibuf = buffer.asIntBuffer();
+            keyStorageOrder = new int[numKeys];
+            ibuf.get(keyStorageOrder);
         } catch (BufferUnderflowException e) {
             throw new IllegalStateException("Meta blob is corrupted", e); // The checksum is correct - indicates a format change!
         }
@@ -108,7 +108,7 @@ public class LookupMetadata {
         LookupKey upperKey = maxKey;
 
         int bisectCount = 0;
-        long keyPosition;
+        int keyPosition;
         LookupKey midpointKey;
         int midpointKeyIndex;
 
@@ -173,16 +173,16 @@ public class LookupMetadata {
 
     public void writeTo(VirtualMutableBlobStore metadataBlobs) {
         int headerSize = 12 + minKey.byteLength() + maxKey.byteLength();
-        int longBufSize = 8 * numKeys;
-        ByteBuffer byteBuffer = ByteBuffer.allocate(headerSize + longBufSize);
+        int intBufSize = 4 * numKeys;
+        ByteBuffer byteBuffer = ByteBuffer.allocate(headerSize + intBufSize);
         byteBuffer.putInt(numKeys);
         byteBuffer.putInt(minKey.byteLength());
         byteBuffer.put(minKey.bytes());
         byteBuffer.putInt(maxKey.byteLength());
         byteBuffer.put(maxKey.bytes());
 
-        LongBuffer longBuffer = byteBuffer.asLongBuffer();
-        longBuffer.put(keyStorageOrder);
+        IntBuffer intBuffer = byteBuffer.asIntBuffer();
+        intBuffer.put(keyStorageOrder);
         byteBuffer.rewind();
 
         metadataBlobs.write(0L, byteBuffer.array());
@@ -201,15 +201,19 @@ public class LookupMetadata {
         return metadataGeneration;
     }
 
+    /**
+     * Size of keyStorageOrder in bytes
+     * @return the weight in bytes
+     */
     public int weight() {
-        return numKeys;
+        return numKeys * 4;
     }
 
     public int getNumKeys() {
         return numKeys;
     }
 
-    public long[] getKeyStorageOrder() {
+    public int[] getKeyStorageOrder() {
         return keyStorageOrder;
     }
 

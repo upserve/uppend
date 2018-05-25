@@ -63,7 +63,7 @@ public class LookupCache implements Flushable {
     }
 
     public LookupMetadata getMetadata(LookupData key) {
-        return lookupMetaDataCache.get(key);
+        return lookupMetaDataCache.get(key, lookupData -> lookupData.loadMetadata());
     }
 
     public void putMetadata(LookupData key, LookupMetadata value) {

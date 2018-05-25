@@ -10,7 +10,7 @@ public class LookupKey implements Comparable<LookupKey> {
     // Used to determine whether the sort order information is valid for this LookupKey during flush
     private int metaDataGeneration;
     // the position of this key in the longBlob file
-    private long position;
+    private int position;
 
     public LookupKey(String stringValue) {
         if (stringValue == null) {
@@ -56,11 +56,11 @@ public class LookupKey implements Comparable<LookupKey> {
         return new String(bytes, StandardCharsets.US_ASCII);
     }
 
-    long getPosition() {
+    int getPosition() {
         return position;
     }
 
-    void setPosition(long position) {
+    void setPosition(int position) {
         this.position = position;
     }
 

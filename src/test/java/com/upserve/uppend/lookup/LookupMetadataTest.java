@@ -86,7 +86,7 @@ public class LookupMetadataTest {
         buildSimpleTestData(metadataBlobs);
 
         LookupMetadata result = LookupMetadata.open(metadataBlobs, 3);
-        assertArrayEquals(new long[]{0, 12}, result.getKeyStorageOrder());
+        assertArrayEquals(new int[]{0, 12}, result.getKeyStorageOrder());
         assertEquals(new LookupKey("b"), result.getMaxKey());
         assertEquals(new LookupKey("a"), result.getMinKey());
         assertEquals(3, result.getMetadataGeneration());
@@ -96,7 +96,7 @@ public class LookupMetadataTest {
     public void testOpen() throws Exception {
         LookupMetadata initialMetadata = LookupMetadata.open(metadataBlobs, 2);
 
-        assertArrayEquals(new long[]{}, initialMetadata.getKeyStorageOrder());
+        assertArrayEquals(new int[]{}, initialMetadata.getKeyStorageOrder());
         assertNull(initialMetadata.getMaxKey());
         assertNull(initialMetadata.getMinKey());
         assertEquals(2, initialMetadata.getMetadataGeneration());
@@ -110,7 +110,7 @@ public class LookupMetadataTest {
 
         LookupMetadata initialMetadata = LookupMetadata.open(metadataBlobs, 2);
 
-        assertArrayEquals(new long[]{}, initialMetadata.getKeyStorageOrder());
+        assertArrayEquals(new int[]{}, initialMetadata.getKeyStorageOrder());
         assertNull(initialMetadata.getMaxKey());
         assertNull(initialMetadata.getMinKey());
         assertEquals(2, initialMetadata.getMetadataGeneration());
@@ -119,7 +119,7 @@ public class LookupMetadataTest {
 
     @Test
     public void testEmptyLookup() {
-        LookupMetadata initialMetadata = new LookupMetadata(null, null, new long[0], 1);
+        LookupMetadata initialMetadata = new LookupMetadata(null, null, new int[0], 1);
 
         LookupKey searchKey = new LookupKey("Foo");
         Long result = initialMetadata.findKey(mockLongBlobStore, searchKey);
@@ -136,7 +136,7 @@ public class LookupMetadataTest {
     @Test
     public void testOneKeyLookupAbove() {
         LookupKey oneKey = new LookupKey("Foo");
-        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new long[]{0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new int[]{0}, 1);
 
         LookupKey searchKey = new LookupKey("Bar");
         Long result = initialMetadata.findKey(mockLongBlobStore, searchKey);
@@ -153,7 +153,7 @@ public class LookupMetadataTest {
     @Test
     public void testOneKeyLookupBelow() {
         LookupKey oneKey = new LookupKey("Foo");
-        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new long[]{0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new int[]{0}, 1);
 
         LookupKey searchKey = new LookupKey("Zar");
         Long result = initialMetadata.findKey(mockLongBlobStore, searchKey);
@@ -170,7 +170,7 @@ public class LookupMetadataTest {
     @Test
     public void testOneKeyLookupEquals() {
         LookupKey oneKey = new LookupKey("Foo");
-        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new long[]{0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(oneKey, oneKey, new int[]{0}, 1);
 
         Long expected = 5L;
         when(mockLongBlobStore.readLong(0)).thenReturn(expected);
@@ -190,7 +190,7 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupBelowLower() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0, 1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0, 1}, 1);
 
         LookupKey searchKey = new LookupKey("a");
         Long result = initialMetadata.findKey(mockLongBlobStore, searchKey);
@@ -208,7 +208,7 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupEqualsLower() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0, 1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0, 1}, 1);
 
         Long expected = 5L;
         when(mockLongBlobStore.readLong(0)).thenReturn(expected);
@@ -228,7 +228,7 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupInBetween() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0, 1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0, 1}, 1);
 
         LookupKey searchKey = new LookupKey("m");
         Long result = initialMetadata.findKey(mockLongBlobStore, searchKey);
@@ -245,7 +245,7 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupEqualsUpper() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{0, 1}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{0, 1}, 1);
 
         Long expected = 5L;
         when(mockLongBlobStore.readLong(1)).thenReturn(expected);
@@ -265,7 +265,7 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupEqualsUpperDifferentSortOrder() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new long[]{1, 0}, 1);
+        LookupMetadata initialMetadata = new LookupMetadata(bKey, yKey, new int[]{1, 0}, 1);
 
         Long expected = 5L;
         when(mockLongBlobStore.readLong(0)).thenReturn(expected);
@@ -285,7 +285,7 @@ public class LookupMetadataTest {
     public void testTwoKeyLookupAboveUpper() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{0, 1}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{0, 1}, 1);
 
 
         LookupKey searchKey = new LookupKey("z");
@@ -303,7 +303,7 @@ public class LookupMetadataTest {
     public void testManyKeysEqualsLastMidpoint() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
 
         when(mockLongBlobStore.readBlob(3L)).thenReturn("m".getBytes()); // First midpoint is the 6th sort value => 3
         when(mockLongBlobStore.readBlob(2L)).thenReturn("s".getBytes()); // Second midpoint is the 9th sort value => 2
@@ -337,7 +337,7 @@ public class LookupMetadataTest {
     public void testManyKeysBelowLastMidpoint() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
 
         when(mockLongBlobStore.readBlob(3L)).thenReturn("m".getBytes()); // First midpoint is the 6th sort value => 3
         when(mockLongBlobStore.readBlob(2L)).thenReturn("u".getBytes()); // Second midpoint is the 9th sort value => 2
@@ -382,7 +382,7 @@ public class LookupMetadataTest {
     public void testManyKeysAboveLastMidpoint() {
         LookupKey bKey = new LookupKey("b");
         LookupKey yKey = new LookupKey("y");
-        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new long[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
+        LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
 
 
         when(mockLongBlobStore.readBlob(3L)).thenReturn("m".getBytes()); // First midpoint is the 6th sort value => 3
@@ -462,7 +462,7 @@ public class LookupMetadataTest {
     public void testToString() throws Exception {
         LookupKey keyA = new LookupKey("00");
         LookupKey keyB = new LookupKey("01");
-        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new long[]{0, 1}, 4);
+        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new int[]{0, 1}, 4);
         String toString = metadata.toString();
         assertTrue(toString.contains("numKeys=2"));
         assertTrue(toString.contains("minKey=00"));
@@ -472,7 +472,7 @@ public class LookupMetadataTest {
     private void buildSimpleTestData(VirtualMutableBlobStore blobStore) throws IOException {
         LookupKey keyA = new LookupKey("a");
         LookupKey keyB = new LookupKey("b");
-        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new long[]{0, 12}, 0);
+        LookupMetadata metadata = new LookupMetadata(keyA, keyB, new int[]{0, 12}, 0);
         Files.createDirectories(path.getParent());
         metadata.writeTo(blobStore);
     }
