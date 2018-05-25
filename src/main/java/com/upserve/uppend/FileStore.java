@@ -59,23 +59,18 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         this.flushDelaySeconds = flushDelaySeconds;
 
         this.readOnly = readOnly;
-        if (!readOnly) {
-            lockPath = dir.resolve("lock");
 
-            if (flushDelaySeconds > 0) register(flushDelaySeconds);
+        lockPath = readOnly ? dir.resolve("readLock") : dir.resolve("writeLock");
 
-            try {
-                lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                lock = lockChan.lock();
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to open lock: " + lockPath, e);
-            } catch (OverlappingFileLockException e) {
-                throw new IllegalStateException("lock busy: " + lockPath, e);
-            }
-        } else {
-            lockPath = null;
-            lockChan = null;
-            lock = null;
+        if (flushDelaySeconds > 0) register(flushDelaySeconds);
+
+        try {
+            lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            lock = readOnly ? lockChan.lock(0L, Long.MAX_VALUE, true) : lockChan.lock(); // Write lock is exclusive
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to open lock: " + lockPath, e);
+        } catch (OverlappingFileLockException e) {
+            throw new IllegalStateException("lock busy: " + lockPath, e);
         }
 
         isClosed = new AtomicBoolean(false);
@@ -188,22 +183,20 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
             log.error("unable to close {}", name, e);
         }
 
-        if (!readOnly) {
-            try {
-                lock.release();
-            } catch (IOException e) {
-                log.error("unable to release lock file: " + lockPath, e);
-            }
-            try {
-                lockChan.close();
-            } catch (IOException e) {
-                log.error("unable to close lock file: " + lockPath, e);
-            }
-            try {
-                Files.deleteIfExists(lockPath);
-            } catch (IOException e) {
-                log.error("unable to delete lock file: " + lockPath, e);
-            }
+        try {
+            lock.release();
+        } catch (IOException e) {
+            log.error("unable to release lock file: " + lockPath, e);
+        }
+        try {
+            lockChan.close();
+        } catch (IOException e) {
+            log.error("unable to close lock file: " + lockPath, e);
+        }
+        try {
+            Files.deleteIfExists(lockPath);
+        } catch (IOException e) {
+            log.error("unable to delete lock file: " + lockPath, e);
         }
     }
 }
