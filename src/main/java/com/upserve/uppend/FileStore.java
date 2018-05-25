@@ -57,12 +57,10 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         this.name = name;
 
         this.flushDelaySeconds = flushDelaySeconds;
+        if (!readOnly && flushDelaySeconds > 0) register(flushDelaySeconds);
 
         this.readOnly = readOnly;
-
         lockPath = readOnly ? dir.resolve("readLock") : dir.resolve("writeLock");
-
-        if (flushDelaySeconds > 0) register(flushDelaySeconds);
 
         try {
             lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
@@ -173,9 +171,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
             return;
         }
 
-        if (!readOnly) {
-            if (flushDelaySeconds > 0) AutoFlusher.deregister(this);
-        }
+        if (!readOnly && flushDelaySeconds > 0) AutoFlusher.deregister(this);
 
         try {
             closeInternal();
