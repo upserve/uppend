@@ -90,7 +90,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withMaximumLookupKeyCacheWeight(int maximumLookupKeyCacheWeight) {
+    public T withMaximumLookupKeyCacheWeight(long maximumLookupKeyCacheWeight) {
         this.maximumLookupKeyCacheWeight = maximumLookupKeyCacheWeight;
         return (T) this;
     }
@@ -102,7 +102,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withMaximumMetaDataCacheWeight(int maximumMetaDataCacheWeight) {
+    public T withMaximumMetaDataCacheWeight(long maximumMetaDataCacheWeight) {
         this.maximumMetaDataCacheWeight = maximumMetaDataCacheWeight;
         return (T) this;
     }
