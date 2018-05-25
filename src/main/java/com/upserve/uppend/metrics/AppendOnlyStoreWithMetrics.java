@@ -17,7 +17,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String SCAN_TIMER_METRIC_NAME = "scanTimer";
     public static final String CLEAR_TIMER_METRIC_NAME = "clearTimer";
     public static final String CLOSE_TIMER_METRIC_NAME = "closeTimer";
-    public static final String PURGE_TIMER_METRIC_NAME = "purgeTimer";
+    public static final String TRIM_TIMER_METRIC_NAME = "purgeTimer";
 
     public static final String WRITE_BYTES_METER_METRIC_NAME = "writeBytesMeter";
     public static final String READ_BYTES_METER_METRIC_NAME = "readBytesMeter";
@@ -61,7 +61,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         scanTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_TIMER_METRIC_NAME));
         clearTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CLEAR_TIMER_METRIC_NAME));
         closeTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CLOSE_TIMER_METRIC_NAME));
-        trimTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), PURGE_TIMER_METRIC_NAME));
+        trimTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), TRIM_TIMER_METRIC_NAME));
 
         writeBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), WRITE_BYTES_METER_METRIC_NAME));
         readBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), READ_BYTES_METER_METRIC_NAME));
