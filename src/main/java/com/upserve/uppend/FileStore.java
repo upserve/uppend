@@ -189,10 +189,5 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         } catch (IOException e) {
             log.error("unable to close lock file: " + lockPath, e);
         }
-        try {
-            Files.deleteIfExists(lockPath);
-        } catch (IOException e) {
-            log.error("unable to delete lock file: " + lockPath, e);
-        }
     }
 }
