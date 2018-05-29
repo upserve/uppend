@@ -20,19 +20,12 @@ public abstract class Partition {
 
     final PartitionLookupCache lookupCache;
 
+    private static final int HASH_SEED = 219370429;
     final HashFunction hashFunction;
 
     final int hashSize;
 
     final LookupData[] lookups;
-
-    private static Path blobsFile(Path partitiondDir) {
-        return partitiondDir.resolve("blobStore");
-    }
-
-    private static Path blocksFile(Path partitiondDir) {
-        return partitiondDir.resolve("blockedLongs");
-    }
 
     Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
         this.longKeyFile = longKeyFile;
@@ -52,7 +45,7 @@ public abstract class Partition {
         if (hashSize == 1) {
             hashFunction = null;
         } else {
-            hashFunction = Hashing.murmur3_32();
+            hashFunction = Hashing.murmur3_32(HASH_SEED);
         }
 
         lookups = IntStream.range(0, hashSize)

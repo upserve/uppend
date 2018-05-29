@@ -18,7 +18,6 @@ import static com.google.common.math.IntMath.mod;
 
 abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
     protected final Path dir;
 
     private final int flushDelaySeconds;
@@ -36,7 +35,6 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
 
     private static final int PARTITION_HASH_SEED = 626433832;
     private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
-
 
     FileStore(Path dir, int flushDelaySeconds, int partitionSize, boolean readOnly, String name) {
         this.dir = dir;
@@ -77,7 +75,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
     protected String partitionHash(String partition) {
         if (hashPartitionValues) {
             HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
-            return String.format("%04d", mod(hcode.asInt(), partitionSize));
+            return String.format("%04d", Math.abs(hcode.asInt()) % partitionSize);
         } else {
             return partition;
         }
