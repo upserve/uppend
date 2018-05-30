@@ -130,8 +130,8 @@ public class CommandBenchmark implements Callable<Void> {
                 metadataCacheWeight = 4 * keys + 10_000; // one int per key plus some room
                 metadataPageSize = 1024 * 1024;
 
-                flushDelay = 0;
-                flushThreshold = 32;
+                flushDelay = 15;
+                flushThreshold = -1;
 
                 break;
 

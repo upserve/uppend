@@ -28,7 +28,8 @@ public class LookupDataTest {
     private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
     private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder
             .getDefaultTestBuilder()
-            .withMaximumLookupKeyCacheWeight(1024 * 1024);
+            .withMaximumLookupKeyCacheWeight(1024 * 1024)
+            .withMaximumMetaDataCacheWeight(500_000);
 
     private final PageCache pageCache = defaults.buildLookupPageCache(name);
     private final LookupCache lookupCache = defaults.buildLookupCache(name);
@@ -399,11 +400,12 @@ public class LookupDataTest {
     private void assertCache(String name, CacheStats stats, long hitCount, long missCount, long loadSuccessCount, long loadFailureCount) {
         if (hitCount > 0) assertEquals(name + " Cache Hit Count", hitCount, stats.hitCount());
         if (missCount > 0) assertEquals(name + " Cache Miss Count", missCount, stats.missCount());
-        if (loadSuccessCount > 0) assertEquals(name + " Cache Load Success Count", loadSuccessCount, stats.loadSuccessCount());
-        if (loadFailureCount > 0) assertEquals(name + " Cache Load Failure Count", loadFailureCount, stats.loadFailureCount());
+        if (loadSuccessCount > 0)
+            assertEquals(name + " Cache Load Success Count", loadSuccessCount, stats.loadSuccessCount());
+        if (loadFailureCount > 0)
+            assertEquals(name + " Cache Load Failure Count", loadFailureCount, stats.loadFailureCount());
     }
 
-    @Ignore
     @Test
     public void testWriteCacheUnderLoad() throws IOException {
         LookupData data = new LookupData(keyBlobStore, mutableBlobStore, partitionLookupCache, false);
@@ -446,8 +448,8 @@ public class LookupDataTest {
                 });
 
         assertLookupKeyCache(0, 100_000, 100_000, 0);
-        assertLookupPagesCache(233307, 104, 104, 0);
-        assertLookupMetadataCache(99999, 1, 1, 0);
+        assertLookupPagesCache(117212, 104, 104, 0);
+        assertLookupMetadataCache(99_999, 1, 1, 0);
     }
 
     @Test
@@ -591,20 +593,26 @@ public class LookupDataTest {
 
 
         Random random = new Random();
-        Thread writer = new Thread(() ->
-                LongStream.range(0, 100_000)
+        Thread writer = new Thread(() -> {
+            for (int j = 0; j < n; j++) {
+                random.longs(128, 0 , 1000)
+                        .parallel()
                         .forEach(val -> {
                             byte[] bytes = new byte[(int) (val % 64)];
                             random.nextBytes(bytes);
                             data.put(new LookupKey(bytes), val);
-                        })
-        );
+                        });
+                try {
+                    Thread.sleep(10);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException("Interrupted", e);
+                }
+            }
+        });
 
         writer.start();
         flusher.start();
 
         writer.join();
     }
-
-
 }
