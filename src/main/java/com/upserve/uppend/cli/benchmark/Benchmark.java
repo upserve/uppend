@@ -42,6 +42,8 @@ public class Benchmark {
     private final ForkJoinPool writerPool;
     private final ForkJoinPool readerPool;
 
+    private final ForkJoinPool cachePool;
+
     private volatile boolean isDone = false;
 
     public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count) {
@@ -51,13 +53,18 @@ public class Benchmark {
         this.maxPartitions = maxPartitions; // max ~ 2000
         this.maxKeys = maxKeys; // max ~ 100,000,000
 
+
         writerPool = forkJoinPoolFunction.apply("benchmark-writer");
         readerPool = forkJoinPoolFunction.apply("benchmark-reader");
 
-        builder.withLookupPageCacheExecutorService(forkJoinPoolFunction.apply("page-cache"))
-                .withLookupMetaDataCacheExecutorService(forkJoinPoolFunction.apply("metadata-cache"))
-                .withBlobCacheExecutorService(forkJoinPoolFunction.apply("blob-cache"))
-                .withLookupKeyCacheExecutorService(forkJoinPoolFunction.apply("key-cache"));
+        cachePool = forkJoinPoolFunction.apply("cache");
+
+
+
+        builder.withLookupPageCacheExecutorService(ForkJoinPool.commonPool())
+                .withLookupMetaDataCacheExecutorService(cachePool)
+                .withBlobCacheExecutorService(ForkJoinPool.commonPool())
+                .withLookupKeyCacheExecutorService(ForkJoinPool.commonPool());
 
         metrics = builder.getStoreMetricsRegistry();
 
@@ -208,6 +215,13 @@ public class Benchmark {
 
                     FlushStats fstats = testInstance.getFlushStats();
                     log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
+
+                    log.info("Cache Pool: {}", cachePool);
+                    log.info("Write Pool: {}", writerPool);
+                    log.info("Read Pool: {}", readerPool);
+                    log.info("Common Pool: {}", ForkJoinPool.commonPool());
+
+
 
                 } catch (Exception e) {
                     log.info("logTimer failed with ", e);

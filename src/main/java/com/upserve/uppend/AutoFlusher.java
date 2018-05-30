@@ -52,7 +52,14 @@ public class AutoFlusher {
         };
 
 
-        forkJoinPoolFunction = name -> new ForkJoinPool(Runtime.getRuntime().availableProcessors(), threadFactoryFunction.apply(name), null, true);
+        forkJoinPoolFunction = name -> new ForkJoinPool(
+                Runtime.getRuntime().availableProcessors(),
+                threadFactoryFunction.apply(name),
+                (t, e) -> {
+                    log.error("In pool {}, thread {} threw exception {}", name, t, e);
+                },
+                true
+        );
 
         flusherWorkPool = forkJoinPoolFunction.apply("flush-worker");
 
@@ -131,6 +138,7 @@ public class AutoFlusher {
     }
 
     public static void submitWork(Runnable runnable) {
+
         ForkJoinTask task = flusherWorkPool.submit(runnable);
     }
 
