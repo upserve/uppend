@@ -448,7 +448,7 @@ public class LookupDataTest {
                 });
 
         assertLookupKeyCache(0, 100_000, 100_000, 0);
-        assertLookupPagesCache(117212, 104, 104, 0);
+        assertLookupPagesCache(233307, 104, 104, 0);
         assertLookupMetadataCache(99_999, 1, 1, 0);
     }
 
