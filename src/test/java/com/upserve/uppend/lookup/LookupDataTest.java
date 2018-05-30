@@ -579,7 +579,7 @@ public class LookupDataTest {
         // Force the metadata to be reloaded every time it is needed
         LookupCache noCache = defaults.withMaximumMetaDataCacheWeight(0).withMaximumLookupKeyCacheWeight(0).buildLookupCache(name);
 
-        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, PartitionLookupCache.create("partition", noCache), 1, false);
+        LookupData data = new LookupData(keyBlobStore, mutableBlobStore, PartitionLookupCache.create("partition", noCache), 100, false);
 
         int n = 500;
 

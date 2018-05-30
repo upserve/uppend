@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import java.io.Flushable;
 import java.lang.invoke.MethodHandles;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.*;
 
 public class LookupCache implements Flushable {
@@ -17,6 +18,10 @@ public class LookupCache implements Flushable {
 
     private final LoadingCache<LookupData, LookupMetadata> lookupMetaDataCache;
 
+    private final boolean keyCacheActive;
+
+    private final LongAdder keysFlushed;
+    private final LongAdder lookupsFlushed;
 
     public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, int metadataTTL, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
 
@@ -31,8 +36,12 @@ public class LookupCache implements Flushable {
             keyCacheBuilder = keyCacheBuilder.recordStats(keyCacheMetricsSupplier);
         }
 
+        keyCacheActive = maximumKeyWeight > 0;
+
         keyLongLookupCache = keyCacheBuilder.<PartitionLookupKey, Long>build();
 
+        keysFlushed = new LongAdder();
+        lookupsFlushed = new LongAdder();
 
         Caffeine<LookupData, LookupMetadata> metadataCacheBuilder = Caffeine
                 .<LookupData, LookupMetadata>newBuilder()
@@ -51,7 +60,19 @@ public class LookupCache implements Flushable {
 
         lookupMetaDataCache = metadataCacheBuilder
                 .<LookupData, LookupMetadata>build(LookupData::loadMetadata);
+    }
 
+    public FlushStats getFlushStats() {
+        return new FlushStats(keysFlushed.longValue(), lookupsFlushed.longValue());
+    }
+
+    public void addFlushCount(long val){
+        keysFlushed.add(val);
+        lookupsFlushed.increment();
+    }
+
+    public boolean isKeyCacheActive() {
+        return keyCacheActive;
     }
 
     public void putLookup(PartitionLookupKey key, long val) {
@@ -63,7 +84,7 @@ public class LookupCache implements Flushable {
     }
 
     public LookupMetadata getMetadata(LookupData key) {
-        return lookupMetaDataCache.get(key, lookupData -> lookupData.loadMetadata());
+        return lookupMetaDataCache.get(key, LookupData::loadMetadata);
     }
 
     public void putMetadata(LookupData key, LookupMetadata value) {
@@ -71,7 +92,11 @@ public class LookupCache implements Flushable {
     }
 
     public CacheStats keyStats() {
-        return keyLongLookupCache.stats();
+        if (keyCacheActive) {
+            return keyLongLookupCache.stats();
+        } else {
+            return CacheStats.empty();
+        }
     }
 
     public CacheStats metadataStats() {

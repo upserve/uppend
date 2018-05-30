@@ -2,7 +2,7 @@ package com.upserve.uppend;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.blobs.PageCache;
-import com.upserve.uppend.lookup.LookupCache;
+import com.upserve.uppend.lookup.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
@@ -75,6 +75,10 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
                 .forEach(partitionObject -> partitionObject.scan(callback));
     }
 
+    @Override
+    public FlushStats getFlushStats() {
+        return lookupCache.getFlushStats();
+    }
     @Override
     public CacheStats getKeyPageCacheStats() {
         return keyPageCache.stats();

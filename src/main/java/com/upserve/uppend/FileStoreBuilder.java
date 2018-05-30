@@ -353,7 +353,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public int getPartitionSize(){ return partitionSize; }
 
     public String getMetricsRootName(){ return metricsRootName; }
-
 }
 
 

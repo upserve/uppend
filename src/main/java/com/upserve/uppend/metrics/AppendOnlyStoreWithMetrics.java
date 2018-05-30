@@ -4,6 +4,7 @@ import com.codahale.metrics.*;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.*;
+import com.upserve.uppend.lookup.FlushStats;
 
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -179,6 +180,11 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     @Override
     public String getName() {
         return store.getName();
+    }
+
+    @Override
+    public FlushStats getFlushStats() {
+        return store.getFlushStats();
     }
 
     @Override

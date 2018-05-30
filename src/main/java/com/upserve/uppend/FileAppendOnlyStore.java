@@ -2,7 +2,7 @@ package com.upserve.uppend;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.blobs.PageCache;
-import com.upserve.uppend.lookup.LookupCache;
+import com.upserve.uppend.lookup.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
@@ -42,6 +42,11 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     public String getName() {
         return name;
+    }
+
+    @Override
+    public FlushStats getFlushStats() {
+        return lookupCache.getFlushStats();
     }
 
     @Override

@@ -4,6 +4,7 @@ import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
+import com.upserve.uppend.lookup.FlushStats;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -15,13 +16,13 @@ import java.util.function.Supplier;
 import java.util.stream.LongStream;
 
 import static com.upserve.uppend.AutoFlusher.forkJoinPoolFunction;
+import static com.upserve.uppend.cli.CommandBenchmark.ROOT_NAME;
+import static com.upserve.uppend.cli.CommandBenchmark.STORE_NAME;
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 
 public class Benchmark {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final String ROOT_NAME = "Root";
-    private static final String STORE_NAME = "Benchmark";
     private Runnable writer;
     private Runnable reader;
 
@@ -29,13 +30,13 @@ public class Benchmark {
 
     private BenchmarkMode mode;
 
+    private final MetricRegistry metrics;
     private long range;
-    private int count;
+    private long count;
     private int maxPartitions;
-    private int maxKeys;
+    private long maxKeys;
     private int sleep = 0;
 
-    private final MetricRegistry metrics;
     private final AppendOnlyStore testInstance;
 
     private final ForkJoinPool writerPool;
@@ -43,53 +44,26 @@ public class Benchmark {
 
     private volatile boolean isDone = false;
 
-    public Benchmark(BenchmarkMode mode, Path path, int maxPartitions, int maxKeys, int count, int hashSize, int keyCachesize, int metadataCacheSize, int metadataPageSize, int blobPageCacheSize, int keyPageCacheSize, int flushDelaySeconds, int blockSize, int flushThreshold) {
+    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count) {
         this.mode = mode;
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
         this.maxKeys = maxKeys; // max ~ 100,000,000
 
-        if (Files.exists(path)) {
-            log.warn("Location already exists: appending to {}", path);
-        }
-
-        ForkJoinPool cachePool = forkJoinPoolFunction.apply("cache-worker");
         writerPool = forkJoinPoolFunction.apply("benchmark-writer");
-        ;
         readerPool = forkJoinPoolFunction.apply("benchmark-reader");
-        ;
 
-        // TODO add a reader pool!
-        metrics = new MetricRegistry();
+        builder.withLookupPageCacheExecutorService(forkJoinPoolFunction.apply("page-cache"))
+                .withLookupMetaDataCacheExecutorService(forkJoinPoolFunction.apply("metadata-cache"))
+                .withBlobCacheExecutorService(forkJoinPoolFunction.apply("blob-cache"))
+                .withLookupKeyCacheExecutorService(forkJoinPoolFunction.apply("key-cache"));
 
-        AppendOnlyStoreBuilder builder = Uppend.store(path)
-                .withStoreName(STORE_NAME)
-                .withMetricsRootName(ROOT_NAME)
-                .withBlobsPerBlock(blockSize)
-                .withLongLookupHashSize(hashSize)
-                .withInitialLookupKeyCacheSize(keyCachesize)
-                .withMaximumLookupKeyCacheWeight(keyCachesize * 256) // based on key size
-                .withInitialBlobCacheSize(blobPageCacheSize)
-                .withMaximumBlobCacheSize(blobPageCacheSize)
-                .withInitialLookupPageCacheSize(keyPageCacheSize)
-                .withMaximumLookupPageCacheSize(keyPageCacheSize)
-                .withFlushThreshold(flushThreshold)
-                .withInitialMetaDataCacheSize(metadataCacheSize)
-                .withMetaDataPageSize(metadataPageSize)
-                .withMaximumMetaDataCacheWeight(metadataCacheSize * (maxKeys / hashSize))
-                .withFlushDelaySeconds(flushDelaySeconds)
-                .withLookupPageCacheExecutorService(cachePool)
-                .withLookupMetaDataCacheExecutorService(cachePool)
-                .withBlobCacheExecutorService(cachePool)
-                .withLookupKeyCacheExecutorService(cachePool)
-                .withStoreMetrics(metrics)
-                .withCacheMetrics();
-
+        metrics = builder.getStoreMetricsRegistry();
 
         log.info(builder.toString());
 
-        range = (long) maxPartitions * (long) maxKeys * 199;
+        range = (long) maxKeys;
 
         switch (mode) {
             case readwrite:
@@ -126,7 +100,8 @@ public class Benchmark {
                 random.longs(count, 0, range).parallel(),
                 longInt -> {
                     byte[] myBytes = bytes(longInt);
-                    testInstance.append(partition(longInt, maxPartitions), key(longInt / maxPartitions, maxKeys), myBytes);
+                    String formatted = format(longInt);
+                    testInstance.append(formatted, formatted, myBytes);
                     return myBytes.length;
                 }
         );
@@ -135,9 +110,12 @@ public class Benchmark {
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
                 random.longs(count, 0, range).parallel(),
-                longInt -> testInstance.read(partition(longInt, maxPartitions), key(longInt / maxPartitions, maxKeys))
-                        .mapToInt(theseBytes -> theseBytes.length)
-                        .sum()
+                longInt -> {
+                    String formatted = format(longInt);
+                    return testInstance.read(formatted, formatted)
+                            .mapToInt(theseBytes -> theseBytes.length)
+                            .sum();
+                }
         );
     }
 
@@ -148,18 +126,14 @@ public class Benchmark {
         };
     }
 
-    public static String key(long integer, int maxKeys) {
-        return String.format("%09X", integer % maxKeys);
+    public static String format(long value) {
+        return String.format("%09X", value);
     }
 
-    private static String partition(long integer, int maxPartitions) {
-        return String.format("_%04X", integer % maxPartitions);
-    }
-
-    public static byte[] bytes(long integer) {
-        int length = (int) (integer % 1024);
+    public static byte[] bytes(long value) {
+        int length = (int) (value % 1024);
         byte[] bytes = new byte[length];
-        Arrays.fill(bytes, (byte) 0);
+        Arrays.fill(bytes, (byte) 123);
         return bytes;
     }
 
@@ -192,6 +166,7 @@ public class Benchmark {
         AtomicReference<CacheStats> keyPageCacheStats = new AtomicReference<CacheStats>(testInstance.getKeyPageCacheStats());
         AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<CacheStats>(testInstance.getLookupKeyCacheStats());
         AtomicReference<CacheStats> metadataCacheStats = new AtomicReference<CacheStats>(testInstance.getMetadataCacheStats());
+        AtomicReference<FlushStats> flushStats = new AtomicReference<FlushStats>(testInstance.getFlushStats());
 
         return new TimerTask() {
             @Override
@@ -230,6 +205,9 @@ public class Benchmark {
 
                     stats = testInstance.getMetadataCacheStats();
                     log.info("Metadata Cache: {}", stats.minus(metadataCacheStats.getAndSet(stats)));
+
+                    FlushStats fstats = testInstance.getFlushStats();
+                    log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
 
                 } catch (Exception e) {
                     log.info("logTimer failed with ", e);

@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.upserve.uppend.lookup.FlushStats;
 
 import java.io.Flushable;
 
@@ -45,4 +46,6 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, RegisteredFlus
      * @return the name
      */
     String getName();
+
+    FlushStats getFlushStats();
 }

@@ -1,5 +1,7 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.lookup.FlushStats;
+
 import java.io.Flushable;
 
 /**
@@ -67,4 +69,6 @@ public interface CounterStore extends ReadOnlyCounterStore, RegisteredFlushable 
      * @return the name of the datastore for reporting purposes
      */
     String getName();
+
+    FlushStats getFlushStats();
 }

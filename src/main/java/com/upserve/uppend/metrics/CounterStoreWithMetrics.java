@@ -3,6 +3,7 @@ package com.upserve.uppend.metrics;
 import com.codahale.metrics.*;
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.CounterStore;
+import com.upserve.uppend.lookup.FlushStats;
 
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
@@ -127,6 +128,11 @@ public class CounterStoreWithMetrics implements CounterStore {
         } finally {
             context.stop();
         }
+    }
+
+    @Override
+    public FlushStats getFlushStats() {
+        return store.getFlushStats();
     }
 
     @Override

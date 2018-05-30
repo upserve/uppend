@@ -19,6 +19,8 @@ public class AutoFlusher {
     private static final ConcurrentMap<Integer, ConcurrentLinkedQueue<Flushable>> delayFlushables = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Integer, ScheduledFuture> delayFutures = new ConcurrentHashMap<>();
 
+    private static final ConcurrentLinkedQueue<ForkJoinTask> flushTasks = new ConcurrentLinkedQueue<>();
+
     private static final ThreadFactory threadFactory;
     public static final ExecutorService flushExecPool;
 
@@ -42,7 +44,6 @@ public class AutoFlusher {
         ThreadFactory flushExecPoolThreadFactory = r -> new Thread(threadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
         flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
 
-
         threadFactoryFunction = name -> pool ->
         {
             final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
@@ -51,7 +52,7 @@ public class AutoFlusher {
         };
 
 
-        forkJoinPoolFunction = name -> new ForkJoinPool(Runtime.getRuntime().availableProcessors(), threadFactoryFunction.apply(name), null, false);
+        forkJoinPoolFunction = name -> new ForkJoinPool(Runtime.getRuntime().availableProcessors(), threadFactoryFunction.apply(name), null, true);
 
         flusherWorkPool = forkJoinPoolFunction.apply("flush-worker");
 
@@ -128,4 +129,10 @@ public class AutoFlusher {
         }
         log.info("flushed {}", delaySeconds);
     }
+
+    public static void submitWork(Runnable runnable) {
+        ForkJoinTask task = flusherWorkPool.submit(runnable);
+    }
+
+
 }

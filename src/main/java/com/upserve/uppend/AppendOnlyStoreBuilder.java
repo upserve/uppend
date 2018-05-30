@@ -127,6 +127,8 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
                 ", maximumCachedBlobPages=" + maximumCachedBlobPages +
                 ", initialBlobPageCacheSize=" + initialBlobPageCacheSize +
                 ", blobCacheExecutorService=" + blobCacheExecutorService +
+                ", storeName='" + storeName + '\'' +
+                ", partitionSize=" + partitionSize +
                 ", lookupHashSize=" + lookupHashSize +
                 ", lookupPageSize=" + lookupPageSize +
                 ", initialLookupPageCacheSize=" + initialLookupPageCacheSize +
@@ -135,12 +137,19 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
                 ", initialLookupKeyCacheSize=" + initialLookupKeyCacheSize +
                 ", maximumMetaDataCacheWeight=" + maximumMetaDataCacheWeight +
                 ", initialMetaDataCacheSize=" + initialMetaDataCacheSize +
+                ", metadataTTL=" + metadataTTL +
+                ", metaDataPageSize=" + metaDataPageSize +
                 ", lookupKeyCacheExecutorService=" + lookupKeyCacheExecutorService +
                 ", lookupMetaDataCacheExecutorService=" + lookupMetaDataCacheExecutorService +
                 ", lookupPageCacheExecutorService=" + lookupPageCacheExecutorService +
                 ", flushDelaySeconds=" + flushDelaySeconds +
+                ", flushThreshold=" + flushThreshold +
                 ", dir=" + dir +
+                ", storeMetricsRegistry=" + storeMetricsRegistry +
+                ", metricsRootName='" + metricsRootName + '\'' +
                 ", storeMetrics=" + storeMetrics +
+                ", cacheMetricsRegistry=" + cacheMetricsRegistry +
+                ", cacheMetrics=" + cacheMetrics +
                 '}';
     }
 }

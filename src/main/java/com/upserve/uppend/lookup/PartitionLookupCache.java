@@ -32,6 +32,10 @@ public class PartitionLookupCache {
         return lookupCache.getLong(new PartitionLookupKey(partition, lookupKey), cacheLoader);
     }
 
+    public boolean isKeyCacheActive(){
+        return lookupCache.isKeyCacheActive();
+    }
+
     public LookupMetadata getMetadata(LookupData key) {
         return lookupCache.getMetadata(key);
     }
@@ -40,4 +44,7 @@ public class PartitionLookupCache {
         lookupCache.putMetadata(key, value);
     }
 
+    public void addFlushCount(long val){
+        lookupCache.addFlushCount(val);
+    }
 }

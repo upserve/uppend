@@ -18,6 +18,8 @@ public class LookupData implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final PartitionLookupCache partitionLookupCache;
+    private final Function<LookupKey, Long> lookupFunction;
+    private final BiConsumer<LookupKey, Long> lookupBiConsumer;
 
     private final AtomicInteger writeCacheCounter;
 
@@ -58,6 +60,13 @@ public class LookupData implements Flushable {
         this.metadataBlobs = metadataBlobs;
 
         this.partitionLookupCache = lookupCache;
+        if (lookupCache.isKeyCacheActive()) {
+            lookupFunction = key -> partitionLookupCache.getLong(key , this::findValueFor);
+            lookupBiConsumer = partitionLookupCache::putLookup;
+        } else {
+            lookupFunction = this::findValueFor;
+            lookupBiConsumer = (key, value) -> {};
+        }
 
         this.readOnly = readOnly;
 
@@ -111,7 +120,7 @@ public class LookupData implements Flushable {
 
     private void flushThreshold() {
         if (flushThreshold != -1 && writeCacheCounter.getAndIncrement() == flushThreshold) {
-            AutoFlusher.flusherWorkPool.submit(this::flush);
+            AutoFlusher.submitWork(this::flush);
         }
     }
 
@@ -188,7 +197,7 @@ public class LookupData implements Flushable {
      * @return the value new associated with the key
      */
     public long increment(LookupKey key, long delta) {
-        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
+        if (readOnly) throw new RuntimeException("Can not increment in read only LookupData");
 
         long[] ref = new long[1];
         writeCache.compute(key, (writeKey, value) -> {
@@ -204,7 +213,7 @@ public class LookupData implements Flushable {
                     ref[0] = newValue;
 
                     flushCache.computeIfPresent(writeKey, (flushKey, v) -> newValue);
-                    partitionLookupCache.putLookup(writeKey, newValue); // Update the read cache
+                    lookupBiConsumer.accept(writeKey, newValue); // Update the read cache
                     keyLongBlobs.writeLong(writeKey.getPosition(), newValue); // Update the value on disk
 
                     // No need to add this to the write cache
@@ -244,7 +253,7 @@ public class LookupData implements Flushable {
                     ref[0] = existingValue;
 
                     flushCache.computeIfPresent(writeKey, (flushKey, v) -> value);
-                    partitionLookupCache.putLookup(writeKey, value); // Update the read cache
+                    lookupBiConsumer.accept(writeKey, value); // Update the read cache
                     keyLongBlobs.writeLong(writeKey.getPosition(), value); // Update the value on disk
 
                     // No need to add this to the write cache
@@ -262,9 +271,9 @@ public class LookupData implements Flushable {
 
     private Long getCached(LookupKey key) {
         if (readOnly) {
-            return partitionLookupCache.getLong(key, this::findValueFor);
+            return lookupFunction.apply(key);
         } else {
-            return flushCache.getOrDefault(key, partitionLookupCache.getLong(key, this::findValueFor));
+            return flushCache.getOrDefault(key, lookupFunction.apply(key));
         }
     }
 
@@ -363,7 +372,7 @@ public class LookupData implements Flushable {
         }
     }
 
-    int getMetaDataGeneration() {
+    private int getMetaDataGeneration() {
         return metaDataGeneration.get();
     }
 
@@ -456,7 +465,7 @@ public class LookupData implements Flushable {
 
         // Update the counter and flush again if there are still more entries in the write cache than the threshold
         if (flushThreshold != -1 && writeCacheCounter.addAndGet(-flushSize) > flushThreshold) {
-            AutoFlusher.flusherWorkPool.submit(this::flush);
+            AutoFlusher.submitWork(this::flush);
         }
 
         int[] newKeySortOrder = new int[currentKeySortOrder.length + flushSize];
@@ -507,7 +516,7 @@ public class LookupData implements Flushable {
         Iterator<Map.Entry<LookupKey, Long>> iterator = flushCache.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<LookupKey, Long> entry = iterator.next();
-            partitionLookupCache.putLookup(entry.getKey(), entry.getValue());
+            lookupBiConsumer.accept(entry.getKey(), entry.getValue());
             iterator.remove();
         }
     }
@@ -552,17 +561,15 @@ public class LookupData implements Flushable {
                 flushWriteCache(currentMetadata);
 
                 generateMetaData(currentMetadata);
+
+                // record stats about flushing
+                partitionLookupCache.addFlushCount(flushCache.size());
             } finally {
                 flushReference.set(null);
             }
             flushCacheToReadCache();
             log.debug("flushed");
         }
-    }
-
-    public void clear() {
-        writeCache.clear();
-        flushCache.clear();
     }
 
     private int[] getKeyPosition() {

@@ -34,4 +34,33 @@ public class CounterStoreBuilder extends FileStoreBuilder<CounterStoreBuilder> {
     public static CounterStoreBuilder getDefaultTestBuilder() {
         return defaultTestBuilder;
     }
+
+    @Override
+    public String toString() {
+        return "CounterStoreBuilder{" +
+                "storeName='" + storeName + '\'' +
+                ", partitionSize=" + partitionSize +
+                ", lookupHashSize=" + lookupHashSize +
+                ", lookupPageSize=" + lookupPageSize +
+                ", initialLookupPageCacheSize=" + initialLookupPageCacheSize +
+                ", maximumLookupPageCacheSize=" + maximumLookupPageCacheSize +
+                ", maximumLookupKeyCacheWeight=" + maximumLookupKeyCacheWeight +
+                ", initialLookupKeyCacheSize=" + initialLookupKeyCacheSize +
+                ", maximumMetaDataCacheWeight=" + maximumMetaDataCacheWeight +
+                ", initialMetaDataCacheSize=" + initialMetaDataCacheSize +
+                ", metadataTTL=" + metadataTTL +
+                ", metaDataPageSize=" + metaDataPageSize +
+                ", lookupKeyCacheExecutorService=" + lookupKeyCacheExecutorService +
+                ", lookupMetaDataCacheExecutorService=" + lookupMetaDataCacheExecutorService +
+                ", lookupPageCacheExecutorService=" + lookupPageCacheExecutorService +
+                ", flushDelaySeconds=" + flushDelaySeconds +
+                ", flushThreshold=" + flushThreshold +
+                ", dir=" + dir +
+                ", storeMetricsRegistry=" + storeMetricsRegistry +
+                ", metricsRootName='" + metricsRootName + '\'' +
+                ", storeMetrics=" + storeMetrics +
+                ", cacheMetricsRegistry=" + cacheMetricsRegistry +
+                ", cacheMetrics=" + cacheMetrics +
+                '}';
+    }
 }
