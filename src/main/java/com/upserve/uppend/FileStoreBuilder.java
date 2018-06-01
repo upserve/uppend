@@ -259,7 +259,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
                 metricsSupplier(metricsPrefix, LOOKUP_KEY_CACHE_METRICS),
                 getInitialMetaDataCacheSize(),
                 getMaximumMetaDataCacheWeight(),
-                readOnly ? 0 : getMetadataTTL(),
+                readOnly ? getMetadataTTL() : 0,
                 getLookupMetaDataCacheExecutorService(),
                 metricsSupplier(metricsPrefix, METADATA_CACHE_METRICS)
         );
