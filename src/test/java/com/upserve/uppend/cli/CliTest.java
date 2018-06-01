@@ -51,7 +51,7 @@ public class CliTest {
 
     @Test
     public void testBenchmark() throws Exception {
-        Cli.main("benchmark", "-n", "1", "write", "build/test/cli/bench");
+        Cli.main("benchmark", "-s", "small", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
         assertEquals("", err);
