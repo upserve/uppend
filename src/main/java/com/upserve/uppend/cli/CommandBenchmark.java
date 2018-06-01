@@ -40,6 +40,9 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-c", "--case"}, description = "Benchmark class (narrow|wide) key space")
     BenchmarkCase benchmarkCase = BenchmarkCase.narrow;
 
+    @Option(names= {"-i", "--iostat"}, description = "arguments for iostat process")
+    String ioStatArgs = "5";
+
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
     boolean help;
@@ -114,8 +117,8 @@ public class CommandBenchmark implements Callable<Void> {
                 count = keys * 2;
 
                 blockSize = 4;
-                hashSize = 1024;
-                partitions = (int) Math.min(1024, keys / (64 * hashSize));
+                hashSize = 512;
+                partitions = 128; //(int) Math.min(1024, keys / (64 * hashSize));
 
                 keyCacheSize = 0;
                 keyCacheWeight = 0;
@@ -130,8 +133,8 @@ public class CommandBenchmark implements Callable<Void> {
                 metadataCacheWeight = 4 * keys + 10_000; // one int per key plus some room
                 metadataPageSize = 1024 * 1024;
 
-                flushDelay = 600;
-                flushThreshold = -1;
+                flushDelay = -1;
+                flushThreshold = 512;
 
                 break;
 
@@ -171,6 +174,6 @@ public class CommandBenchmark implements Callable<Void> {
                 .withStoreMetrics(metrics)
                 .withCacheMetrics();
 
-        return new Benchmark(mode, builder, partitions, keys, count);
+        return new Benchmark(mode, builder, partitions, keys, count, ioStatArgs);
     }
 }

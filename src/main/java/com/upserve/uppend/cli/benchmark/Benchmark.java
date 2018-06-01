@@ -7,6 +7,7 @@ import com.upserve.uppend.*;
 import com.upserve.uppend.lookup.FlushStats;
 import org.slf4j.Logger;
 
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
@@ -45,26 +46,26 @@ public class Benchmark {
     private final ForkJoinPool cachePool;
 
     private volatile boolean isDone = false;
+    private final String ioStatArgs;
 
-    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count) {
+    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count, String ioStatArgs) {
         this.mode = mode;
 
         this.count = count;
         this.maxPartitions = maxPartitions; // max ~ 2000
         this.maxKeys = maxKeys; // max ~ 100,000,000
 
+        this.ioStatArgs = ioStatArgs;
 
         writerPool = forkJoinPoolFunction.apply("benchmark-writer");
         readerPool = forkJoinPoolFunction.apply("benchmark-reader");
 
         cachePool = forkJoinPoolFunction.apply("cache");
 
-
-
-        builder.withLookupPageCacheExecutorService(ForkJoinPool.commonPool())
+        builder.withLookupPageCacheExecutorService(cachePool)
                 .withLookupMetaDataCacheExecutorService(cachePool)
-                .withBlobCacheExecutorService(ForkJoinPool.commonPool())
-                .withLookupKeyCacheExecutorService(ForkJoinPool.commonPool());
+                .withBlobCacheExecutorService(cachePool)
+                .withLookupKeyCacheExecutorService(cachePool);
 
         metrics = builder.getStoreMetricsRegistry();
 
@@ -230,8 +231,14 @@ public class Benchmark {
         };
     }
 
-    public void run() throws InterruptedException, ExecutionException {
+    public void run() throws InterruptedException, ExecutionException, IOException {
         log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
+
+        ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
+        log.info("Running IOSTAT: '{}'", processBuilder.command());
+        processBuilder.redirectErrorStream(true);
+        processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        Process process = processBuilder.start();
 
         Future writerFuture = writerPool.submit(writer);
 
@@ -259,6 +266,8 @@ public class Benchmark {
         } catch (Exception e) {
             throw new RuntimeException("error closing test uppend store", e);
         }
+
+        process.destroy();
 
         log.info("Benchmark is All Done!");
         System.out.println("[benchmark is done]"); // used in CliTest
