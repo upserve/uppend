@@ -97,10 +97,10 @@ public class CommandBenchmark implements Callable<Void> {
                 keyCacheSize = (int) keys;
                 keyCacheWeight = keys * 9 + 1000; // 9 bytes per key plus some room
 
-                blobCacheSize = partitions * hashSize;
+                blobCacheSize = 16_384;
                 blobPageSize = 16 * 1024 * 1024;
 
-                keyPageCacheSize = partitions * hashSize;
+                keyPageCacheSize = 16 * partitions * hashSize;
                 keyPageSize = 1024 * 1024;
 
                 metadataCacheSize = partitions * hashSize;
@@ -118,15 +118,15 @@ public class CommandBenchmark implements Callable<Void> {
 
                 blockSize = 4;
                 hashSize = 512;
-                partitions = 128; //(int) Math.min(1024, keys / (64 * hashSize));
+                partitions = 128;
 
                 keyCacheSize = 0;
                 keyCacheWeight = 0;
 
-                blobCacheSize = 16 * hashSize;
+                blobCacheSize = 524_288;
                 blobPageSize = 1024 * 1024;
 
-                keyPageCacheSize = partitions * hashSize;
+                keyPageCacheSize = 16 * partitions * hashSize;
                 keyPageSize = 1024 * 1024;
 
                 metadataCacheSize = partitions * hashSize;
@@ -143,7 +143,6 @@ public class CommandBenchmark implements Callable<Void> {
         }
 
         MetricRegistry metrics = new MetricRegistry();
-
 
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withStoreName(STORE_NAME)
