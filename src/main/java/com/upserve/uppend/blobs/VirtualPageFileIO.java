@@ -17,12 +17,17 @@ public class VirtualPageFileIO {
 
     protected final int virtualFileNumber;
     private final VirtualPageFile virtualPageFile;
-
+    private final boolean useMappedPages;
     private final AtomicStampedReference<Page> lastPage;
 
     VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile) {
+        this(virtualFileNumber, virtualPageFile, false);
+    }
+
+    VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile, boolean useMappedPages) {
         this.virtualFileNumber = virtualFileNumber;
         this.virtualPageFile = virtualPageFile;
+        this.useMappedPages = useMappedPages;
 
         lastPage = new AtomicStampedReference<>(null, -1);
 
@@ -92,7 +97,7 @@ public class VirtualPageFileIO {
         int[] holder = new int[1];
         page = lastPage.get(holder);
         if (holder[0] != pageNumber) {
-            page = virtualPageFile.getOrCreatePage(virtualFileNumber, pageNumber);
+            page = virtualPageFile.getCachedOrCreatePage(virtualFileNumber, pageNumber, useMappedPages);
             lastPage.set(page, pageNumber);
         }
 

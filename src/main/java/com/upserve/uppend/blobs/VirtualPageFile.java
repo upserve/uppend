@@ -209,9 +209,10 @@ public class VirtualPageFile implements Flushable, Closeable {
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
+     * @param useMapped indicates whether to use a memory mapped file page or a file channel backed page
      * @return a Page for File IO
      */
-    Page getOrCreatePage(int virtualFileNumber, int pageNumber) {
+    Page getCachedOrCreatePage(int virtualFileNumber, int pageNumber, boolean useMapped) {
         final long startPosition;
         if (isPageAvailable(virtualFileNumber, pageNumber)) {
             startPosition = getValidPageStart(virtualFileNumber, pageNumber);
@@ -220,14 +221,14 @@ public class VirtualPageFile implements Flushable, Closeable {
         }
 
         if (pageCache != null) {
-            return pageCache.getIfPresent(this, startPosition).orElse(filePage(startPosition));
+            return pageCache.get(startPosition, getFilePath(), pageKey -> page(pageKey.getPosition(), useMapped));
         } else {
-            return filePage(startPosition);
+            return page(startPosition, useMapped);
         }
     }
 
     /**
-     * Get a MappedByteBuffer backed Page uses a page cache if present
+     * Get a MappedByteBuffer backed Page uses a page cache if present - always uses memory mapped pages
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
@@ -241,6 +242,14 @@ public class VirtualPageFile implements Flushable, Closeable {
             return pageCache.get(startPosition, getFilePath(), pageKey -> mappedPage(pageKey.getPosition()));
         } else {
             return mappedPage(startPosition);
+        }
+    }
+
+    Page page(long startPosition, boolean useMapped) {
+        if (useMapped) {
+            return mappedPage(startPosition);
+        } else {
+            return filePage(startPosition);
         }
     }
 

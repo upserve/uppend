@@ -119,15 +119,14 @@ public class CommandBenchmark implements Callable<Void> {
                 blockSize = 4;
                 hashSize = 512;
                 partitions = 128;
-
                 keyCacheSize = 0;
                 keyCacheWeight = 0;
 
                 blobCacheSize = 524_288;
-                blobPageSize = 1024 * 1024;
+                blobPageSize = 1024 * 1024; // Pages will roll over at 135M keys 
 
                 keyPageCacheSize = 16 * partitions * hashSize;
-                keyPageSize = 1024 * 1024;
+                keyPageSize = 1024 * 1024; // Key pages will roll over at about 2.9B keys
 
                 metadataCacheSize = partitions * hashSize;
                 metadataCacheWeight = 4 * keys + 10_000; // one int per key plus some room

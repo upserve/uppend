@@ -38,7 +38,7 @@ public class VirtualPageFileTest {
         assertFalse(instance.isPageAvailable(0, 0));
         assertFalse(instance.isPageAvailable(18, 0));
 
-        Page page5 = instance.getOrCreatePage(0, 5);
+        Page page5 = instance.getCachedOrCreatePage(0, 5, false);
         page5.put(16, "abc".getBytes(), 0);
 
         assertTrue(instance.isPageAvailable(0, 0));
@@ -70,7 +70,7 @@ public class VirtualPageFileTest {
         instance.close();
         instance = new VirtualPageFile(path, 36, 1024, false);
 
-        Page page7 = instance.getOrCreatePage(0, 7);
+        Page page7 = instance.getCachedOrCreatePage(0, 7, false);
         page7.put(28, "ghi".getBytes(), 0);
         page7.get(28, result, 0);
 
