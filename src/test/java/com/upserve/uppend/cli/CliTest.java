@@ -65,6 +65,14 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Test
+    public void testBenchmarkReadWrite() throws Exception {
+        Cli.main("benchmark", "-s", "nano", "-m", "readwrite", "build/test/cli/bench");
+        syncStreams();
+        assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
+        assertEquals("", err);
+    }
+
     private void syncStreams() {
         System.out.flush();
         newOut.flush();
