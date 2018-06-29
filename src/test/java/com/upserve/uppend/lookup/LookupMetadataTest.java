@@ -9,11 +9,9 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.slf4j.*;
-import org.slf4j.helpers.NOPLogger;
+import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.IntStream;
@@ -483,9 +481,7 @@ public class LookupMetadataTest {
         LookupKey key3 = new LookupKey("key3");
         LookupMetadata initialMetadata = new LookupMetadata(key1, key3, new int[] {0, 1, 2}, 1);
 
-        when(mockLongBlobStore.readBlob(0L)).thenReturn("key1".getBytes());
         when(mockLongBlobStore.readBlob(1L)).thenReturn("key2".getBytes());
-        when(mockLongBlobStore.readBlob(2L)).thenReturn("key3".getBytes());
 
         when(mockLogger.isTraceEnabled()).thenReturn(true);
 
