@@ -1,6 +1,6 @@
 package com.upserve.uppend.util;
 
-import org.junit.Test;
+import org.junit.*;
 
 import java.io.*;
 
@@ -139,6 +139,30 @@ public class VarintTest {
         for (long val : vals) {
             assertEquals(val, varintRoundtrip(val));
         }
+    }
+
+    @Test
+    public void malformed() {
+        ByteArrayInputStream in = new ByteArrayInputStream(new byte[] {
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff
+        });
+        IOException expected = null;
+        try {
+            Varint.readLong(in);
+        } catch (IOException e) {
+            expected = e;
+        }
+        Assert.assertNotNull(expected);
+        Assert.assertTrue(expected.getMessage().contains("malformed"));
     }
 
     private static int varintBytesSizeof(long value) {
