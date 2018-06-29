@@ -12,8 +12,7 @@ import java.util.concurrent.*;
 import java.util.function.Supplier;
 import java.util.stream.*;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.*;
 
 public class BlockedLongsTest {
     private Path path = Paths.get("build/test/tmp/block");
@@ -254,5 +253,42 @@ public class BlockedLongsTest {
         // the tail pointer from first to last is still missing but the value is recoverable
         block.append(pos, 3L);
         assertArrayEquals(new long[]{1L, 1L, 1L, 2L, 3L}, block.values(pos).toArray());
+    }
+
+    @Test
+    public void testStats() {
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
+        BlockStats stats = v.stats();
+        assertNotNull(stats);
+        Assert.assertEquals(0, stats.getAllocCount());
+        Assert.assertEquals(0, stats.getAppendCount());
+        Assert.assertEquals(0, stats.getPagesLoaded());
+        Assert.assertEquals(0, stats.getSize());
+        Assert.assertEquals(0, stats.getValuesReadCount());
+        long pos1 = v.allocate();
+        for (long i = 0; i < 20; i++) {
+            v.append(pos1, i);
+        }
+        v.values(0L);
+        stats = v.stats();
+        assertNotNull(stats);
+        Assert.assertEquals(2, stats.getAllocCount());
+        Assert.assertEquals(20, stats.getAppendCount());
+        Assert.assertEquals(1, stats.getPagesLoaded());
+        Assert.assertTrue(stats.getSize() > 10);
+        Assert.assertTrue(stats.getSize() < 1000);
+        Assert.assertEquals(1, stats.getValuesReadCount());
+    }
+
+    @Test
+    public void testEmptyCases() {
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
+        OptionalLong val = v.values(0L).findAny();
+        assertFalse(val.isPresent());
+        val = v.values(null).findAny();
+        assertFalse(val.isPresent());
+        val = v.values(-1L).findAny();
+        assertFalse(val.isPresent());
+        assertEquals(-1, v.lastValue(0));
     }
 }
