@@ -1,6 +1,8 @@
 package com.upserve.uppend.cli.benchmark;
 
 public enum BenchmarkSize {
+    nano(10_000L),
+    micro(100_000L),
     small(1_000_000L),
     medium(10_000_000L),
     large(100_000_000L),

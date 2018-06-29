@@ -34,7 +34,7 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-m", "--mode"}, description = "Benchmark mode (read|write|readwrite|scan)")
     BenchmarkMode mode = BenchmarkMode.write;
 
-    @Option(names = {"-s", "--size"}, description = "Benchmark size (small|medium|large|huge)")
+    @Option(names = {"-s", "--size"}, description = "Benchmark size (nano|micro|small|medium|large|huge|gigantic)")
     BenchmarkSize size = BenchmarkSize.medium;
 
     @Option(names = {"-c", "--case"}, description = "Benchmark class (narrow|wide) key space")

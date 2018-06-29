@@ -57,7 +57,15 @@ public class CliTest {
         assertEquals("", err);
     }
 
-    private void syncStreams() throws InterruptedException {
+    @Test
+    public void testBenchmarkWide() throws Exception {
+        Cli.main("benchmark", "-s", "nano", "-c", "wide", "build/test/cli/bench");
+        syncStreams();
+        assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
+        assertEquals("", err);
+    }
+
+    private void syncStreams() {
         System.out.flush();
         newOut.flush();
         out = newOutBytes.toString();
