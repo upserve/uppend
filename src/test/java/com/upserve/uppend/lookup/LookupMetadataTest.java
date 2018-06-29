@@ -1,7 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.primitives.Ints;
-import com.upserve.uppend.AppendOnlyStoreBuilder;
+import com.upserve.uppend.*;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
@@ -9,8 +9,11 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.slf4j.*;
+import org.slf4j.helpers.NOPLogger;
 
 import java.io.IOException;
+import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.IntStream;
@@ -35,7 +38,11 @@ public class LookupMetadataTest {
     public ExpectedException thrown = ExpectedException.none();
 
     @Mock
+    private
     VirtualLongBlobStore mockLongBlobStore;
+
+    @Mock
+    private Logger mockLogger;
 
     @Before
     public void before() throws IOException {
@@ -93,7 +100,7 @@ public class LookupMetadataTest {
     }
 
     @Test
-    public void testOpen() throws Exception {
+    public void testOpen() {
         LookupMetadata initialMetadata = LookupMetadata.open(metadataBlobs, 2);
 
         assertArrayEquals(new int[]{}, initialMetadata.getKeyStorageOrder());
@@ -426,7 +433,7 @@ public class LookupMetadataTest {
 
 
     @Test
-    public void testMetadataLookup() throws IOException {
+    public void testMetadataLookup() {
         AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder()
                 .withLookupPageSize(32 * 1024)
                 .withMaximumLookupKeyCacheWeight(1024 * 1024);
@@ -459,7 +466,7 @@ public class LookupMetadataTest {
     }
 
     @Test
-    public void testToString() throws Exception {
+    public void testToString() {
         LookupKey keyA = new LookupKey("00");
         LookupKey keyB = new LookupKey("01");
         LookupMetadata metadata = new LookupMetadata(keyA, keyB, new int[]{0, 1}, 4);
@@ -469,6 +476,31 @@ public class LookupMetadataTest {
         assertTrue(toString.contains("maxKey=01"));
     }
 
+    @Test
+    public void testFindKeyLogging() throws Exception {
+        LookupKey key1 = new LookupKey("key1");
+        LookupKey key2 = new LookupKey("key2");
+        LookupKey key3 = new LookupKey("key3");
+        LookupMetadata initialMetadata = new LookupMetadata(key1, key3, new int[] {0, 1, 2}, 1);
+
+        when(mockLongBlobStore.readBlob(0L)).thenReturn("key1".getBytes());
+        when(mockLongBlobStore.readBlob(1L)).thenReturn("key2".getBytes());
+        when(mockLongBlobStore.readBlob(2L)).thenReturn("key3".getBytes());
+
+        when(mockLogger.isTraceEnabled()).thenReturn(true);
+
+        LoggingHelper.setLogger(LookupMetadata.class, "log", mockLogger);
+        try {
+            initialMetadata.findKey(mockLongBlobStore, key2);
+        } finally {
+            LoggingHelper.resetLogger(LookupMetadata.class, "log");
+        }
+
+        verify(mockLogger).isTraceEnabled();
+        verify(mockLogger).trace("reading {}: [{}, {}], [{}, {}], {}", key2, 0, 2, key1, key3, 1);
+        verifyNoMoreInteractions(mockLogger);
+    }
+
     private void buildSimpleTestData(VirtualMutableBlobStore blobStore) throws IOException {
         LookupKey keyA = new LookupKey("a");
         LookupKey keyB = new LookupKey("b");
@@ -476,5 +508,4 @@ public class LookupMetadataTest {
         Files.createDirectories(path.getParent());
         metadata.writeTo(blobStore);
     }
-
 }
