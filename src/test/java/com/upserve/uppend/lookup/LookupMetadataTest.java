@@ -432,7 +432,7 @@ public class LookupMetadataTest {
 
     @Test
     public void testMetadataLookup() {
-        AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder.getDefaultTestBuilder()
+        AppendOnlyStoreBuilder defaults = TestHelper.getDefaultTestBuilder()
                 .withLookupPageSize(32 * 1024)
                 .withMaximumLookupKeyCacheWeight(1024 * 1024);
 
@@ -485,11 +485,11 @@ public class LookupMetadataTest {
 
         when(mockLogger.isTraceEnabled()).thenReturn(true);
 
-        LoggingHelper.setLogger(LookupMetadata.class, "log", mockLogger);
+        TestHelper.setLogger(LookupMetadata.class, "log", mockLogger);
         try {
             initialMetadata.findKey(mockLongBlobStore, key2);
         } finally {
-            LoggingHelper.resetLogger(LookupMetadata.class, "log");
+            TestHelper.resetLogger(LookupMetadata.class, "log");
         }
 
         verify(mockLogger).isTraceEnabled();

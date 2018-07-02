@@ -9,8 +9,17 @@ import java.nio.file.*;
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.FLUSH_TIMER_METRIC_NAME;
 import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.UPPEND_APPEND_STORE;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 public class AppendOnlyStoreBuilderTest {
+    @Test
+    public void testBuild() throws Exception {
+        Path path = Paths.get("build/tmp/test/append-only-store-builder");
+        SafeDeleting.removeDirectory(path);
+        Uppend.store(path).build();
+        assertTrue(Files.exists(path));
+    }
+
     @Test
     public void testBuildWithMetrics() throws Exception {
         Path path = Paths.get("build/tmp/test/append-only-store-builder");

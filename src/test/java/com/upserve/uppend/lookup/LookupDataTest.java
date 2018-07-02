@@ -2,7 +2,7 @@ package com.upserve.uppend.lookup;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.primitives.Ints;
-import com.upserve.uppend.AppendOnlyStoreBuilder;
+import com.upserve.uppend.*;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
@@ -26,7 +26,7 @@ public class LookupDataTest {
 
     private final String name = "lookupdata-test";
     private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
-    private AppendOnlyStoreBuilder defaults = AppendOnlyStoreBuilder
+    private AppendOnlyStoreBuilder defaults = TestHelper
             .getDefaultTestBuilder()
             .withMaximumLookupKeyCacheWeight(1024 * 1024)
             .withMaximumMetaDataCacheWeight(500_000);

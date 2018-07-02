@@ -1,6 +1,6 @@
 package com.upserve.uppend.blobs;
 
-import com.upserve.uppend.AppendOnlyStoreBuilder;
+import com.upserve.uppend.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
@@ -38,7 +38,7 @@ public class PageCacheTest {
     private void setup(boolean readOnly) {
         testService = new ForkJoinPool();
 
-        defaults = AppendOnlyStoreBuilder
+        defaults = TestHelper
                 .getDefaultTestBuilder(testService)
                 .withBlobPageSize(512)
                 .withInitialBlobCacheSize(128)
