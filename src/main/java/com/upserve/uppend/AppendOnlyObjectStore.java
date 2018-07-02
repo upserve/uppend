@@ -152,7 +152,9 @@ public class AppendOnlyObjectStore<T> implements AutoCloseable, RegisteredFlusha
         return store.getName();
     }
 
-    public long keyCount() { return store.keyCount(); }
+    public long keyCount() {
+        return store.keyCount();
+    }
 
     public AppendOnlyStore getStore() {
         return store;
