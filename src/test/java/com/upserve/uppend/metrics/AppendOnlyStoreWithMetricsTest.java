@@ -99,6 +99,7 @@ public class AppendOnlyStoreWithMetricsTest {
     public void testClear() {
         assertEquals(0, metrics.timer(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), CLEAR_TIMER_METRIC_NAME)).getCount());
         instance.clear();
+        verify(store).clear();
         assertNotEquals(0, metrics.timer(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), CLEAR_TIMER_METRIC_NAME)).getCount());
     }
 
