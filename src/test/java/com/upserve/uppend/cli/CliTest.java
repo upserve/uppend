@@ -73,6 +73,19 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Test
+    public void testBenchmarkWriteThenRead() throws Exception {
+        Cli.main("benchmark", "-s", "nano", "-m", "write", "build/test/cli/bench");
+        syncStreams();
+        assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
+        assertEquals("", err);
+        Cli.main("benchmark", "-s", "nano", "-m", "read", "build/test/cli/bench");
+        syncStreams();
+        assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
+        assertTrue("expected benchmark output to contain 'appending to': " + out, out.contains("appending to"));
+        assertEquals("", err);
+    }
+
     private void syncStreams() {
         System.out.flush();
         newOut.flush();
