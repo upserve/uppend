@@ -121,6 +121,7 @@ public class AppendOnlyStoreWithMetricsTest {
         assertEquals(2, metrics.meter(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), SCAN_KEYS_METER_METRIC_NAME)).getCount());
     }
 
+    @SuppressWarnings("unchecked")
     @Test
     public void testScanCallback() {
         assertEquals(0, metrics.timer(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), SCAN_TIMER_METRIC_NAME)).getCount());
@@ -131,7 +132,6 @@ public class AppendOnlyStoreWithMetricsTest {
             vals.forEach(val -> log.trace("scanned: key={}, val={}", key, new String(val)));
         };
 
-        //noinspection unchecked
         doAnswer((Answer<Void>) invocation -> {
             BiConsumer<String, Stream<byte[]>> _callback = invocation.getArgument(0);
             _callback.accept("key1", Stream.of("val1.1".getBytes(), "val1.2".getBytes()));
