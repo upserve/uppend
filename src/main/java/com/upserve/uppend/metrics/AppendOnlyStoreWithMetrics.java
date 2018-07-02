@@ -161,7 +161,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public void scan(BiConsumer<String, Stream<byte[]>> callback) {
         final Timer.Context context = scanTimer.time();
         try {
-            store.scan(callback);
+            store.scan((key, vals) -> {
+                scanKeysMeter.mark(1);
+                callback.accept(key, vals.peek(bytes -> scanBytesMeter.mark(bytes.length)));
+            });
         } finally {
             context.stop();
         }

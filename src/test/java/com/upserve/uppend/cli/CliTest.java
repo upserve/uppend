@@ -82,7 +82,6 @@ public class CliTest {
         Cli.main("benchmark", "-s", "nano", "-m", "read", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
-        assertTrue("expected benchmark output to contain 'appending to': " + out, out.contains("appending to"));
         assertEquals("", err);
     }
 
