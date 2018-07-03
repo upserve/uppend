@@ -34,9 +34,9 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
         lookupCache = builder.buildLookupCache(getName(), readOnly);
 
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
 
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionPath(builder.getDir()), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
     }
 
     @Override
@@ -76,7 +76,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
     @Override
     public long keyCount() {
-        return streamPartitions(partitionPath(dir))
+        return streamPartitions()
                 .mapToLong(AppendStorePartition::keyCount)
                 .sum();
     }
@@ -115,19 +115,19 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     public Stream<String> keys() {
         log.trace("getting keys for {}", getName());
-        return streamPartitions(partitionPath(dir))
+        return streamPartitions()
                 .flatMap(AppendStorePartition::keys);
     }
 
     @Override
     public Stream<Map.Entry<String, Stream<byte[]>>> scan() {
-        return streamPartitions(partitionPath(dir))
+        return streamPartitions()
                 .flatMap(AppendStorePartition::scan);
     }
 
     @Override
     public void scan(BiConsumer<String, Stream<byte[]>> callback) {
-        streamPartitions(partitionPath(dir))
+        streamPartitions()
                 .forEach(partitionObject -> partitionObject.scan(callback));
     }
 
@@ -139,7 +139,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         closeInternal();
 
         try {
-            SafeDeleting.removeDirectory(partitionPath(dir));
+            SafeDeleting.removeDirectory(partitionsDir);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to clear partitions directory", e);
         }

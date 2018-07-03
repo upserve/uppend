@@ -3,25 +3,22 @@ package com.upserve.uppend;
 import com.google.common.hash.*;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
-import org.slf4j.Logger;
 
-import java.io.IOException;
-import java.lang.invoke.MethodHandles;
-import java.nio.file.*;
-import java.util.*;
-import java.util.stream.*;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public abstract class Partition {
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
+
+    private static final int HASH_SEED = 219370429;
 
     final VirtualPageFile longKeyFile;
     final VirtualPageFile metadataBlobFile;
 
     final PartitionLookupCache lookupCache;
 
-    private static final int HASH_SEED = 219370429;
-    final HashFunction hashFunction;
+    private final HashFunction hashFunction;
 
     final int hashSize;
 
@@ -61,7 +58,7 @@ public abstract class Partition {
     }
 
     int keyHash(LookupKey key) {
-        if (Objects.isNull(hashFunction)){
+        if (hashFunction == null){
             return 0;
         } else {
             return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;

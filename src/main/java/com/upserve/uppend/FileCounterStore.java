@@ -26,8 +26,8 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         keyPageCache = builder.buildLookupPageCache(getName());
         lookupCache = builder.buildLookupCache(getName(), readOnly);
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionPath(dir), partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
     }
 
     @Override
@@ -59,19 +59,19 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     @Override
     public Stream<String> keys() {
         log.trace("getting keys in {}", getName());
-        return streamPartitions(partitionPath(dir))
+        return streamPartitions()
                 .flatMap(CounterStorePartition::keys);
     }
 
     @Override
     public Stream<Map.Entry<String, Long>> scan() {
-        return streamPartitions(partitionPath(dir))
+        return streamPartitions()
                 .flatMap(CounterStorePartition::scan);
     }
 
     @Override
     public void scan(ObjLongConsumer<String> callback) {
-        streamPartitions(partitionPath(dir))
+        streamPartitions()
                 .forEach(partitionObject -> partitionObject.scan(callback));
     }
 
@@ -96,7 +96,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
 
     @Override
     public long keyCount() {
-        return streamPartitions(partitionPath(dir))
+        return streamPartitions()
                 .mapToLong(CounterStorePartition::keyCount)
                 .sum();
     }
@@ -117,7 +117,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         });
 
         try {
-            SafeDeleting.removeDirectory(partitionPath(dir));
+            SafeDeleting.removeDirectory(partitionsDir);
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to clear partitions directory", e);
         }

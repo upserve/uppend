@@ -14,11 +14,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-import static com.google.common.math.IntMath.mod;
-
 abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
+    public static final int MAX_NUM_PARTITIONS = 9999;
+
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     protected final Path dir;
+    protected final Path partitionsDir;
 
     private final int flushDelaySeconds;
     protected final Map<String, T> partitionMap;
@@ -28,8 +30,8 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
-    protected final int partitionSize;
-    private final boolean hashPartitionValues;
+    private final int partitionSize;
+    private final boolean doHashPartitionValues;
 
     protected final AtomicBoolean isClosed;
 
@@ -37,20 +39,29 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
     private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
 
     FileStore(Path dir, int flushDelaySeconds, int partitionSize, boolean readOnly, String name) {
+        if (dir == null) {
+            throw new NullPointerException("null dir");
+        }
         this.dir = dir;
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
+        partitionsDir = dir.resolve("partitions");
+        if (partitionSize > MAX_NUM_PARTITIONS) {
+            throw new IllegalArgumentException("bad partition size: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionSize);
+        }
+        if (partitionSize < 0) {
+            throw new IllegalArgumentException("bad partition size: negative: " + partitionSize);
+        }
         this.partitionSize = partitionSize;
-        if (partitionSize > 0) {
-            if (partitionSize > 9999) throw new IllegalArgumentException("Partition size is greater than 9999");
-            hashPartitionValues = true;
-            partitionMap = new ConcurrentHashMap<>(partitionSize);
-        } else {
+        if (partitionSize == 0) {
             partitionMap = new ConcurrentHashMap<>();
-            hashPartitionValues = false;
+            doHashPartitionValues = false;
+        } else {
+            partitionMap = new ConcurrentHashMap<>(partitionSize);
+            doHashPartitionValues = true;
         }
         this.name = name;
 
@@ -73,16 +84,12 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
     }
 
     protected String partitionHash(String partition) {
-        if (hashPartitionValues) {
+        if (doHashPartitionValues) {
             HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
             return String.format("%04d", Math.abs(hcode.asInt()) % partitionSize);
         } else {
             return partition;
         }
-    }
-
-    protected static Path partitionPath(Path dir) {
-        return dir.resolve("partitions");
     }
 
     abstract Function<String, T> getOpenPartitionFunction();
@@ -103,21 +110,21 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         );
     }
 
-    Stream<T> streamPartitions(Path partitiondPath) {
+    Stream<T> streamPartitions() {
         try {
             Files
-                    .list(partitiondPath)
+                    .list(partitionsDir)
                     .map(path -> path.toFile().getName())
                     .forEach(partition -> partitionMap.computeIfAbsent(
                             partition,
                             getOpenPartitionFunction()
                     ));
         } catch (NoSuchFileException e) {
-            log.debug("Partitions director does not exist: {}", partitiondPath);
+            log.debug("Partitions directory does not exist: {}", partitionsDir);
             return Stream.empty();
 
         } catch (IOException e) {
-            log.error("Unable to list partitions in {}", partitiondPath, e);
+            log.error("Unable to list partitions in " + partitionsDir, e);
             return Stream.empty();
         }
         return partitionMap.values().parallelStream();

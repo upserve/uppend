@@ -65,7 +65,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
     }
 
-    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
+    protected AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
         super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, readOnly);
 
 
