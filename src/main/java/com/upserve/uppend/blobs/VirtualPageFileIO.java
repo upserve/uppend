@@ -97,7 +97,7 @@ public class VirtualPageFileIO {
         int[] holder = new int[1];
         page = lastPage.get(holder);
         if (holder[0] != pageNumber) {
-            page = virtualPageFile.getFilePage(virtualFileNumber, pageNumber);
+            page = virtualPageFile.getOrCreatePage(virtualFileNumber, pageNumber);
             lastPage.set(page, pageNumber);
         }
 
@@ -139,7 +139,7 @@ public class VirtualPageFileIO {
         int[] holder = new int[1];
         page = lastPage.get(holder);
         if (holder[0] != pageNumber) {
-            page = virtualPageFile.getMappedPage(virtualFileNumber, pageNumber);
+            page = virtualPageFile.getExistingPage(virtualFileNumber, pageNumber);
             lastPage.set(page, pageNumber);
         }
 

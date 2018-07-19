@@ -18,6 +18,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public static final int DEFAULT_LOOKUP_HASH_SIZE = 256;
     public static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 * 1024;
 
+    public static final int TARGET_PRODUCTION_BUFFER_SIZE = Integer.MAX_VALUE;
+
     public static final long DEFAULT_MAXIMUM_LOOKUP_KEY_CACHE_WEIGHT = 1_000_000;
     public static final int DEFAULT_INITIAL_LOOKUP_KEY_CACHE_SIZE = 1000;
 
@@ -34,7 +36,9 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     private int initialLookupKeyCacheSize = DEFAULT_INITIAL_LOOKUP_KEY_CACHE_SIZE;
 
     private int metadataTTL = DEFAULT_METADATA_TTL;
-    private int metaDataPageSize = DEFAULT_METADATA_PAGE_SIZE;
+    private int metadataPageSize = DEFAULT_METADATA_PAGE_SIZE;
+
+    private int targetBufferSize = TARGET_PRODUCTION_BUFFER_SIZE;
 
     private ExecutorService lookupKeyCacheExecutorService = ForkJoinPool.commonPool();
 
@@ -77,13 +81,19 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     @SuppressWarnings("unchecked")
     public T withMetaDataPageSize(int metaDataPageSize) {
-        this.metaDataPageSize = metaDataPageSize;
+        this.metadataPageSize = metaDataPageSize;
         return (T) this;
     }
 
     @SuppressWarnings("unchecked")
     public T withMetaTTL(int metadataTTL) {
         this.metadataTTL = metadataTTL;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
+    public T withTargetBufferSize(int targetBufferSize) {
+        this.targetBufferSize = targetBufferSize;
         return (T) this;
     }
 
@@ -245,11 +255,15 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     public int getMetadataPageSize() {
-        return metaDataPageSize;
+        return metadataPageSize;
     }
 
     public int getMetadataTTL() {
         return metadataTTL;
+    }
+
+    public int getTargetBufferSize() {
+        return targetBufferSize;
     }
 
     public ExecutorService getLookupKeyCacheExecutorService() {

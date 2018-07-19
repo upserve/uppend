@@ -31,9 +31,9 @@ public class FileStoreTest {
         Path partitionMetadataBlobPath = pageFilesPath.resolve("metadata-blob");
         Path partitionBlobPath = pageFilesPath.resolve("blob");
         Path partitionBlocksPath = pageFilesPath.resolve("blocks");
-        partitionLongKeyFile = new VirtualPageFile(partitionLongKeyPath, 36, 1024, false);
-        partitionMetadataBlobFile = new VirtualPageFile(partitionMetadataBlobPath, 36, 1024, false);
-        partitionBlobsFile = new VirtualPageFile(partitionBlobPath, 36, 1024, false);
+        partitionLongKeyFile = new VirtualPageFile(partitionLongKeyPath, 36, 1024, 16384,false);
+        partitionMetadataBlobFile = new VirtualPageFile(partitionMetadataBlobPath, 36, 1024, 16384,false);
+        partitionBlobsFile = new VirtualPageFile(partitionBlobPath, 36, 1024, 16384,false);
         partitionBlocks = new BlockedLongs(partitionBlocksPath, 20, false);
         partitionLookupCache = new LookupCache(0, 0, ForkJoinPool.commonPool(), null);
     }

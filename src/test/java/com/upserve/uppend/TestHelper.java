@@ -28,6 +28,7 @@ public class TestHelper {
                 .withStoreName("test")
                 .withBlobPageSize(64 * 1024)
                 .withBlobsPerBlock(30)
+                .withTargetBufferSize(16*1024*1024)
                 .withInitialLookupKeyCacheSize(64)
                 .withMaximumLookupKeyCacheWeight(100 * 1024)
                 .withLookupKeyCacheExecutorService(testService)
@@ -41,6 +42,7 @@ public class TestHelper {
     public static CounterStoreBuilder getDefaultCounterStoreTestBuilder() {
         return new CounterStoreBuilder()
                 .withStoreName("test")
+                .withTargetBufferSize(16*1024*1024)
                 .withInitialLookupKeyCacheSize(64)
                 .withMaximumLookupKeyCacheWeight(100 * 1024)
                 .withMetaDataPageSize(1024)

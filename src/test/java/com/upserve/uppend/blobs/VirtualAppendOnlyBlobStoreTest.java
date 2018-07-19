@@ -31,7 +31,7 @@ public class VirtualAppendOnlyBlobStoreTest {
     }
 
     public void setup(int pageSize) {
-        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, pageSize, false);
+        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, pageSize, 16384,false);
     }
 
     @After

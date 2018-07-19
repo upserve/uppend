@@ -23,8 +23,8 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
 
         lookupCache = builder.buildLookupCache(getName(), readOnly);
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache, readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache, readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache);
     }
 
     @Override
