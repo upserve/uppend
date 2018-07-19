@@ -38,6 +38,9 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
     @CommandLine.Option(names = {"-s", "--size"}, description = "Benchmark size (nano|micro|small|medium|large|huge|gigantic)")
     BenchmarkSize size = BenchmarkSize.medium;
 
+    @CommandLine.Option(names = {"-p", "--page-size"}, description = "Page Size (small|medium|large)")
+    PageSize pageSize = PageSize.medium.medium;
+
     @Override
     public Void call() throws Exception {
 
@@ -45,7 +48,7 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
 
         Random random = new Random();
 
-        VirtualPageFile file = new VirtualPageFile(path, nfiles, 2097152, bufferSize.getSize(), false);
+        VirtualPageFile file = new VirtualPageFile(path, nfiles, pageSize.getSize(), bufferSize.getSize(), false);
         VirtualAppendOnlyBlobStore[] stores = IntStream.range(0, nfiles)
                 .mapToObj(val -> new VirtualAppendOnlyBlobStore(val, file))
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
@@ -59,7 +62,7 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
                 .parallel()
                 .forEach(val -> {
 
-                    byte[] bytes = new byte[randomSize.nextInt(64)];
+                    byte[] bytes = new byte[randomSize.nextInt(1024)];
                     random.nextBytes(bytes);
 
                     stores[val].append(bytes);
