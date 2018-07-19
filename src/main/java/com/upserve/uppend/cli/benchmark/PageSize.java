@@ -1,13 +1,13 @@
 package com.upserve.uppend.cli.benchmark;
 
-public enum BufferSize {
-    small(16 * 1024 * 1024 + 16),
-    medium(128 * 1024 * 1024),
-    large(Integer.MAX_VALUE);
+public enum PageSize {
+    small(512 * 1024),
+    medium(4 * 1024 * 1024),
+    large(32 * 1024 * 1024);
 
     private final int size;
 
-    BufferSize(int val) {
+    PageSize(int val) {
         this.size = val;
     }
 
