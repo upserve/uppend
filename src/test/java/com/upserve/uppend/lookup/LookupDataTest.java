@@ -56,10 +56,10 @@ public class LookupDataTest {
 
 
     public void setup(boolean readOnly) {
-        metadataPageFile = new VirtualPageFile(lookupDir.resolve("metadata"), NUMBER_OF_STORES, 1024, readOnly);
+        metadataPageFile = new VirtualPageFile(lookupDir.resolve("metadata"), NUMBER_OF_STORES, 1024, 16384, readOnly);
         mutableBlobStore = new VirtualMutableBlobStore(1, metadataPageFile);
 
-        keyDataPageFile = new VirtualPageFile(lookupDir.resolve("keydata"), NUMBER_OF_STORES, defaults.getLookupPageSize(), readOnly);
+        keyDataPageFile = new VirtualPageFile(lookupDir.resolve("keydata"), NUMBER_OF_STORES, defaults.getLookupPageSize(), defaults.getTargetBufferSize(), readOnly);
         keyBlobStore = new VirtualLongBlobStore(1, keyDataPageFile);
     }
 

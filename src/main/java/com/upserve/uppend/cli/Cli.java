@@ -19,6 +19,7 @@ import java.util.concurrent.Callable;
         subcommands = {
                 CommandBenchmark.class,
                 CommandVersion.class,
+                CommandFileStoreBenchmark.class
         }
 )
 public class Cli implements Callable<Void> {

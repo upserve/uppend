@@ -54,11 +54,9 @@ public class VirtualPageFile implements Flushable, Closeable {
     // Maximum number of pages allowed per virtual file
     private static final int PAGES_PER_VIRUAL_FILE = 1000;
 
-    private static final int MAX_BUFFERS = 1024 * 64; // 131 TB per partition.
+    private static final int MAX_BUFFERS = 1024 * 64; // 128 TB per partition.
     private final MappedByteBuffer[] mappedByteBuffers;
     private final int bufferSize;
-    private static final int TARGET_BUFFER_SIZE = Integer.MAX_VALUE / 8;
-
 
     private final Path filePath;
     private final FileChannel channel;
@@ -92,7 +90,11 @@ public class VirtualPageFile implements Flushable, Closeable {
 
     @Override
     public void close() throws IOException {
+        if (!channel.isOpen()) return;
         flush();
+        Arrays.fill(mappedByteBuffers, null);
+
+        // Can't truncate here. Reopening as read only will fail
         channel.close();
     }
 
@@ -204,13 +206,12 @@ public class VirtualPageFile implements Flushable, Closeable {
 
     /**
      * Get or create (allocate) the page if it does not exist.
-     * Returns a MappedByteBuffer backed Page if there is one in the cache. Otherwise it returns a FilePage
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
      * @return a Page for File IO
      */
-    Page getFilePage(int virtualFileNumber, int pageNumber) {
+    Page getOrCreatePage(int virtualFileNumber, int pageNumber) {
         final long startPosition;
         if (isPageAvailable(virtualFileNumber, pageNumber)) {
             startPosition = getValidPageStart(virtualFileNumber, pageNumber);
@@ -222,14 +223,13 @@ public class VirtualPageFile implements Flushable, Closeable {
     }
 
     /**
-     * Get a MappedByteBuffer backed Page uses a page cache if present - always uses memory mapped pages
+     * Get a the existing page
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
      * @return a Page for File IO
      */
-    Page getMappedPage(int virtualFileNumber, int pageNumber) {
-        // TODO we could cache each page start in the writer if reading the long from the mapped byte buffer gets expensive
+    Page getExistingPage(int virtualFileNumber, int pageNumber) {
         long startPosition = getValidPageStart(virtualFileNumber, pageNumber);
         return mappedPage(startPosition);
     }
@@ -272,7 +272,11 @@ public class VirtualPageFile implements Flushable, Closeable {
                     try {
                         page = channel.map(mapMode, pageStart, bufferSize);
                     } catch (IOException e) {
-                        throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + bufferSize + ") in " + filePath, e);
+                        if (readOnly && e.getMessage().contains("cannot extend file")){
+                            throw new RuntimeException("Unable to extend the read only file " + filePath + " to load the next buffer of size " + bufferSize + "; read only buffer size must be equal to the writer buffer size!", e);
+                        } else {
+                            throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + bufferSize + ") in " + filePath, e);
+                        }
                     }
                     mappedByteBuffers[pageIndex] = page;
                 }
@@ -281,12 +285,8 @@ public class VirtualPageFile implements Flushable, Closeable {
         return page;
     }
 
-    FilePage filePage(long startPosition) {
-        return new FilePage(channel, startPosition + 8, pageSize);
-    }
-
     // Private methods
-    public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, boolean readOnly) {
+    public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, int targetBufferSize, boolean readOnly) {
         this.filePath = filePath;
         this.readOnly = readOnly;
         this.virtualFiles = virtualFiles;
@@ -294,7 +294,11 @@ public class VirtualPageFile implements Flushable, Closeable {
 
         this.mappedByteBuffers = new MappedByteBuffer[MAX_BUFFERS];
 
-        this.bufferSize = (TARGET_BUFFER_SIZE / (pageSize + 16)) * (pageSize + 16);
+        if (targetBufferSize < (pageSize + 16)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize);
+
+        this.bufferSize = (targetBufferSize / (pageSize + 16)) * (pageSize + 16);
+
+        log.debug("Using buffer size " + bufferSize + " with page size " + pageSize);
 
         if (virtualFiles < 1) throw new IllegalArgumentException("virtualFiles must be greater than 0 in file: " + filePath);
 
@@ -397,7 +401,6 @@ public class VirtualPageFile implements Flushable, Closeable {
     }
 
     private void detectCorruption(int virtualFileNumber) {
-
         long virtualFilePosition = virtualFilePositions[virtualFileNumber].get();
         int pageCount = virtualFilePageCounts[virtualFileNumber].get();
         long firstPageStart = firstPagePositions[virtualFileNumber].get();

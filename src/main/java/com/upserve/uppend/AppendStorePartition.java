@@ -30,7 +30,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return partitiondDir.resolve("blockedLongs");
     }
 
-    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache) {
+    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache) {
         validatePartition(partition);
         Path partitiondDir = parentDir.resolve(partition);
         try {
@@ -41,15 +41,15 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, false);
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, false);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, false);
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, targetBufferSize,false);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, targetBufferSize,false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, targetBufferSize,false);
 
 
         return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
 
-    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache, boolean readOnly) {
+    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache, boolean readOnly) {
         validatePartition(partition);
         Path partitiondDir = parentDir.resolve(partition);
 
@@ -58,9 +58,9 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, readOnly);
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, readOnly);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, readOnly);
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, targetBufferSize, readOnly);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, targetBufferSize, readOnly);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, targetBufferSize, readOnly);
 
         return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
