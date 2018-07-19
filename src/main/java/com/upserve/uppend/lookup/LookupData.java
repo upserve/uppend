@@ -24,18 +24,20 @@ public class LookupData implements Flushable {
     private final AtomicInteger writeCacheCounter;
 
     private final int flushThreshold;
+    private final int reloadInterval;
 
     // The container for stuff we need to write - Only new keys can be in the write cache
     final ConcurrentHashMap<LookupKey, Long> writeCache;
     // keys written but not yet written to the metadata live here
     final ConcurrentHashMap<LookupKey, Long> flushCache;
 
+    // Direct reference for writers
+    private LookupMetadata metadata;
 
-    private final AtomicReference<LookupMetadata> flushReference;
-    private final ReadWriteLock metadataLock;
-    private final Lock metadataReadLock;
-    private final Lock metadataWriteLock;
-
+    // Timestamped references for readers
+    private final AtomicStampedReference<LookupMetadata> timeStampedMetadata;
+    private final AtomicInteger reloadStamp;
+    private final long startTime;
 
     private final boolean readOnly;
 
@@ -50,11 +52,15 @@ public class LookupData implements Flushable {
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
 
-    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, boolean readOnly) {
-        this(keyLongBlobs, metadataBlobs, lookupCache, -1, readOnly);
+    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold){
+        return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, flushThreshold, -1, false);
     }
 
-    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold, boolean readOnly) {
+    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int reloadInterval){
+        return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, -1, reloadInterval, true);
+    }
+
+    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold, int reloadInterval, boolean readOnly) {
 
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
@@ -71,29 +77,30 @@ public class LookupData implements Flushable {
         this.readOnly = readOnly;
 
         this.flushThreshold = flushThreshold;
+        this.reloadInterval = reloadInterval;
+
+        // Record the time we started this LookupData
+        startTime = System.currentTimeMillis();
+
+        writeCacheCounter = new AtomicInteger();
+        metaDataGeneration = new AtomicInteger();
 
         if (readOnly) {
             writeCache = null;
             flushCache = null;
-            flushReference = null;
+            metadata = null;
 
-            metadataLock = null;
-            metadataReadLock = null;
-            metadataWriteLock = null;
-
+            timeStampedMetadata = new AtomicStampedReference<>(loadMetadata(), reloadInterval);
+            reloadStamp = new AtomicInteger(reloadInterval);
         } else {
+            metadata = loadMetadata();
+
+            timeStampedMetadata = null;
+            reloadStamp = null;
+
             writeCache = new ConcurrentHashMap<>();
             flushCache = new ConcurrentHashMap<>();
-            flushReference = new AtomicReference<>();
-
-            metadataLock = new ReentrantReadWriteLock();
-            metadataReadLock = metadataLock.readLock();
-            metadataWriteLock = metadataLock.writeLock();
         }
-
-        writeCacheCounter = new AtomicInteger();
-
-        metaDataGeneration = new AtomicInteger();
 
         consistentWriteCacheLock = new ReentrantReadWriteLock();
         consistentWriteCacheReadLock = consistentWriteCacheLock.readLock();
@@ -447,7 +454,6 @@ public class LookupData implements Flushable {
                                     return null;
                                 });
                             }
-
                     );
 
         } finally {
@@ -455,7 +461,6 @@ public class LookupData implements Flushable {
         }
 
         log.debug("flushed keys");
-
     }
 
     void generateMetaData(LookupMetadata currentMetadata) {
@@ -503,10 +508,7 @@ public class LookupData implements Flushable {
         log.debug("Finished creating sortOrder");
 
         try {
-            synchronized (flushReference) {
-                LookupMetadata metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet());
-                partitionLookupCache.putMetadata(this, metadata);
-            }
+            metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet());
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to write new metadata!", e);
         }
@@ -521,24 +523,24 @@ public class LookupData implements Flushable {
         }
     }
 
-    private LookupMetadata getMetadata() {
+    protected LookupMetadata getMetadata() {
         if (readOnly){
-            return partitionLookupCache.getMetadata(this);
-        } else {
+            int[] stamp = new int[1];
+            LookupMetadata result = timeStampedMetadata.get(stamp);
 
-            try {
-                metadataReadLock.lock();
-                LookupMetadata metadata = flushReference.get();
-                if (Objects.isNull(metadata)) {
-                    metadata = partitionLookupCache.getMetadata(this);
+            if ((System.currentTimeMillis() - startTime) > stamp[0]){
+                boolean luckyMe = reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
+
+                if (luckyMe) {
+                    result = loadMetadata();
+                    timeStampedMetadata.set(result, stamp[0] + reloadInterval);
                 }
-                return metadata;
-            } finally {
-                metadataReadLock.unlock();
             }
+            return result;
+        } else {
+            return metadata;
         }
     }
-
 
     @Override
     public synchronized void flush() {
@@ -547,26 +549,13 @@ public class LookupData implements Flushable {
         if (writeCache.size() > 0) {
             log.debug("starting flush");
 
-            LookupMetadata currentMetadata;
-            try {
-                // Need to atomically get the cached metadata and hold the reference while we flush
-                metadataWriteLock.lock();
-                currentMetadata = partitionLookupCache.getMetadata(this);
-                flushReference.set(currentMetadata);
-            } finally {
-                metadataWriteLock.unlock();
-            }
+            flushWriteCache(metadata);
 
-            try {
-                flushWriteCache(currentMetadata);
+            generateMetaData(metadata);
 
-                generateMetaData(currentMetadata);
+            // record stats about flushing
+            partitionLookupCache.addFlushCount(flushCache.size());
 
-                // record stats about flushing
-                partitionLookupCache.addFlushCount(flushCache.size());
-            } finally {
-                flushReference.set(null);
-            }
             flushCacheToReadCache();
             log.debug("flushed");
         }
@@ -654,5 +643,4 @@ public class LookupData implements Flushable {
                 .forEach(entry -> keyValueFunction
                         .accept(entry.getKey(), entry.getValue()));
     }
-
 }

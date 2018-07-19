@@ -19,27 +19,33 @@ public class TestHelper {
         field.set(null, log);
     }
 
-    public static AppendOnlyStoreBuilder getDefaultTestBuilder() {
-        return getDefaultTestBuilder(ForkJoinPool.commonPool());
+    public static AppendOnlyStoreBuilder getDefaultAppendStoreTestBuilder() {
+        return getDefaultAppendStoreTestBuilder(ForkJoinPool.commonPool());
     }
 
-    public static AppendOnlyStoreBuilder getDefaultTestBuilder(ExecutorService testService) {
+    public static AppendOnlyStoreBuilder getDefaultAppendStoreTestBuilder(ExecutorService testService) {
         return new AppendOnlyStoreBuilder()
                 .withStoreName("test")
                 .withBlobPageSize(64 * 1024)
                 .withBlobsPerBlock(30)
-                .withInitialBlobCacheSize(64)
-                .withMaximumBlobCacheSize(128)
-                .withBlobCacheExecutorService(testService)
                 .withInitialLookupKeyCacheSize(64)
                 .withMaximumLookupKeyCacheWeight(100 * 1024)
                 .withLookupKeyCacheExecutorService(testService)
-                .withInitialMetaDataCacheSize(64)
-                .withMaximumMetaDataCacheWeight(100 * 1024)
-                .withLookupMetaDataCacheExecutorService(testService)
                 .withLongLookupHashSize(16)
                 .withLookupPageSize(16 * 1024)
-                .withLookupPageCacheExecutorService(testService)
+                .withMetaTTL(0)
+                .withCacheMetrics();
+
+    }
+
+    public static CounterStoreBuilder getDefaultCounterStoreTestBuilder() {
+        return new CounterStoreBuilder()
+                .withStoreName("test")
+                .withInitialLookupKeyCacheSize(64)
+                .withMaximumLookupKeyCacheWeight(100 * 1024)
+                .withMetaDataPageSize(1024)
+                .withLongLookupHashSize(16)
+                .withLookupPageSize(16 * 1024)
                 .withCacheMetrics();
 
     }

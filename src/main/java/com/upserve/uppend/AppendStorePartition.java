@@ -30,7 +30,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return partitiondDir.resolve("blockedLongs");
     }
 
-    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache) {
+    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache) {
         validatePartition(partition);
         Path partitiondDir = parentDir.resolve(partition);
         try {
@@ -41,15 +41,15 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, false);
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, false, blobPageCache);
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, false);
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, false, keyPageCache);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, false);
 
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
 
-    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, int blockSize, PageCache blobPageCache, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
+    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache, boolean readOnly) {
         validatePartition(partition);
         Path partitiondDir = parentDir.resolve(partition);
 
@@ -58,16 +58,15 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, readOnly);
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, readOnly, blobPageCache);
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, readOnly);
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, readOnly, keyPageCache);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, readOnly);
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
 
-    protected AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, readOnly);
-
+    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, reloadInterval, readOnly);
 
         this.blocks = blocks;
         this.blobFile = blobsFile;

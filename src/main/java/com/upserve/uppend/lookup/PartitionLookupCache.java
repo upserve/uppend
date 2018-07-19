@@ -10,7 +10,6 @@ public class PartitionLookupCache {
     private final LookupCache lookupCache;
     private final String partition;
 
-
     public static PartitionLookupCache create(String partition, LookupCache lookupCache) {
         return new PartitionLookupCache(partition.intern(), lookupCache);
     }
@@ -34,14 +33,6 @@ public class PartitionLookupCache {
 
     public boolean isKeyCacheActive(){
         return lookupCache.isKeyCacheActive();
-    }
-
-    public LookupMetadata getMetadata(LookupData key) {
-        return lookupCache.getMetadata(key);
-    }
-
-    public void putMetadata(LookupData key, LookupMetadata value) {
-        lookupCache.putMetadata(key, value);
     }
 
     public void addFlushCount(long val){

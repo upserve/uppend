@@ -35,7 +35,7 @@ public class FileStoreTest {
         partitionMetadataBlobFile = new VirtualPageFile(partitionMetadataBlobPath, 36, 1024, false);
         partitionBlobsFile = new VirtualPageFile(partitionBlobPath, 36, 1024, false);
         partitionBlocks = new BlockedLongs(partitionBlocksPath, 20, false);
-        partitionLookupCache = new LookupCache(0, 0, ForkJoinPool.commonPool(), null, 0, 0, 0, ForkJoinPool.commonPool(), null);
+        partitionLookupCache = new LookupCache(0, 0, ForkJoinPool.commonPool(), null);
     }
 
     @Test

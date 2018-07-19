@@ -24,7 +24,7 @@ public class CounterStoreTest {
         return newStore(false);
     }
     private CounterStore newStore(boolean readOnly) {
-        return CounterStoreBuilder.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
+        return TestHelper.getDefaultCounterStoreTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
     }
 
     private CounterStore store;

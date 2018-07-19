@@ -166,24 +166,10 @@ public class CounterStoreWithMetricsTest {
     }
 
     @Test
-    public void testGetKeyPageCacheStats() {
-        CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
-        when(store.getKeyPageCacheStats()).thenReturn(v);
-        assertEquals(v, instance.getKeyPageCacheStats());
-    }
-
-    @Test
     public void testGetLookupKeyCacheStats() {
         CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
         when(store.getLookupKeyCacheStats()).thenReturn(v);
         assertEquals(v, instance.getLookupKeyCacheStats());
-    }
-
-    @Test
-    public void testGetMetadataCacheStats() {
-        CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
-        when(store.getMetadataCacheStats()).thenReturn(v);
-        assertEquals(v, instance.getMetadataCacheStats());
     }
 
     @Test

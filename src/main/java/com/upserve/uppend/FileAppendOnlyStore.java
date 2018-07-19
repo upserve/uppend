@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.lookup.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
@@ -18,8 +17,6 @@ import static com.upserve.uppend.BlockStats.ZERO_STATS;
 public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PageCache blobPageCache;
-    private final PageCache keyPageCache;
     private final LookupCache lookupCache;
 
     private final Function<String, AppendStorePartition> openPartitionFunction;
@@ -28,15 +25,11 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     FileAppendOnlyStore(boolean readOnly, AppendOnlyStoreBuilder builder) {
         super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
 
-        blobPageCache = builder.buildBlobPageCache(getName());
-
-        keyPageCache = builder.buildLookupPageCache(getName());
-
         lookupCache = builder.buildLookupCache(getName(), readOnly);
 
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), builder.getBlobPageSize(), builder.getLookupPageSize(), lookupCache, readOnly);
 
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), builder.getBlobPageSize(), builder.getLookupPageSize(), lookupCache);
     }
 
     @Override
@@ -50,23 +43,8 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     }
 
     @Override
-    public CacheStats getBlobPageCacheStats() {
-        return blobPageCache.stats();
-    }
-
-    @Override
-    public CacheStats getKeyPageCacheStats() {
-        return keyPageCache.stats();
-    }
-
-    @Override
     public CacheStats getLookupKeyCacheStats() {
         return lookupCache.keyStats();
-    }
-
-    @Override
-    public CacheStats getMetadataCacheStats() {
-        return lookupCache.metadataStats();
     }
 
     @Override
@@ -161,6 +139,8 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + name);
 
+        log.info("Flushing!");
+
         partitionMap.values().parallelStream().forEach(appendStorePartition -> {
             try {
                 appendStorePartition.flush();
@@ -176,14 +156,13 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
                     throw new UncheckedIOException("Error flushing store " + name, e);
             }
         });
+        log.info("Flushed!");
     }
 
     @Override
     public void trimInternal() {
         if (!readOnly) flushInternal();
         lookupCache.flush();
-        blobPageCache.flush();
-        keyPageCache.flush();
     }
 
     @Override
@@ -198,7 +177,5 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
         partitionMap.clear();
         lookupCache.flush();
-        blobPageCache.flush();
-        keyPageCache.flush();
     }
 }

@@ -4,9 +4,10 @@ import com.google.common.hash.*;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
 
-import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.stream.IntStream;
+import java.nio.file.*;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.*;
 
 public abstract class Partition {
     private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
@@ -24,7 +25,7 @@ public abstract class Partition {
 
     final LookupData[] lookups;
 
-    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
+    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
         this.longKeyFile = longKeyFile;
         this.metadataBlobFile = metadataBlobFile;
 
@@ -45,17 +46,31 @@ public abstract class Partition {
             hashFunction = Hashing.murmur3_32(HASH_SEED);
         }
 
+        IntFunction<LookupData> constructorFuntion = lookupDataFunction(readOnly, flushThreshold, reloadInterval);
+
         lookups = IntStream.range(0, hashSize)
-                .mapToObj(virtualFileNumber -> new LookupData(
-                                new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
-                                new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
-                                lookupCache,
-                                flushThreshold,
-                                readOnly
-                        )
-                )
+                .mapToObj(constructorFuntion)
                 .toArray(LookupData[]::new);
     }
+
+    private IntFunction<LookupData> lookupDataFunction(boolean readOnly, int flushThreshold, int relaodInterval) {
+        if (readOnly) {
+            return virtualFileNumber -> LookupData.lookupReader(
+                    new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
+                    new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
+                    lookupCache,
+                    relaodInterval
+            );
+        } else {
+            return virtualFileNumber -> LookupData.lookupWriter(
+                    new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
+                    new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
+                    lookupCache,
+                    flushThreshold
+            );
+        }
+    }
+
 
     int keyHash(LookupKey key) {
         if (hashFunction == null){

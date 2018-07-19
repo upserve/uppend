@@ -16,7 +16,7 @@ import java.util.stream.*;
 public class CounterStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public static CounterStorePartition createPartition(Path partentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, PageCache keyPageCache, LookupCache lookupCache) {
+    public static CounterStorePartition createPartition(Path partentDir, String partition, int hashSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize, LookupCache lookupCache) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
         try {
@@ -26,13 +26,13 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         }
 
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, false, keyPageCache);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, false);
 
 
-        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
+        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
 
-    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
+    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize, LookupCache lookupCache, boolean readOnly) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
 
@@ -40,13 +40,13 @@ public class CounterStorePartition extends Partition implements Flushable, Close
 
 
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, readOnly, keyPageCache);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, readOnly);
 
-        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
+        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
 
-    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, readOnly);
+    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, reloadInterval, readOnly);
     }
 
     public Long set(String key, long value) {

@@ -23,7 +23,7 @@ public class AppendOnlyStoreTest {
     }
 
     private AppendOnlyStore newStore(boolean readOnly) {
-        return TestHelper.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
+        return TestHelper.getDefaultAppendStoreTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
     }
     private AppendOnlyStore store;
 
@@ -180,7 +180,7 @@ public class AppendOnlyStoreTest {
 
     @Test
     public void fillTheCache() throws Exception {
-        int keys = TestHelper.getDefaultTestBuilder().getInitialLookupKeyCacheSize() * 2;
+        int keys = TestHelper.getDefaultAppendStoreTestBuilder().getInitialLookupKeyCacheSize() * 2;
 
         Random random = new Random(9876);
         Set<String> uuidSet = new HashSet<>();
