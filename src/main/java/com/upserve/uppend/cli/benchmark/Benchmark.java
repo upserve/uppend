@@ -62,10 +62,7 @@ public class Benchmark {
 
         cachePool = forkJoinPoolFunction.apply("cache");
 
-        builder.withLookupPageCacheExecutorService(cachePool)
-                .withLookupMetaDataCacheExecutorService(cachePool)
-                .withBlobCacheExecutorService(cachePool)
-                .withLookupKeyCacheExecutorService(cachePool);
+        builder.withLookupKeyCacheExecutorService(cachePool);
 
         metrics = builder.getStoreMetricsRegistry();
 
@@ -161,7 +158,6 @@ public class Benchmark {
             readBytesMeter = metrics.meter(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, READ_BYTES_METER_METRIC_NAME));
         }
 
-
         final Runtime runtime = Runtime.getRuntime();
 
         AtomicLong tic = new AtomicLong(System.currentTimeMillis());
@@ -170,10 +166,7 @@ public class Benchmark {
         AtomicLong read = new AtomicLong(readBytesMeter.getCount());
         AtomicLong readCount = new AtomicLong(readCounter.get());
 
-        AtomicReference<CacheStats> blobPageCacheStats = new AtomicReference<CacheStats>(testInstance.getBlobPageCacheStats());
-        AtomicReference<CacheStats> keyPageCacheStats = new AtomicReference<CacheStats>(testInstance.getKeyPageCacheStats());
         AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<CacheStats>(testInstance.getLookupKeyCacheStats());
-        AtomicReference<CacheStats> metadataCacheStats = new AtomicReference<CacheStats>(testInstance.getMetadataCacheStats());
         AtomicReference<FlushStats> flushStats = new AtomicReference<FlushStats>(testInstance.getFlushStats());
 
         return new TimerTask() {
@@ -202,28 +195,11 @@ public class Benchmark {
 
                     log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
 
-                    stats = testInstance.getBlobPageCacheStats();
-                    log.info("Blob Page Cache: {}", stats.minus(blobPageCacheStats.getAndSet(stats)));
-
-                    stats = testInstance.getKeyPageCacheStats();
-                    log.info("Key Page Cache: {}", stats.minus(keyPageCacheStats.getAndSet(stats)));
-
                     stats = testInstance.getLookupKeyCacheStats();
                     log.info("Lookup Key Cache: {}", stats.minus(lookupKeyCacheStats.getAndSet(stats)));
 
-                    stats = testInstance.getMetadataCacheStats();
-                    log.info("Metadata Cache: {}", stats.minus(metadataCacheStats.getAndSet(stats)));
-
                     FlushStats fstats = testInstance.getFlushStats();
                     log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
-
-                    log.info("Cache Pool: {}", cachePool);
-                    log.info("Write Pool: {}", writerPool);
-                    log.info("Read Pool: {}", readerPool);
-                    log.info("Common Pool: {}", ForkJoinPool.commonPool());
-
-
-
                 } catch (Exception e) {
                     log.info("logTimer failed with ", e);
                 }

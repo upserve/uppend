@@ -41,11 +41,7 @@ public interface ReadOnlyCounterStore extends Trimmable, AutoCloseable {
      */
     void scan(ObjLongConsumer<String> callback);
 
-    CacheStats getKeyPageCacheStats();
-
     CacheStats getLookupKeyCacheStats();
-
-    CacheStats getMetadataCacheStats();
 
     long keyCount();
 }

@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
 import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.lookup.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
@@ -15,7 +14,6 @@ import java.util.stream.Stream;
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PageCache keyPageCache;
     private final LookupCache lookupCache;
     private final Function<String, CounterStorePartition> openPartitionFunction;
     private final Function<String, CounterStorePartition> createPartitionFunction;
@@ -23,11 +21,10 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
         super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
 
-        keyPageCache = builder.buildLookupPageCache(getName());
         lookupCache = builder.buildLookupCache(getName(), readOnly);
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache, readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache);
     }
 
     @Override
@@ -79,19 +76,10 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     public FlushStats getFlushStats() {
         return lookupCache.getFlushStats();
     }
-    @Override
-    public CacheStats getKeyPageCacheStats() {
-        return keyPageCache.stats();
-    }
 
     @Override
     public CacheStats getLookupKeyCacheStats() {
         return lookupCache.keyStats();
-    }
-
-    @Override
-    public CacheStats getMetadataCacheStats() {
-        return lookupCache.metadataStats();
     }
 
     @Override
@@ -123,14 +111,12 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         }
         partitionMap.clear();
         lookupCache.flush();
-        keyPageCache.flush();
     }
 
     @Override
     public void trimInternal() {
         if (!readOnly) flushInternal();
         lookupCache.flush();
-        keyPageCache.flush();
     }
 
     @Override
@@ -167,6 +153,5 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         });
 
         lookupCache.flush();
-        keyPageCache.flush();
     }
 }

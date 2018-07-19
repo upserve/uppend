@@ -92,19 +92,11 @@ public class CommandBenchmark implements Callable<Void> {
                 blockSize = 16_384;
                 partitions = 64;
                 hashSize = 64;
-
-                // Cache all the keys
                 keyCacheSize = (int) keys;
                 keyCacheWeight = keys * 9 + 1000; // 9 bytes per key plus some room
 
-                blobCacheSize = 16_384;
                 blobPageSize = 16 * 1024 * 1024;
-
-                keyPageCacheSize = 16 * partitions * hashSize;
                 keyPageSize = 1024 * 1024;
-
-                metadataCacheSize = partitions * hashSize;
-                metadataCacheWeight = keys * 4 + 1000; // one int per key plus some room
                 metadataPageSize = 1024 * 1024;
 
                 flushDelay = 60;
@@ -122,14 +114,8 @@ public class CommandBenchmark implements Callable<Void> {
                 keyCacheSize = 0;
                 keyCacheWeight = 0;
 
-                blobCacheSize = 524_288;
-                blobPageSize = 1024 * 1024; // Pages will roll over at 135M keys 
-
-                keyPageCacheSize = 16 * partitions * hashSize;
+                blobPageSize = 1024 * 1024; // Pages will roll over at 135M keys
                 keyPageSize = 1024 * 1024; // Key pages will roll over at about 2.9B keys
-
-                metadataCacheSize = partitions * hashSize;
-                metadataCacheWeight = 4 * keys + 10_000; // one int per key plus some room
                 metadataPageSize = 1024 * 1024;
 
                 flushDelay = -1;
@@ -146,29 +132,16 @@ public class CommandBenchmark implements Callable<Void> {
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withStoreName(STORE_NAME)
                 .withMetricsRootName(ROOT_NAME)
-
                 .withBlobsPerBlock(blockSize)
                 .withLongLookupHashSize(hashSize)
                 .withPartitionSize(partitions) // Use direct partition
-
                 .withInitialLookupKeyCacheSize(keyCacheSize)
                 .withMaximumLookupKeyCacheWeight(keyCacheWeight)
-
-                .withInitialBlobCacheSize(blobCacheSize)
-                .withMaximumBlobCacheSize(blobCacheSize)
                 .withBlobPageSize(blobPageSize)
-
-                .withInitialLookupPageCacheSize(keyPageCacheSize)
-                .withMaximumLookupPageCacheSize(keyPageCacheSize)
                 .withLookupPageSize(keyPageSize)
-
-                .withInitialMetaDataCacheSize(metadataCacheSize)
                 .withMetaDataPageSize(metadataPageSize)
-                .withMaximumMetaDataCacheWeight(metadataCacheWeight)
-
                 .withFlushThreshold(flushThreshold)
                 .withFlushDelaySeconds(flushDelay)
-
                 .withStoreMetrics(metrics)
                 .withCacheMetrics();
 

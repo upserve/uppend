@@ -432,19 +432,18 @@ public class LookupMetadataTest {
 
     @Test
     public void testMetadataLookup() {
-        AppendOnlyStoreBuilder defaults = TestHelper.getDefaultTestBuilder()
+        AppendOnlyStoreBuilder defaults = TestHelper.getDefaultAppendStoreTestBuilder()
                 .withLookupPageSize(32 * 1024)
                 .withMaximumLookupKeyCacheWeight(1024 * 1024);
 
-        PageCache pageCache = defaults.buildLookupPageCache(name);
         LookupCache lookupCache = defaults.buildLookupCache(name);
 
         PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
 
-        VirtualPageFile keysData = new VirtualPageFile(keysPath, NUMBER_OF_STORES, false, pageCache);
+        VirtualPageFile keysData = new VirtualPageFile(keysPath, NUMBER_OF_STORES, defaults.getLookupPageSize(), false);
         VirtualLongBlobStore keyStore = new VirtualLongBlobStore(5, keysData);
 
-        LookupData lookupData = new LookupData(keyStore, metadataBlobs, partitionLookupCache, false);
+        LookupData lookupData = LookupData.lookupWriter(keyStore, metadataBlobs, partitionLookupCache, -1);
         List<Integer> keys = Ints.asList(IntStream.range(0, 4000).map(i -> i * 2).toArray());
         Collections.shuffle(keys, new Random(1234));
         keys.forEach(k -> lookupData.put(new LookupKey(String.valueOf(k)), 1000 + k));

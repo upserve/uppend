@@ -18,7 +18,7 @@ import java.util.concurrent.Callable;
         footerHeading = "%n",
         subcommands = {
                 CommandBenchmark.class,
-                CommandVersion.class
+                CommandVersion.class,
         }
 )
 public class Cli implements Callable<Void> {

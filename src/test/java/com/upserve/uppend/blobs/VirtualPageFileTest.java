@@ -38,8 +38,13 @@ public class VirtualPageFileTest {
         assertFalse(instance.isPageAvailable(0, 0));
         assertFalse(instance.isPageAvailable(18, 0));
 
-        Page page5 = instance.getCachedOrCreatePage(0, 5, false);
+        Page page5 = instance.getFilePage(0, 5);
         page5.put(16, "abc".getBytes(), 0);
+
+        Page page5RO = instance.getMappedPage(0, 5);
+
+        page5RO.get(16,result,0);
+        assertArrayEquals("abc".getBytes(), result);
 
         assertTrue(instance.isPageAvailable(0, 0));
         assertTrue(instance.isPageAvailable(0, 1));
@@ -49,28 +54,20 @@ public class VirtualPageFileTest {
         assertTrue(instance.isPageAvailable(0, 5));
         assertFalse(instance.isPageAvailable(18, 0));
 
-
-        Page page4 = instance.getExistingPage(0, 4);
-        page4.put(12, "def".getBytes(), 0);
-
         instance.close();
         instance = new VirtualPageFile(path, 36, 1024, true);
 
         assertFalse(instance.isPageAvailable(18, 0));
         assertTrue(instance.isPageAvailable(0, 5));
 
-        page5 = instance.getExistingPage(0, 5);
+        page5 = instance.getMappedPage(0, 5);
         page5.get(16, result, 0);
         assertArrayEquals("abc".getBytes(), result);
-
-        page4 = instance.getExistingPage(0, 4);
-        page4.get(12, result, 0);
-        assertArrayEquals("def".getBytes(), result);
 
         instance.close();
         instance = new VirtualPageFile(path, 36, 1024, false);
 
-        Page page7 = instance.getCachedOrCreatePage(0, 7, false);
+        Page page7 = instance.getFilePage(0, 7);
         page7.put(28, "ghi".getBytes(), 0);
         page7.get(28, result, 0);
 

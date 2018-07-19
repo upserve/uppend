@@ -68,13 +68,7 @@ public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable {
      */
     void scan(BiConsumer<String, Stream<byte[]>> callback);
 
-    CacheStats getBlobPageCacheStats();
-
-    CacheStats getKeyPageCacheStats();
-
     CacheStats getLookupKeyCacheStats();
-
-    CacheStats getMetadataCacheStats();
 
     BlockStats getBlockLongStats();
 
