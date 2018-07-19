@@ -20,7 +20,6 @@ public class VirtualAppendOnlyBlobStoreTest {
 
     private VirtualPageFile virtualPageFile;
 
-    private ExecutorService executorService;
     private static int NUMBER_OF_STORES = 13;
 
     @Before
@@ -29,18 +28,15 @@ public class VirtualAppendOnlyBlobStoreTest {
         SafeDeleting.removeDirectory(rootPath);
         Files.createDirectories(rootPath);
 
-        executorService = new ForkJoinPool();
     }
 
     public void setup(int pageSize) {
-        PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
-        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
+        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, pageSize, false);
     }
 
     @After
     public void uninitialize() throws IOException {
         virtualPageFile.close();
-        executorService.shutdown();
     }
 
     @Test

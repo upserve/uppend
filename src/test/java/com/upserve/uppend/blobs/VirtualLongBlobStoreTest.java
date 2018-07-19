@@ -32,8 +32,7 @@ public class VirtualLongBlobStoreTest {
     }
 
     private void setup(int pageSize) {
-        PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
-        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
+        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, pageSize,false);
     }
 
     @After
@@ -124,8 +123,8 @@ public class VirtualLongBlobStoreTest {
         assertEquals(2L, blobStore.readLong(25));
         assertArrayEquals(sampleValue("n", 1, 1).getBytes(), blobStore.readBlob(25));
 
-        Page page0 = virtualPageFile.getExistingPage(1, 0);
-        Page page1 = virtualPageFile.getExistingPage(1, 1);
+        Page page0 = virtualPageFile.getMappedPage(1, 0);
+        Page page1 = virtualPageFile.getMappedPage(1, 1);
 
         byte[] bytes = new byte[40];
         page0.get(0, bytes, 0);
@@ -151,8 +150,8 @@ public class VirtualLongBlobStoreTest {
         assertEquals(2L, blobStore.readLong(36));
         assertArrayEquals(sampleValue("nnnnnn", 1, 1).getBytes(), blobStore.readBlob(36));
 
-        Page page0 = virtualPageFile.getExistingPage(1, 0);
-        Page page1 = virtualPageFile.getExistingPage(1, 1);
+        Page page0 = virtualPageFile.getMappedPage(1, 0);
+        Page page1 = virtualPageFile.getMappedPage(1, 1);
 
         byte[] bytes = new byte[40];
         page0.get(0, bytes, 0);

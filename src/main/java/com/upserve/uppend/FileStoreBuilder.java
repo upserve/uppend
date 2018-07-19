@@ -2,7 +2,6 @@ package com.upserve.uppend;
 
 import com.codahale.metrics.MetricRegistry;
 import com.github.benmanes.caffeine.cache.stats.*;
-import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.lookup.LookupCache;
 import com.upserve.uppend.metrics.MetricsStatsCounter;
 
@@ -12,57 +11,44 @@ import java.util.function.Supplier;
 
 public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
-    static final String LOOKUP_PAGE_CACHE_METRICS = "LookupPageCache";
-    static final String BLOB_PAGE_CACHE_METRICS = "BlobPageCache";
     static final String LOOKUP_KEY_CACHE_METRICS = "LookupKeyCache";
-    static final String METADATA_CACHE_METRICS = "MetadataCache";
 
     // Long lookup Cache Options
     public static final int DEFAULT_PARTITION_SIZE = 0;
     public static final int DEFAULT_LOOKUP_HASH_SIZE = 256;
     public static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 * 1024;
-    public static final int DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE = 1024;
-    public static final int DEFAULT_MAXIMUM_LOOKUP_PAGE_CACHE_SIZE = 16 * 1024;
 
     public static final long DEFAULT_MAXIMUM_LOOKUP_KEY_CACHE_WEIGHT = 1_000_000;
     public static final int DEFAULT_INITIAL_LOOKUP_KEY_CACHE_SIZE = 1000;
 
-    public static final long DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT = 1_000_000;
-    public static final int DEFAULT_INITIAL_METADATA_CACHE_SIZE = 1000;
     public static final int DEFAULT_METADATA_PAGE_SIZE = 4096;
     public static final int DEFAULT_METADATA_TTL = 0; // Off by default!
 
-    String storeName = "";
-    int partitionSize = DEFAULT_PARTITION_SIZE;
-    int lookupHashSize = DEFAULT_LOOKUP_HASH_SIZE;
+    private String storeName = "";
+    private int partitionSize = DEFAULT_PARTITION_SIZE;
+    private int lookupHashSize = DEFAULT_LOOKUP_HASH_SIZE;
 
-    int lookupPageSize = DEFAULT_LOOKUP_PAGE_SIZE;
-    int initialLookupPageCacheSize = DEFAULT_INITIAL_LOOKUP_PAGE_CACHE_SIZE;
-    int maximumLookupPageCacheSize = DEFAULT_MAXIMUM_LOOKUP_PAGE_CACHE_SIZE;
+    private int lookupPageSize = DEFAULT_LOOKUP_PAGE_SIZE;
 
-    long maximumLookupKeyCacheWeight = DEFAULT_MAXIMUM_LOOKUP_KEY_CACHE_WEIGHT;
-    int initialLookupKeyCacheSize = DEFAULT_INITIAL_LOOKUP_KEY_CACHE_SIZE;
+    private long maximumLookupKeyCacheWeight = DEFAULT_MAXIMUM_LOOKUP_KEY_CACHE_WEIGHT;
+    private int initialLookupKeyCacheSize = DEFAULT_INITIAL_LOOKUP_KEY_CACHE_SIZE;
 
-    long maximumMetaDataCacheWeight = DEFAULT_MAXIMUM_METADATA_CACHE_WEIGHT;
-    int initialMetaDataCacheSize = DEFAULT_INITIAL_METADATA_CACHE_SIZE;
-    int metadataTTL = DEFAULT_METADATA_TTL;
-    int metaDataPageSize = DEFAULT_METADATA_PAGE_SIZE;
+    private int metadataTTL = DEFAULT_METADATA_TTL;
+    private int metaDataPageSize = DEFAULT_METADATA_PAGE_SIZE;
 
-    ExecutorService lookupKeyCacheExecutorService = ForkJoinPool.commonPool();
-    ExecutorService lookupMetaDataCacheExecutorService = ForkJoinPool.commonPool();
-    ExecutorService lookupPageCacheExecutorService = ForkJoinPool.commonPool();
+    private ExecutorService lookupKeyCacheExecutorService = ForkJoinPool.commonPool();
 
     // Store Options
     public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
     public static final int DEFAULT_FLUSH_THRESHOLD = 1000;
-    int flushDelaySeconds = DEFAULT_FLUSH_DELAY_SECONDS;
-    int flushThreshold = DEFAULT_FLUSH_THRESHOLD;
-    Path dir = null;
-    MetricRegistry storeMetricsRegistry = null;
-    String metricsRootName = "";
-    boolean storeMetrics = false;
-    MetricRegistry cacheMetricsRegistry = null;
-    boolean cacheMetrics = false;
+    private int flushDelaySeconds = DEFAULT_FLUSH_DELAY_SECONDS;
+    private int flushThreshold = DEFAULT_FLUSH_THRESHOLD;
+    private Path dir = null;
+    private MetricRegistry storeMetricsRegistry = null;
+    private String metricsRootName = "";
+    private boolean storeMetrics = false;
+    private MetricRegistry cacheMetricsRegistry = null;
+    private boolean cacheMetrics = false;
 
     // Long lookup Cache Options
     @SuppressWarnings("unchecked")
@@ -74,18 +60,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withLookupPageSize(int lookupPageSize) {
         this.lookupPageSize = lookupPageSize;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withInitialLookupPageCacheSize(int initialLookupPageCacheSize) {
-        this.initialLookupPageCacheSize = initialLookupPageCacheSize;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withMaximumLookupPageCacheSize(int maximumLookupPageCacheSize) {
-        this.maximumLookupPageCacheSize = maximumLookupPageCacheSize;
         return (T) this;
     }
 
@@ -102,25 +76,13 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withMaximumMetaDataCacheWeight(long maximumMetaDataCacheWeight) {
-        this.maximumMetaDataCacheWeight = maximumMetaDataCacheWeight;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withInitialMetaDataCacheSize(int initialMetaDataCacheSize) {
-        this.initialMetaDataCacheSize = initialMetaDataCacheSize;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
     public T withMetaDataPageSize(int metaDataPageSize) {
         this.metaDataPageSize = metaDataPageSize;
         return (T) this;
     }
 
     @SuppressWarnings("unchecked")
-    public T withMetadataTTL(int metadataTTL) {
+    public T withMetaTTL(int metadataTTL) {
         this.metadataTTL = metadataTTL;
         return (T) this;
     }
@@ -128,18 +90,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withLookupKeyCacheExecutorService(ExecutorService lookupKeyCacheExecutorService) {
         this.lookupKeyCacheExecutorService = lookupKeyCacheExecutorService;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withLookupMetaDataCacheExecutorService(ExecutorService lookupMetaDataCacheExecutorService) {
-        this.lookupMetaDataCacheExecutorService = lookupMetaDataCacheExecutorService;
-        return (T) this;
-    }
-
-    @SuppressWarnings("unchecked")
-    public T withLookupPageCacheExecutorService(ExecutorService lookupPageCacheExecutorService) {
-        this.lookupPageCacheExecutorService = lookupPageCacheExecutorService;
         return (T) this;
     }
 
@@ -237,16 +187,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         }
     }
 
-    public PageCache buildLookupPageCache(String metricsPrefix) {
-        return new PageCache(
-                getLookupPageSize(),
-                getInitialLookupPageCacheSize(),
-                getMaximumLookupPageCacheSize(),
-                getLookupPageCacheExecutorService(),
-                metricsSupplier(metricsPrefix, LOOKUP_PAGE_CACHE_METRICS)
-        );
-    }
-
     public LookupCache buildLookupCache(String metricsPrefix) {
         return buildLookupCache(metricsPrefix, false);
     }
@@ -256,15 +196,9 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
                 getInitialLookupKeyCacheSize(),
                 getMaximumLookupKeyCacheWeight(),
                 getLookupKeyCacheExecutorService(),
-                metricsSupplier(metricsPrefix, LOOKUP_KEY_CACHE_METRICS),
-                getInitialMetaDataCacheSize(),
-                getMaximumMetaDataCacheWeight(),
-                readOnly ? getMetadataTTL() : 0,
-                getLookupMetaDataCacheExecutorService(),
-                metricsSupplier(metricsPrefix, METADATA_CACHE_METRICS)
+                metricsSupplier(metricsPrefix, LOOKUP_KEY_CACHE_METRICS)
         );
     }
-
 
     public int getLookupHashSize() {
         return lookupHashSize;
@@ -278,24 +212,12 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         return storeMetrics;
     }
 
-    public int getInitialLookupPageCacheSize() {
-        return initialLookupPageCacheSize;
-    }
-
-    public int getMaximumLookupPageCacheSize() {
-        return maximumLookupPageCacheSize;
-    }
-
     public long getMaximumLookupKeyCacheWeight() {
         return maximumLookupKeyCacheWeight;
     }
 
     public int getInitialLookupKeyCacheSize() {
         return initialLookupKeyCacheSize;
-    }
-
-    public long getMaximumMetaDataCacheWeight() {
-        return maximumMetaDataCacheWeight;
     }
 
     public int getFlushDelaySeconds() {
@@ -322,10 +244,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         return cacheMetrics;
     }
 
-    public int getInitialMetaDataCacheSize() {
-        return initialMetaDataCacheSize;
-    }
-
     public int getMetadataPageSize() {
         return metaDataPageSize;
     }
@@ -336,14 +254,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     public ExecutorService getLookupKeyCacheExecutorService() {
         return lookupKeyCacheExecutorService;
-    }
-
-    public ExecutorService getLookupMetaDataCacheExecutorService() {
-        return lookupMetaDataCacheExecutorService;
-    }
-
-    public ExecutorService getLookupPageCacheExecutorService() {
-        return lookupPageCacheExecutorService;
     }
 
     public String getStoreName() {

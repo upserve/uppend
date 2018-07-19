@@ -16,14 +16,12 @@ public class LookupCache implements Flushable {
     // An LRU cache of Lookup Keys
     private final Cache<PartitionLookupKey, Long> keyLongLookupCache;
 
-    private final LoadingCache<LookupData, LookupMetadata> lookupMetaDataCache;
-
     private final boolean keyCacheActive;
 
     private final LongAdder keysFlushed;
     private final LongAdder lookupsFlushed;
 
-    public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier, int intialMetaDataCapacity, long maximumMetaDataWeight, int metadataTTL, ExecutorService executorServiceMetaDataCache, Supplier<StatsCounter> metadataCacheMetricsSupplier) {
+    public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier) {
 
         Caffeine<PartitionLookupKey, Long> keyCacheBuilder = Caffeine
                 .<PartitionLookupKey, Long>newBuilder()
@@ -42,24 +40,6 @@ public class LookupCache implements Flushable {
 
         keysFlushed = new LongAdder();
         lookupsFlushed = new LongAdder();
-
-        Caffeine<LookupData, LookupMetadata> metadataCacheBuilder = Caffeine
-                .<LookupData, LookupMetadata>newBuilder()
-                .executor(executorServiceMetaDataCache)
-                .initialCapacity(intialMetaDataCapacity)
-                .maximumWeight(maximumMetaDataWeight)
-                .<LookupData, LookupMetadata>weigher((k, v) -> v.weight());
-
-        if (metadataTTL > 0) {
-            metadataCacheBuilder.expireAfterWrite(metadataTTL, TimeUnit.SECONDS);
-        }
-
-        if (metadataCacheMetricsSupplier != null) {
-            metadataCacheBuilder = metadataCacheBuilder.recordStats(metadataCacheMetricsSupplier);
-        }
-
-        lookupMetaDataCache = metadataCacheBuilder
-                .<LookupData, LookupMetadata>build(LookupData::loadMetadata);
     }
 
     public FlushStats getFlushStats() {
@@ -83,14 +63,6 @@ public class LookupCache implements Flushable {
         return keyLongLookupCache.get(lookupKey, cacheLoader);
     }
 
-    public LookupMetadata getMetadata(LookupData key) {
-        return lookupMetaDataCache.get(key, LookupData::loadMetadata);
-    }
-
-    public void putMetadata(LookupData key, LookupMetadata value) {
-        lookupMetaDataCache.put(key, value);
-    }
-
     public CacheStats keyStats() {
         if (keyCacheActive) {
             return keyLongLookupCache.stats();
@@ -99,13 +71,8 @@ public class LookupCache implements Flushable {
         }
     }
 
-    public CacheStats metadataStats() {
-        return lookupMetaDataCache.stats();
-    }
-
     @Override
     public void flush() {
-        lookupMetaDataCache.invalidateAll();
         keyLongLookupCache.invalidateAll();
     }
 }
