@@ -40,6 +40,9 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-c", "--case"}, description = "Benchmark class (narrow|wide) key space")
     BenchmarkCase benchmarkCase = BenchmarkCase.narrow;
 
+    @Option(names = {"-b", "--buffer-size"}, description = "Buffer Size (small|medium|large)")
+    BufferSize bufferSize = BufferSize.medium;
+
     @Option(names= {"-i", "--iostat"}, description = "arguments for iostat process")
     String ioStatArgs = "5";
 
@@ -135,6 +138,7 @@ public class CommandBenchmark implements Callable<Void> {
                 .withBlobsPerBlock(blockSize)
                 .withLongLookupHashSize(hashSize)
                 .withPartitionSize(partitions) // Use direct partition
+                .withTargetBufferSize(bufferSize.getSize())
                 .withInitialLookupKeyCacheSize(keyCacheSize)
                 .withMaximumLookupKeyCacheWeight(keyCacheWeight)
                 .withBlobPageSize(blobPageSize)

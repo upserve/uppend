@@ -51,7 +51,7 @@ public class LookupMetadataTest {
     }
 
     public void setup(boolean readOnly) {
-        virtualPageFile = new VirtualPageFile(path, NUMBER_OF_STORES, 1024, readOnly);
+        virtualPageFile = new VirtualPageFile(path, NUMBER_OF_STORES, 1024, 16384, readOnly);
         metadataBlobs = new VirtualMutableBlobStore(1, virtualPageFile);
     }
 
@@ -440,7 +440,7 @@ public class LookupMetadataTest {
 
         PartitionLookupCache partitionLookupCache = PartitionLookupCache.create("partition", lookupCache);
 
-        VirtualPageFile keysData = new VirtualPageFile(keysPath, NUMBER_OF_STORES, defaults.getLookupPageSize(), false);
+        VirtualPageFile keysData = new VirtualPageFile(keysPath, NUMBER_OF_STORES, defaults.getLookupPageSize(), defaults.getTargetBufferSize(), false);
         VirtualLongBlobStore keyStore = new VirtualLongBlobStore(5, keysData);
 
         LookupData lookupData = LookupData.lookupWriter(keyStore, metadataBlobs, partitionLookupCache, -1);

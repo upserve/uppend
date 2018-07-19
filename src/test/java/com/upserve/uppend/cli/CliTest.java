@@ -51,15 +51,23 @@ public class CliTest {
 
     @Test
     public void testBenchmark() throws Exception {
-        Cli.main("benchmark", "-s", "small", "build/test/cli/bench");
+        Cli.main("benchmark", "-s", "small", "-b", "small", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
         assertEquals("", err);
     }
 
     @Test
+    public void testFileStoreBenchmark() throws Exception {
+        Cli.main("filestore", "-s", "small", "build/test/cli/filestore");
+        syncStreams();
+        assertTrue("expected benchmark output to contain '[done!]': " + out, out.contains("[done!]"));
+        assertEquals("", err);
+    }
+
+    @Test
     public void testBenchmarkWide() throws Exception {
-        Cli.main("benchmark", "-s", "nano", "-c", "wide", "build/test/cli/bench");
+        Cli.main("benchmark", "-s", "nano", "-c", "wide", "-b", "small", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
         assertEquals("", err);
@@ -67,7 +75,7 @@ public class CliTest {
 
     @Test
     public void testBenchmarkReadWrite() throws Exception {
-        Cli.main("benchmark", "-s", "nano", "-m", "readwrite", "build/test/cli/bench");
+        Cli.main("benchmark", "-s", "nano", "-m", "readwrite", "-b", "small", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
         assertEquals("", err);
@@ -75,11 +83,11 @@ public class CliTest {
 
     @Test
     public void testBenchmarkWriteThenRead() throws Exception {
-        Cli.main("benchmark", "-s", "nano", "-m", "write", "build/test/cli/bench");
+        Cli.main("benchmark", "-s", "nano", "-m", "write", "-b", "small", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
         assertEquals("", err);
-        Cli.main("benchmark", "-s", "nano", "-m", "read", "build/test/cli/bench");
+        Cli.main("benchmark", "-s", "nano", "-m", "read", "-b", "small", "build/test/cli/bench");
         syncStreams();
         assertTrue("expected benchmark output to contain '[benchmark is done]': " + out, out.contains("[benchmark is done]"));
         assertEquals("", err);
