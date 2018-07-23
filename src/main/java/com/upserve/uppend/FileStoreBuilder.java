@@ -80,13 +80,13 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withMetaDataPageSize(int metaDataPageSize) {
-        this.metadataPageSize = metaDataPageSize;
+    public T withMetadataPageSize(int metadataPageSize) {
+        this.metadataPageSize = metadataPageSize;
         return (T) this;
     }
 
     @SuppressWarnings("unchecked")
-    public T withMetaTTL(int metadataTTL) {
+    public T withMetadataTTL(int metadataTTL) {
         this.metadataTTL = metadataTTL;
         return (T) this;
     }
@@ -278,5 +278,3 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     public String getMetricsRootName(){ return metricsRootName; }
 }
-
-

@@ -143,7 +143,7 @@ public class CommandBenchmark implements Callable<Void> {
                 .withMaximumLookupKeyCacheWeight(keyCacheWeight)
                 .withBlobPageSize(blobPageSize)
                 .withLookupPageSize(keyPageSize)
-                .withMetaDataPageSize(metadataPageSize)
+                .withMetadataPageSize(metadataPageSize)
                 .withFlushThreshold(flushThreshold)
                 .withFlushDelaySeconds(flushDelay)
                 .withStoreMetrics(metrics)
