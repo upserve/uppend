@@ -34,7 +34,7 @@ public class TestHelper {
                 .withLookupKeyCacheExecutorService(testService)
                 .withLongLookupHashSize(16)
                 .withLookupPageSize(16 * 1024)
-                .withMetaTTL(0)
+                .withMetadataTTL(0)
                 .withCacheMetrics();
 
     }
@@ -45,7 +45,7 @@ public class TestHelper {
                 .withTargetBufferSize(16*1024*1024)
                 .withInitialLookupKeyCacheSize(64)
                 .withMaximumLookupKeyCacheWeight(100 * 1024)
-                .withMetaDataPageSize(1024)
+                .withMetadataPageSize(1024)
                 .withLongLookupHashSize(16)
                 .withLookupPageSize(16 * 1024)
                 .withCacheMetrics();
