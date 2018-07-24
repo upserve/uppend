@@ -94,7 +94,7 @@ public class VirtualPageFile implements Flushable, Closeable {
         flush();
         Arrays.fill(mappedByteBuffers, null);
 
-        // Can't truncate here. Reopening as read only will fail
+        if (!readOnly) channel.truncate(nextPagePosition.get());
         channel.close();
     }
 
@@ -238,8 +238,9 @@ public class VirtualPageFile implements Flushable, Closeable {
         final long postHeaderPosition = startPosition - (totalHeaderSize);
         final int mapIndex = (int) (postHeaderPosition / bufferSize);
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
+        final int minimumCapacity = mapPosition + 8 + pageSize;
 
-        MappedByteBuffer bigbuffer = ensurePage(mapIndex);
+        MappedByteBuffer bigbuffer = ensurePage(mapIndex, minimumCapacity);
 
         return new MappedPage(bigbuffer, mapPosition + 8, pageSize);
     }
@@ -248,8 +249,9 @@ public class VirtualPageFile implements Flushable, Closeable {
         final long postHeaderPosition = startPosition - (totalHeaderSize);
         final int mapIndex = (int) (postHeaderPosition / bufferSize);
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
+        final int minimumCapacity = mapPosition + 8;
 
-        MappedByteBuffer bigbuffer = ensurePage(mapIndex);
+        MappedByteBuffer bigbuffer = ensurePage(mapIndex, minimumCapacity);
         bigbuffer.putLong(mapPosition, value);
     }
 
@@ -257,32 +259,53 @@ public class VirtualPageFile implements Flushable, Closeable {
         final long postHeaderPosition = startPosition - (totalHeaderSize);
         final int mapIndex = (int) (postHeaderPosition / bufferSize);
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
+        final int minimumCapacity = mapPosition + 8;
 
-        MappedByteBuffer bigbuffer = ensurePage(mapIndex);
+        MappedByteBuffer bigbuffer = ensurePage(mapIndex, minimumCapacity);
         return bigbuffer.getLong(mapPosition);
     }
 
-    private MappedByteBuffer ensurePage(int pageIndex) {
-        MappedByteBuffer page = mappedByteBuffers[pageIndex];
-        if (page == null) {
+    private MappedByteBuffer ensurePage(int bufferIndex, int minimunmCapacity) {
+        MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
+        if (buffer == null || buffer.capacity() < minimunmCapacity) {
             synchronized (mappedByteBuffers) {
-                page = mappedByteBuffers[pageIndex];
-                if (page == null) {
-                    long pageStart = ((long) pageIndex * bufferSize) + totalHeaderSize;
+                buffer = mappedByteBuffers[bufferIndex];
+                if (buffer == null || buffer.capacity() < minimunmCapacity) {
+                    long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
                     try {
-                        page = channel.map(mapMode, pageStart, bufferSize);
+                        buffer = channel.map(mapMode, bufferStart, bufferSize(bufferStart, minimunmCapacity));
                     } catch (IOException e) {
-                        if (readOnly && e.getMessage().contains("cannot extend file")){
-                            throw new RuntimeException("Unable to extend the read only file " + filePath + " to load the next buffer of size " + bufferSize + "; read only buffer size must be equal to the writer buffer size!", e);
-                        } else {
-                            throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + bufferSize + ") in " + filePath, e);
-                        }
+                        throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart + " + " + minimunmCapacity + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);
                     }
-                    mappedByteBuffers[pageIndex] = page;
+                    mappedByteBuffers[bufferIndex] = buffer;
                 }
             }
         }
-        return page;
+        return buffer;
+    }
+
+    private int bufferSize(long bufferStart, int minimumCapacity) throws IOException {
+        if (readOnly) {
+            final long fileLength = getFileSize();
+            final long available = fileLength - bufferStart;
+            if (available >= bufferSize) {
+                return bufferSize;
+            } else if (available > minimumCapacity) {
+                return (int) available;
+            } else {
+                throw new IOException("The request location " + (bufferStart + minimumCapacity) + " is beyond the end of the file " + fileLength);
+            }
+        } else {
+            return bufferSize;
+        }
+    }
+
+    long getFileSize() {
+        try {
+            return channel.size();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Could not get length of readonly file " + filePath, e);
+        }
     }
 
     // Private methods
