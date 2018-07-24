@@ -213,7 +213,7 @@ public class Benchmark {
         ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
         log.info("Running IOSTAT: '{}'", processBuilder.command());
         processBuilder.redirectErrorStream(true);
-        processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        processBuilder.redirectOutput(ProcessBuilder.Redirect.PIPE);
         Process process = processBuilder.start();
 
         Future writerFuture = writerPool.submit(writer);

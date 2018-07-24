@@ -6,10 +6,10 @@ import org.slf4j.Logger;
 import picocli.CommandLine;
 
 import java.lang.invoke.MethodHandles;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.util.Random;
 import java.util.concurrent.Callable;
-import java.util.stream.*;
+import java.util.stream.IntStream;
 
 @SuppressWarnings({"WeakerAccess", "unused"})
 @CommandLine.Command(
@@ -47,6 +47,8 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
         log.info("FileStore Benchmark");
 
         Random random = new Random();
+
+        Files.createDirectories(path.getParent());
 
         VirtualPageFile file = new VirtualPageFile(path, nfiles, pageSize.getSize(), bufferSize.getSize(), false);
         VirtualAppendOnlyBlobStore[] stores = IntStream.range(0, nfiles)
