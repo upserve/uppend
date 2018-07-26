@@ -13,10 +13,10 @@ import java.util.*;
 import java.util.function.BiConsumer;
 import java.util.stream.*;
 
+import static java.lang.Math.min;
+
 public class AppendStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-    private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
-
 
     private final BlockedLongs blocks;
     private final VirtualAppendOnlyBlobStore[] blobs;
@@ -42,8 +42,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, false);
 
         VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, targetBufferSize,false);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, targetBufferSize,false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, targetBufferSize,false);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize),false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize),false);
 
 
         return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
@@ -59,8 +59,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitiondDir), blockSize, readOnly);
 
         VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitiondDir), hashSize, blobPageSize, targetBufferSize, readOnly);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, targetBufferSize, readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, targetBufferSize, readOnly);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize), readOnly);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize), readOnly);
 
         return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
     }
