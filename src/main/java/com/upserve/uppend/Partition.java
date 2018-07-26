@@ -9,8 +9,10 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
+import static java.lang.Math.min;
+
 public abstract class Partition {
-    private static final int MAX_HASH_SIZE = 1 << 24; /* 16,777,216 */
+    private static final int MAX_HASH_SIZE = 1 << 14; /* 16,384 */
 
     private static final int HASH_SEED = 219370429;
 
@@ -71,6 +73,17 @@ public abstract class Partition {
         }
     }
 
+    /**
+     * A function for estimating an efficient buffer size for key and metadata files
+     * Use the smaller of 2 pages for every hash or the target buffer size
+     * @param pageSize the size of the page in bytes
+     * @param hashSize the hash size of the partition
+     * @param targetBufferSize The configured maximum target size for buffers
+     * @return the adjusted buffer size to use for metadata or key data
+     */
+    static int adjustedTargetBufferSize(int pageSize, int hashSize, int targetBufferSize) {
+        return (int) min((long) (pageSize + 16) * hashSize * 2, (long) targetBufferSize);
+    }
 
     int keyHash(LookupKey key) {
         if (hashFunction == null){
