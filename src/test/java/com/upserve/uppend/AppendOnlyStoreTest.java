@@ -149,6 +149,8 @@ public class AppendOnlyStoreTest {
         });
 
         future.get(40_000, TimeUnit.MILLISECONDS);
+
+        executor.shutdown();
     }
 
     @Test

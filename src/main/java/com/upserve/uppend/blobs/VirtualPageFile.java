@@ -1,6 +1,7 @@
 package com.upserve.uppend.blobs;
 
-import com.upserve.uppend.util.ThreadLocalByteBuffers;
+import com.google.common.collect.ImmutableList;
+import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -8,10 +9,14 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.Arrays;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
+
+import static com.upserve.uppend.AutoFlusher.flusherWorkPool;
+import static java.lang.StrictMath.min;
 
 /**
  * Simulates contiguous pages for virtual files in a single physical file
@@ -102,13 +107,21 @@ public class VirtualPageFile implements Flushable, Closeable {
     public void flush() throws IOException {
         headerBuffer.force();
         pageTableBuffer.force();
-        for (MappedByteBuffer buffer: mappedByteBuffers) {
-            if (buffer != null) buffer.force();
+
+        for (int i=0; i<MAX_BUFFERS; i++) {
+            MappedByteBuffer buffer = mappedByteBuffers[i];
+            if ((long) bufferSize * i > nextPagePosition.get()) {
+                break;
+            } else if (buffer != null) {
+                 buffer.force();
+            }
+
         }
-        channel.force(true);
+        // Do not force the channel - it makes the flush really slow
+        //channel.force(true);
     }
 
-    public int getVirtualFiles() {
+    int getVirtualFiles() {
         return virtualFiles;
     }
 
@@ -240,64 +253,9 @@ public class VirtualPageFile implements Flushable, Closeable {
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
         final int minimumCapacity = mapPosition + 8 + pageSize;
 
-        MappedByteBuffer bigbuffer = ensurePage(mapIndex, minimumCapacity);
+        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
 
         return new MappedPage(bigbuffer, mapPosition + 8, pageSize);
-    }
-
-    private void writeLong(long startPosition, long value) {
-        final long postHeaderPosition = startPosition - (totalHeaderSize);
-        final int mapIndex = (int) (postHeaderPosition / bufferSize);
-        final int mapPosition = (int) (postHeaderPosition % bufferSize);
-        final int minimumCapacity = mapPosition + 8;
-
-        MappedByteBuffer bigbuffer = ensurePage(mapIndex, minimumCapacity);
-        bigbuffer.putLong(mapPosition, value);
-    }
-
-    private long readLong(long startPosition) {
-        final long postHeaderPosition = startPosition - (totalHeaderSize);
-        final int mapIndex = (int) (postHeaderPosition / bufferSize);
-        final int mapPosition = (int) (postHeaderPosition % bufferSize);
-        final int minimumCapacity = mapPosition + 8;
-
-        MappedByteBuffer bigbuffer = ensurePage(mapIndex, minimumCapacity);
-        return bigbuffer.getLong(mapPosition);
-    }
-
-    private MappedByteBuffer ensurePage(int bufferIndex, int minimunmCapacity) {
-        MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
-        if (buffer == null || buffer.capacity() < minimunmCapacity) {
-            synchronized (mappedByteBuffers) {
-                buffer = mappedByteBuffers[bufferIndex];
-                if (buffer == null || buffer.capacity() < minimunmCapacity) {
-                    long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
-                    try {
-                        buffer = channel.map(mapMode, bufferStart, bufferSize(bufferStart, minimunmCapacity));
-                    } catch (IOException e) {
-                        throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart + " + " + minimunmCapacity + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);
-                    }
-                    mappedByteBuffers[bufferIndex] = buffer;
-                }
-            }
-        }
-        return buffer;
-    }
-
-    private int bufferSize(long bufferStart, int minimumCapacity) throws IOException {
-        if (readOnly) {
-            final long fileLength = getFileSize();
-            final long available = fileLength - bufferStart;
-            if (available >= bufferSize) {
-                return bufferSize;
-            } else if (available > minimumCapacity) {
-                return (int) available;
-            } else {
-                throw new IOException("The request location " + (bufferStart + minimumCapacity) + " is beyond the end of the file " + fileLength);
-            }
-        } else {
-            return bufferSize;
-        }
     }
 
     long getFileSize() {
@@ -308,7 +266,6 @@ public class VirtualPageFile implements Flushable, Closeable {
         }
     }
 
-    // Private methods
     public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, int targetBufferSize, boolean readOnly) {
         this.filePath = filePath;
         this.readOnly = readOnly;
@@ -317,7 +274,7 @@ public class VirtualPageFile implements Flushable, Closeable {
 
         this.mappedByteBuffers = new MappedByteBuffer[MAX_BUFFERS];
 
-        if (targetBufferSize < (pageSize + 16)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize);
+        if (targetBufferSize < (pageSize + 16)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize + " 16 bytes of overhead");
 
         this.bufferSize = (targetBufferSize / (pageSize + 16)) * (pageSize + 16);
 
@@ -417,19 +374,27 @@ public class VirtualPageFile implements Flushable, Closeable {
         } else {
             nextPagePosition = new AtomicLong(lastStartPosition + pageSize + 16);
         }
+        preloadBuffers();
 
-        IntStream.range(0, virtualFiles).parallel().forEach(this::detectCorruption);
-
+        IntStream.range(0, virtualFiles).forEach(this::detectCorruption);
+        log.debug("Finished Corruption Detection for {}", filePath);
         // TODO Can we fix corruption instead of just bailing?
     }
 
+    //Private methods
     private void detectCorruption(int virtualFileNumber) {
+        log.debug("Detect Corruption start {}", virtualFileNumber);
         long virtualFilePosition = virtualFilePositions[virtualFileNumber].get();
         int pageCount = virtualFilePageCounts[virtualFileNumber].get();
         long firstPageStart = firstPagePositions[virtualFileNumber].get();
         long finalPageStart = lastPagePositions[virtualFileNumber].get();
 
-        long[] pageStarts = IntStream.range(0, PAGES_PER_VIRUAL_FILE).mapToLong(page -> getRawPageStart(virtualFileNumber, page)).toArray();
+        //long[] pageStarts = IntStream.range(0, PAGES_PER_VIRUAL_FILE).mapToLong(page -> getRawPageStart(virtualFileNumber, page)).toArray();
+
+        long[] pageStarts = new long[PAGES_PER_VIRUAL_FILE];
+        for (int i=0; i < PAGES_PER_VIRUAL_FILE; i++) {
+            pageStarts[i] = getRawPageStart(virtualFileNumber, i);
+        }
 
         if (pageCount == 0) {
             if (virtualFilePosition != 0 || firstPageStart != 0 || finalPageStart != 0 || Arrays.stream(pageStarts).anyMatch(val -> val != 0)) {
@@ -460,6 +425,8 @@ public class VirtualPageFile implements Flushable, Closeable {
         }
 
         if (nextPageStart != -1) throw new IllegalStateException("Last head pointer not equal -1 in file " + getFilePath());
+
+        log.debug("Detect Corruption end {}", virtualFileNumber);
     }
 
     private long getRawPageStart(int virtualFileNumber, int pageNumber) {
@@ -569,5 +536,84 @@ public class VirtualPageFile implements Flushable, Closeable {
 
     private long readHeadPointer(long pageStart) {
         return readLong(pageStart + pageSize + 8);
+    }
+
+    private void writeLong(long startPosition, long value) {
+        final long postHeaderPosition = startPosition - (totalHeaderSize);
+        final int mapIndex = (int) (postHeaderPosition / bufferSize);
+        final int mapPosition = (int) (postHeaderPosition % bufferSize);
+        final int minimumCapacity = mapPosition + 8;
+
+        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
+        bigbuffer.putLong(mapPosition, value);
+    }
+
+    private long readLong(long startPosition) {
+        final long postHeaderPosition = startPosition - (totalHeaderSize);
+        final int mapIndex = (int) (postHeaderPosition / bufferSize);
+        final int mapPosition = (int) (postHeaderPosition % bufferSize);
+        final int minimumCapacity = mapPosition + 8;
+
+        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
+        return bigbuffer.getLong(mapPosition);
+    }
+
+    private MappedByteBuffer ensureBuffered(int bufferIndex, int minimunmCapacity) {
+        MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
+        if (buffer == null || buffer.capacity() < minimunmCapacity) {
+            synchronized (mappedByteBuffers) {
+                buffer = mappedByteBuffers[bufferIndex];
+                if (buffer == null || buffer.capacity() < minimunmCapacity) {
+                    long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
+                    try {
+                        buffer = channel.map(mapMode, bufferStart, bufferSize(bufferStart, minimunmCapacity));
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart + " + " + minimunmCapacity + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);
+                    }
+                    mappedByteBuffers[bufferIndex] = buffer;
+                }
+            }
+        }
+        return buffer;
+    }
+
+    private void preloadBuffers(){
+        final long fileLength = getFileSize();
+        for (int bufferIndex=0; bufferIndex<MAX_BUFFERS; bufferIndex++){
+            long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
+
+            if (bufferStart >= fileLength) break;
+
+            final int bSize;
+            if (readOnly) {
+                bSize = (int) min(fileLength - bufferStart, bufferSize);
+            } else {
+                bSize = bufferSize;
+            }
+
+            try {
+                MappedByteBuffer buffer = channel.map(mapMode, bufferStart, bSize);
+                mappedByteBuffers[bufferIndex] = buffer;
+            } catch (IOException e) {
+                throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " + " + bSize + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);
+            }
+        }
+    }
+
+
+    private int bufferSize(long bufferStart, int minimumCapacity) throws IOException {
+        if (readOnly) {
+            final long fileLength = getFileSize();
+            final long available = fileLength - bufferStart;
+            if (available >= bufferSize) {
+                return bufferSize;
+            } else if (available > minimumCapacity) {
+                return (int) available;
+            } else {
+                throw new IOException("The request location " + (bufferStart + minimumCapacity) + " is beyond the end of the file " + fileLength);
+            }
+        } else {
+            return bufferSize;
+        }
     }
 }

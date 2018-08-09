@@ -52,25 +52,8 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     @Override
     public String toString() {
         return "AppendOnlyStoreBuilder{" +
-                "blobsPerBlock=" + getBlobsPerBlock() +
-                ", blobPageSize=" + getBlobPageSize() +
-                ", storeName='" + getStoreName() + '\'' +
-                ", partitionSize=" + getPartitionSize() +
-                ", lookupHashSize=" + getLookupHashSize() +
-                ", lookupPageSize=" + getLookupPageSize() +
-                ", maximumLookupKeyCacheWeight=" + getMaximumLookupKeyCacheWeight() +
-                ", initialLookupKeyCacheSize=" + getInitialLookupKeyCacheSize() +
-                ", metadataTTL=" + getMetadataTTL() +
-                ", metaDataPageSize=" + getMetadataPageSize() +
-                ", lookupKeyCacheExecutorService=" + getLookupKeyCacheExecutorService() +
-                ", flushDelaySeconds=" + getFlushDelaySeconds() +
-                ", flushThreshold=" + getFlushThreshold() +
-                ", dir=" + getDir() +
-                ", storeMetricsRegistry=" + getStoreMetricsRegistry() +
-                ", metricsRootName='" + getMetricsRootName() + '\'' +
-                ", storeMetrics=" + isStoreMetrics() +
-                ", cacheMetricsRegistry=" + getCacheMetricsRegistry() +
-                ", cacheMetrics=" + isCacheMetrics() +
-                '}';
+                "blobsPerBlock=" + blobsPerBlock +
+                ", blobPageSize=" + blobPageSize +
+                '}' + super.toString();
     }
 }

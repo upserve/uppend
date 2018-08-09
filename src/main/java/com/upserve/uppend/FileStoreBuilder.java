@@ -277,4 +277,28 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public int getPartitionSize(){ return partitionSize; }
 
     public String getMetricsRootName(){ return metricsRootName; }
+
+    @Override
+    public String toString() {
+        return "FileStoreBuilder{" +
+                "storeName='" + storeName + '\'' +
+                ", partitionSize=" + partitionSize +
+                ", lookupHashSize=" + lookupHashSize +
+                ", lookupPageSize=" + lookupPageSize +
+                ", maximumLookupKeyCacheWeight=" + maximumLookupKeyCacheWeight +
+                ", initialLookupKeyCacheSize=" + initialLookupKeyCacheSize +
+                ", metadataTTL=" + metadataTTL +
+                ", metadataPageSize=" + metadataPageSize +
+                ", targetBufferSize=" + targetBufferSize +
+                ", lookupKeyCacheExecutorService=" + lookupKeyCacheExecutorService +
+                ", flushDelaySeconds=" + flushDelaySeconds +
+                ", flushThreshold=" + flushThreshold +
+                ", dir=" + dir +
+                ", storeMetricsRegistry=" + storeMetricsRegistry +
+                ", metricsRootName='" + metricsRootName + '\'' +
+                ", storeMetrics=" + storeMetrics +
+                ", cacheMetricsRegistry=" + cacheMetricsRegistry +
+                ", cacheMetrics=" + cacheMetrics +
+                '}';
+    }
 }

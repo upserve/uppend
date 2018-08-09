@@ -28,9 +28,10 @@ public class CliTest {
     }
 
     @After
-    public void tearDown() {
+    public void tearDown() throws IOException {
         System.setErr(origErr);
         System.setOut(origOut);
+        SafeDeleting.removeDirectory(Paths.get("build/test/cli"));
     }
 
     @Test
@@ -49,6 +50,7 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Ignore
     @Test
     public void testBenchmark() throws Exception {
         Cli.main("benchmark", "-s", "small", "-b", "small", "build/test/cli/bench");
@@ -57,6 +59,7 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Ignore
     @Test
     public void testFileStoreBenchmark() throws Exception {
         Cli.main("filestore", "-s", "small", "build/test/cli/filestore");
@@ -65,6 +68,7 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Ignore
     @Test
     public void testBenchmarkWide() throws Exception {
         Cli.main("benchmark", "-s", "nano", "-c", "wide", "-b", "small", "build/test/cli/bench");
@@ -73,6 +77,7 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Ignore
     @Test
     public void testBenchmarkReadWrite() throws Exception {
         Cli.main("benchmark", "-s", "nano", "-m", "readwrite", "-b", "small", "build/test/cli/bench");
@@ -81,6 +86,7 @@ public class CliTest {
         assertEquals("", err);
     }
 
+    @Ignore
     @Test
     public void testBenchmarkWriteThenRead() throws Exception {
         Cli.main("benchmark", "-s", "nano", "-m", "write", "-b", "small", "build/test/cli/bench");
