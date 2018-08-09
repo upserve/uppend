@@ -21,24 +21,6 @@ public class CounterStoreBuilder extends FileStoreBuilder<CounterStoreBuilder> {
 
     @Override
     public String toString() {
-        return "CounterStoreBuilder{" +
-                "storeName='" + getStoreName() + '\'' +
-                ", partitionSize=" + getPartitionSize() +
-                ", lookupHashSize=" + getLookupHashSize() +
-                ", lookupPageSize=" + getLookupPageSize() +
-                ", maximumLookupKeyCacheWeight=" + getMaximumLookupKeyCacheWeight() +
-                ", initialLookupKeyCacheSize=" + getInitialLookupKeyCacheSize() +
-                ", metadataTTL=" + getMetadataTTL() +
-                ", metaDataPageSize=" + getMetadataPageSize() +
-                ", lookupKeyCacheExecutorService=" + getLookupKeyCacheExecutorService() +
-                ", flushDelaySeconds=" + getFlushDelaySeconds() +
-                ", flushThreshold=" + getFlushThreshold() +
-                ", dir=" + getDir() +
-                ", storeMetricsRegistry=" + getStoreMetricsRegistry() +
-                ", metricsRootName='" + getMetricsRootName() + '\'' +
-                ", storeMetrics=" + isStoreMetrics() +
-                ", cacheMetricsRegistry=" + getCacheMetricsRegistry() +
-                ", cacheMetrics=" + isCacheMetrics() +
-                '}';
+        return "CounterStoreBuilder{}" + super.toString();
     }
 }

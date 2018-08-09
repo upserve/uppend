@@ -140,7 +140,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     public void flush() throws IOException {
         log.debug("Starting flush for partition: {}", lookupCache.getPartition());
 
-        Arrays.stream(lookups).parallel().forEach(LookupData::flush);
+        Arrays.stream(lookups).forEach(LookupData::flush);
 
         longKeyFile.flush();
         metadataBlobFile.flush();
@@ -159,6 +159,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         metadataBlobFile.close();
         blobFile.close();
         blocks.close();
+
 
         SafeDeleting.removeDirectory(longKeyFile.getFilePath().getParent());
     }

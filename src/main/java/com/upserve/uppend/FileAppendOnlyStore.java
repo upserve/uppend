@@ -9,6 +9,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.ClosedChannelException;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
@@ -141,21 +142,32 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
         log.info("Flushing!");
 
-        partitionMap.values().parallelStream().forEach(appendStorePartition -> {
-            try {
-                appendStorePartition.flush();
-            } catch (ClosedChannelException e) {
-                if (isClosed.get()) {
-                    log.debug("Tried to flush a closed store {}", name, e);
-                } else {
-                    throw new UncheckedIOException("Error flushing store " + name, e);
-                }
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+            partitionMap.values().parallelStream().forEach(appendStorePartition -> {
+                try {
+                    appendStorePartition.flush();
+                } catch (ClosedChannelException e) {
+                    if (isClosed.get()) {
+                        log.debug("Tried to flush a closed store {}", name, e);
+                    } else {
+                        throw new UncheckedIOException("Error flushing store " + name, e);
+                    }
 
-            } catch (IOException e) {
-                if (isClosed.get())
-                    throw new UncheckedIOException("Error flushing store " + name, e);
-            }
-        });
+                } catch (IOException e) {
+                    if (isClosed.get())
+                        throw new UncheckedIOException("Error flushing store " + name, e);
+                }
+            })
+        );
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Flush interrupted", e);
+
+        } catch (ExecutionException e) {
+            log.error("Flush execution exception", e);
+        }
+
         log.info("Flushed!");
     }
 
@@ -167,13 +179,24 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
     @Override
     protected void closeInternal() {
-        partitionMap.values().parallelStream().forEach(appendStorePartition -> {
-            try {
-                appendStorePartition.close();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error closing store " + name, e);
-            }
-        });
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+            partitionMap.values().parallelStream().forEach(appendStorePartition -> {
+                try {
+                    appendStorePartition.close();
+                } catch (IOException e) {
+                    throw new UncheckedIOException("Error closing store " + name, e);
+                }
+            })
+        );
+
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Flush interrupted", e);
+
+        } catch (ExecutionException e) {
+            log.error("Flush execution exception", e);
+        }
 
         partitionMap.clear();
         lookupCache.flush();
