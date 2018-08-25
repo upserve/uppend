@@ -106,8 +106,6 @@ public class VirtualPageFileTest {
         page.put(6, "def".getBytes(), 0);
         page.put(900, "ghi".getBytes(), 0);
 
-        instance.flush();
-
         page = roInstance.getExistingPage(6,0);
         assertEquals(304616L, roInstance.getFileSize());
         page.get(6, bytes, 0);
