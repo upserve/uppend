@@ -18,11 +18,6 @@ public class FileStoreTest {
         SafeDeleting.removeTempPath(path);
         SafeDeleting.removeTempPath(pageFilesPath);
         Files.createDirectories(pageFilesPath);
-
-        Path partitionLongKeyPath = pageFilesPath.resolve("long-key");
-        Path partitionMetadataBlobPath = pageFilesPath.resolve("metadata-blob");
-        Path partitionBlobPath = pageFilesPath.resolve("blob");
-        Path partitionBlocksPath = pageFilesPath.resolve("blocks");
     }
 
     @Test
