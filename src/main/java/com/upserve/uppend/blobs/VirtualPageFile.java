@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-import static com.upserve.uppend.AutoFlusher.flusherWorkPool;
 import static java.lang.StrictMath.min;
 
 /**
@@ -51,6 +50,8 @@ public class VirtualPageFile implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
+    private static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
+
     private static final int SELF_DESCRIBING_HEADER_SIZE = 8;
 
     private static final int HEADER_RECORD_SIZE = 8 + 8 + 8 + 4;
@@ -105,18 +106,18 @@ public class VirtualPageFile implements Flushable, Closeable {
 
     @Override
     public void flush() throws IOException {
-        headerBuffer.force();
-        pageTableBuffer.force();
+//        headerBuffer.force();
+//        pageTableBuffer.force();
 
-        for (int i=0; i<MAX_BUFFERS; i++) {
-            MappedByteBuffer buffer = mappedByteBuffers[i];
-            if ((long) bufferSize * i > nextPagePosition.get()) {
-                break;
-            } else if (buffer != null) {
-                 buffer.force();
-            }
-
-        }
+//        for (int i=0; i<MAX_BUFFERS; i++) {
+//            MappedByteBuffer buffer = mappedByteBuffers[i];
+//            if ((long) bufferSize * i > nextPagePosition.get()) {
+//                break;
+//            } else if (buffer != null) {
+//                 buffer.force();
+//            }
+//
+//        }
         // Do not force the channel - it makes the flush really slow
         //channel.force(true);
     }
@@ -232,11 +233,11 @@ public class VirtualPageFile implements Flushable, Closeable {
             startPosition = allocatePosition(virtualFileNumber, pageNumber);
         }
 
-       return mappedPage(startPosition);
+       return filePage(startPosition);
     }
 
     /**
-     * Get a the existing page
+     * Get the existing page
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
@@ -256,6 +257,10 @@ public class VirtualPageFile implements Flushable, Closeable {
         MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
 
         return new MappedPage(bigbuffer, mapPosition + 8, pageSize);
+    }
+
+    FilePage filePage(long startPosition) {
+        return new FilePage(channel, startPosition + 8, pageSize);
     }
 
     long getFileSize() {
@@ -388,8 +393,6 @@ public class VirtualPageFile implements Flushable, Closeable {
         int pageCount = virtualFilePageCounts[virtualFileNumber].get();
         long firstPageStart = firstPagePositions[virtualFileNumber].get();
         long finalPageStart = lastPagePositions[virtualFileNumber].get();
-
-        //long[] pageStarts = IntStream.range(0, PAGES_PER_VIRUAL_FILE).mapToLong(page -> getRawPageStart(virtualFileNumber, page)).toArray();
 
         long[] pageStarts = new long[PAGES_PER_VIRUAL_FILE];
         for (int i=0; i < PAGES_PER_VIRUAL_FILE; i++) {
@@ -539,13 +542,13 @@ public class VirtualPageFile implements Flushable, Closeable {
     }
 
     private void writeLong(long startPosition, long value) {
-        final long postHeaderPosition = startPosition - (totalHeaderSize);
-        final int mapIndex = (int) (postHeaderPosition / bufferSize);
-        final int mapPosition = (int) (postHeaderPosition % bufferSize);
-        final int minimumCapacity = mapPosition + 8;
-
-        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
-        bigbuffer.putLong(mapPosition, value);
+        ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
+        longBuffer.asLongBuffer().put(value);
+        try {
+            channel.write(longBuffer, startPosition);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to write tail pointer at " + startPosition + " in " + filePath, e);
+        }
     }
 
     private long readLong(long startPosition) {
@@ -592,7 +595,7 @@ public class VirtualPageFile implements Flushable, Closeable {
             }
 
             try {
-                MappedByteBuffer buffer = channel.map(mapMode, bufferStart, bSize);
+                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bSize);
                 mappedByteBuffers[bufferIndex] = buffer;
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " + " + bSize + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);

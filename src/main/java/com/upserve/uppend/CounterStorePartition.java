@@ -98,8 +98,8 @@ public class CounterStorePartition extends Partition implements Flushable, Close
 
         Arrays.stream(lookups).parallel().forEach(LookupData::flush);
 
-        longKeyFile.flush();
-        metadataBlobFile.flush();
+//        longKeyFile.flush();
+//        metadataBlobFile.flush();
         log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
