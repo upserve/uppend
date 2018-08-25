@@ -16,7 +16,7 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     public VirtualLongBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
-        super(virtualFileNumber, virtualPageFile, true);
+        super(virtualFileNumber, virtualPageFile);
     }
 
     public long append(long val, byte[] bytes) {

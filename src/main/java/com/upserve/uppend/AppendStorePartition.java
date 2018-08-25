@@ -142,10 +142,10 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         Arrays.stream(lookups).forEach(LookupData::flush);
 
-        longKeyFile.flush();
-        metadataBlobFile.flush();
-        blobFile.flush();
-        blocks.flush();
+//        longKeyFile.flush();
+//        metadataBlobFile.flush();
+//        blobFile.flush();
+//        blocks.flush();
 
         log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
