@@ -46,7 +46,7 @@ import static java.lang.StrictMath.min;
  * A fixed number of pages per virtual file are allocated at startup - exceeding this number would be... bad
  * TODO - fix this!
  */
-public class VirtualPageFile implements Flushable, Closeable {
+public class VirtualPageFile implements Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
@@ -97,29 +97,10 @@ public class VirtualPageFile implements Flushable, Closeable {
     @Override
     public void close() throws IOException {
         if (!channel.isOpen()) return;
-        flush();
         Arrays.fill(mappedByteBuffers, null);
 
         if (!readOnly) channel.truncate(nextPagePosition.get());
         channel.close();
-    }
-
-    @Override
-    public void flush() throws IOException {
-//        headerBuffer.force();
-//        pageTableBuffer.force();
-
-//        for (int i=0; i<MAX_BUFFERS; i++) {
-//            MappedByteBuffer buffer = mappedByteBuffers[i];
-//            if ((long) bufferSize * i > nextPagePosition.get()) {
-//                break;
-//            } else if (buffer != null) {
-//                 buffer.force();
-//            }
-//
-//        }
-        // Do not force the channel - it makes the flush really slow
-        //channel.force(true);
     }
 
     int getVirtualFiles() {

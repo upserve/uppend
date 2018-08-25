@@ -1,14 +1,11 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.blobs.VirtualPageFile;
-import com.upserve.uppend.lookup.LookupCache;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
 import java.io.*;
 import java.nio.file.*;
 import java.util.Optional;
-import java.util.concurrent.ForkJoinPool;
 
 import static org.junit.Assert.*;
 
@@ -16,26 +13,11 @@ public class FileStoreTest {
     private final Path path = Paths.get("build/test/tmp/file-store");
     private final Path pageFilesPath = Paths.get("build/test/tmp/file-store-page-files");
 
-    private VirtualPageFile partitionLongKeyFile;
-    private VirtualPageFile partitionMetadataBlobFile;
-    private VirtualPageFile partitionBlobsFile;
-    private BlockedLongs partitionBlocks;
-    private LookupCache partitionLookupCache;
-
     @Before
     public void initialize() throws Exception {
         SafeDeleting.removeTempPath(path);
         SafeDeleting.removeTempPath(pageFilesPath);
         Files.createDirectories(pageFilesPath);
-        Path partitionLongKeyPath = pageFilesPath.resolve("long-key");
-        Path partitionMetadataBlobPath = pageFilesPath.resolve("metadata-blob");
-        Path partitionBlobPath = pageFilesPath.resolve("blob");
-        Path partitionBlocksPath = pageFilesPath.resolve("blocks");
-        partitionLongKeyFile = new VirtualPageFile(partitionLongKeyPath, 36, 1024, 16384,false);
-        partitionMetadataBlobFile = new VirtualPageFile(partitionMetadataBlobPath, 36, 1024, 16384,false);
-        partitionBlobsFile = new VirtualPageFile(partitionBlobPath, 36, 1024, 16384,false);
-        partitionBlocks = new BlockedLongs(partitionBlocksPath, 20, false);
-        partitionLookupCache = new LookupCache(0, 0, ForkJoinPool.commonPool(), null);
     }
 
     @Test
@@ -162,19 +144,6 @@ public class FileStoreTest {
         MyFileStore v = new MyFileStore(dir, 0);
         Files.write(dir.resolve("partitions"), new byte[] { });
         v.streamPartitions(); // current expected behavior is for this to return empty
-    }
-
-    private void flush(FileStore store) {
-        store.flush();
-        try {
-            partitionLongKeyFile.flush();
-            partitionMetadataBlobFile.flush();
-            partitionBlobsFile.flush();
-            partitionBlocks.flush();
-            partitionLookupCache.flush();
-        } catch (IOException e) {
-            throw new UncheckedIOException("trouble flushing", e);
-        }
     }
 
     private class MyFileStore extends FileAppendOnlyStore {
