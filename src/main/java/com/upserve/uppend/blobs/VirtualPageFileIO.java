@@ -6,7 +6,6 @@ import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
-import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.Supplier;
 
 public class VirtualPageFileIO {
@@ -17,19 +16,10 @@ public class VirtualPageFileIO {
 
     protected final int virtualFileNumber;
     private final VirtualPageFile virtualPageFile;
-    private final boolean useMappedPages;
-    private final AtomicStampedReference<Page> lastPage;
 
     VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile) {
-        this(virtualFileNumber, virtualPageFile, false);
-    }
-
-    VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile, boolean useMappedPages) {
         this.virtualFileNumber = virtualFileNumber;
         this.virtualPageFile = virtualPageFile;
-        this.useMappedPages = useMappedPages;
-
-        lastPage = new AtomicStampedReference<>(null, -1);
 
         if (virtualFileNumber > virtualPageFile.getVirtualFiles())
             throw new IllegalStateException("Requested a virtual file " + virtualFileNumber + " which is greater than the max allocated " + virtualPageFile.getVirtualFiles());
@@ -93,13 +83,7 @@ public class VirtualPageFileIO {
     private int writePagedOffset(long pos, byte[] bytes, int offset) {
         int pageNumber = virtualPageFile.pageNumber(pos);
 
-        Page page;
-        int[] holder = new int[1];
-        page = lastPage.get(holder);
-        if (holder[0] != pageNumber) {
-            page = virtualPageFile.getOrCreatePage(virtualFileNumber, pageNumber);
-            lastPage.set(page, pageNumber);
-        }
+        Page page = virtualPageFile.getOrCreatePage(virtualFileNumber, pageNumber);
 
         int bytesWritten;
         bytesWritten = page.put(virtualPageFile.pagePosition(pos), bytes, offset);
@@ -135,13 +119,7 @@ public class VirtualPageFileIO {
     private int readPagedOffset(long pos, byte[] buf, int offset) {
         int pageNumber = virtualPageFile.pageNumber(pos);
 
-        Page page;
-        int[] holder = new int[1];
-        page = lastPage.get(holder);
-        if (holder[0] != pageNumber) {
-            page = virtualPageFile.getExistingPage(virtualFileNumber, pageNumber);
-            lastPage.set(page, pageNumber);
-        }
+        Page page = virtualPageFile.getExistingPage(virtualFileNumber, pageNumber);
 
         int bytesRead;
         bytesRead = page.get(virtualPageFile.pagePosition(pos), buf, offset);

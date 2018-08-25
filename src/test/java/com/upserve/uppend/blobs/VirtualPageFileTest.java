@@ -81,6 +81,9 @@ public class VirtualPageFileTest {
         Page page = instance.getOrCreatePage(5,0);
         page.put(12, "abc".getBytes(), 0);
 
+
+        page = instance.getExistingPage(5,0);
+
         assertEquals(304616L, instance.getFileSize());
 
         instance.close();
