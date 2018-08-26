@@ -72,5 +72,7 @@ public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable {
 
     BlockStats getBlockLongStats();
 
+    PartitionStats getPartitionStats();
+
     long keyCount();
 }

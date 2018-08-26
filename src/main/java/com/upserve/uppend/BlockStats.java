@@ -65,7 +65,7 @@ public class BlockStats {
     }
 
     public BlockStats add(BlockStats other) {
-        if (Objects.isNull(other)) throw new NullPointerException("BlockStats minus method argument is null");
+        if (Objects.isNull(other)) throw new NullPointerException("BlockStats add method argument is null");
         return new BlockStats(
                 pagesLoaded + other.pagesLoaded,
                 size + other.size,

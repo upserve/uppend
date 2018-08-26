@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.LongAdder;
 
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -20,15 +21,20 @@ public class LookupMetadata {
     private final LookupKey maxKey;
     private final int[] keyStorageOrder;
 
+    final LongAdder hitCount;
+    final LongAdder missCount;
+
     private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
 
-    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration, LongAdder missCount, LongAdder hitCount) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
                 minKey,
                 maxKey,
                 keyStorageOrder,
-                metadataGeneration
+                metadataGeneration,
+                missCount,
+                hitCount
         );
 
         newMetadata.writeTo(metaDataBlobs);
@@ -37,25 +43,37 @@ public class LookupMetadata {
     }
 
     LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
+        this(minKey, maxKey, keyStorageOrder, metadataGeneration, new LongAdder(), new LongAdder());
+    }
+
+
+    private LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
         this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
         this.metadataGeneration = metadataGeneration;
 
+        this.hitCount = hitCount;
+        this.missCount = missCount;
+
         bisectKeys = new ConcurrentHashMap<>();
     }
 
     public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration) {
+        return open(metadataBlobs, metadataGeneration, new LongAdder(), new LongAdder());
+    }
+
+    public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
         if (metadataBlobs.isPageAllocated(0L)) {
             byte[] bytes = metadataBlobs.read(0L);
-            return new LookupMetadata(bytes, metadataGeneration);
+            return new LookupMetadata(bytes, metadataGeneration, missCount, hitCount);
         } else {
-            return new LookupMetadata(null, null, new int[0], metadataGeneration);
+            return new LookupMetadata(null, null, new int[0], metadataGeneration, missCount, hitCount);
         }
     }
 
-    LookupMetadata(byte[] bytes, int metadataGeneration) {
+    private LookupMetadata(byte[] bytes, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         int minKeyLength, maxKeyLength;
@@ -79,6 +97,9 @@ public class LookupMetadata {
 
         this.metadataGeneration = metadataGeneration;
 
+        this.hitCount = hitCount;
+        this.missCount = missCount;
+
         bisectKeys = new ConcurrentHashMap<>();
     }
 
@@ -99,6 +120,7 @@ public class LookupMetadata {
 
         if (numKeys == 0) {
             key.setInsertAfterSortIndex(-1);
+            missCount.increment();
             return null;
         }
 
@@ -115,25 +137,30 @@ public class LookupMetadata {
         int comparison = lowerKey.compareTo(key);
         if (comparison > 0 /* new key is less than lowerKey */) {
             key.setInsertAfterSortIndex(-1); // Insert it after this index in the sort order
+            missCount.increment();
             return null;
         }
         if (comparison == 0) {
             key.setPosition(keyStorageOrder[keyIndexLower]);
+            hitCount.increment();
             return longBlobStore.readLong(keyStorageOrder[keyIndexLower]);
         }
 
         comparison = upperKey.compareTo(key);
         if (comparison < 0 /* new key is greater than upperKey */) {
             key.setInsertAfterSortIndex(keyIndexUpper); // Insert it after this index in the sort order
+            missCount.increment();
             return null;
         }
         if (comparison == 0) {
             key.setPosition(keyStorageOrder[keyIndexUpper]);
+            hitCount.increment();
             return longBlobStore.readLong(keyStorageOrder[keyIndexUpper]);
         }
 
         if (numKeys == 2) { // There are no other values keys besides upper and lower
             key.setInsertAfterSortIndex(keyIndexLower);
+            missCount.increment();
             return null;
         }
 
@@ -161,6 +188,7 @@ public class LookupMetadata {
                 lowerKey = midpointKey;
             } else {
                 key.setPosition(keyPosition);
+                hitCount.increment();
                 return longBlobStore.readLong(keyPosition);
             }
 
@@ -168,6 +196,7 @@ public class LookupMetadata {
         } while ((keyIndexLower + 1) < keyIndexUpper);
 
         key.setInsertAfterSortIndex(keyIndexLower); // Insert it in the sort order after this key
+        missCount.increment();
         return null;
     }
 
@@ -211,6 +240,14 @@ public class LookupMetadata {
 
     public int getNumKeys() {
         return numKeys;
+    }
+
+    public long getHitCount() {
+        return hitCount.sum();
+    }
+
+    public long getMissCount(){
+        return missCount.sum();
     }
 
     public int[] getKeyStorageOrder() {
