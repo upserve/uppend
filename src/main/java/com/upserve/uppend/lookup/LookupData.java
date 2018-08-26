@@ -315,6 +315,14 @@ public class LookupData implements Flushable {
         return keyLongBlobs.readLong(keyPosition);
     }
 
+    public long getMetadataLookupMissCount(){
+        return metadata.getMissCount();
+    }
+
+    public long getMetadataLookupHitCount(){
+        return metadata.getHitCount();
+    }
+
     /**
      * load a key from paged files for the partition lookup cache
      * Must return null to prevent loading missing value into cache
@@ -341,21 +349,27 @@ public class LookupData implements Flushable {
             try {
                 return LookupMetadata.open(
                         getMetadataBlobs(),
-                        getMetaDataGeneration()
+                        getMetaDataGeneration(),
+                        getMetaMissCount(),
+                        getMetaHitCount()
                 );
             } catch (IllegalStateException e) {
                 // Try again and let the exception bubble if it fails
                 log.warn("getMetaData failed for read only store - attempting to reload!", e);
                 return LookupMetadata.open(
                         getMetadataBlobs(),
-                        getMetaDataGeneration()
+                        getMetaDataGeneration(),
+                        getMetaMissCount(),
+                        getMetaHitCount()
                 );
             }
         } else {
             try {
                 return LookupMetadata.open(
                         getMetadataBlobs(),
-                        getMetaDataGeneration()
+                        getMetaDataGeneration(),
+                        getMetaMissCount(),
+                        getMetaHitCount()
                 );
             } catch (IllegalStateException e) {
                 log.warn("getMetaData failed for read write store - attempting to repair it!", e);
@@ -373,7 +387,7 @@ public class LookupData implements Flushable {
             int sortedPositionsSize = sortedPositions.length;
             LookupKey minKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[0]) : null;
             LookupKey maxKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[sortedPositionsSize - 1]) : null;
-            return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet());
+            return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet(), getMetaMissCount(), getMetaHitCount());
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to write repaired metadata!", e);
         }
@@ -381,6 +395,22 @@ public class LookupData implements Flushable {
 
     private int getMetaDataGeneration() {
         return metaDataGeneration.get();
+    }
+
+    private LongAdder getMetaHitCount() {
+        if (metadata != null) {
+            return metadata.hitCount;
+        } else {
+            return new LongAdder();
+        }
+    }
+
+    private LongAdder getMetaMissCount() {
+        if (metadata != null) {
+            return metadata.missCount;
+        } else {
+            return new LongAdder();
+        }
     }
 
     /**
@@ -508,7 +538,7 @@ public class LookupData implements Flushable {
         log.debug("Finished creating sortOrder");
 
         try {
-            metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet());
+            metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet(), getMetaMissCount(), getMetaHitCount());
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to write new metadata!", e);
         }

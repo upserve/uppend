@@ -201,6 +201,11 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
+    public PartitionStats getPartitionStats() {
+        return store.getPartitionStats();
+    }
+
+    @Override
     public long keyCount() {
         return store.keyCount();
     }
