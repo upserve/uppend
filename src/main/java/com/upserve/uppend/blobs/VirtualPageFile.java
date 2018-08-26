@@ -78,6 +78,8 @@ public class VirtualPageFile implements Closeable {
     private final AtomicLong[] virtualFilePositions; // the current position in the virtual file for each virtual file
     private final AtomicInteger[] virtualFilePageCounts; // the number of pages currently allocated for each virtual file
 
+    private final LongAdder pageAllocationCount;
+
     private final LongBuffer pageTable; // Indexable list of page start locations for each virtual file
 
     private final int virtualFiles;
@@ -109,6 +111,10 @@ public class VirtualPageFile implements Closeable {
 
     public boolean isReadOnly() {
         return readOnly;
+    }
+
+    public int getAllocatedPageCount() {
+        return pageAllocationCount.intValue();
     }
 
     // Package private methods
@@ -345,6 +351,10 @@ public class VirtualPageFile implements Closeable {
 
         long lastStartPosition = Arrays.stream(lastPagePositions).mapToLong(AtomicLong::get).max().orElse(0L);
 
+        // For statistics...
+        pageAllocationCount = new LongAdder();
+        pageAllocationCount.add(Arrays.stream(virtualFilePageCounts).mapToLong(AtomicInteger::get).sum());
+
         try {
             pageTableBuffer = channel.map(mapMode, headerSize + SELF_DESCRIBING_HEADER_SIZE, tableSize);
             pageTable = pageTableBuffer.asLongBuffer();
@@ -504,6 +514,7 @@ public class VirtualPageFile implements Closeable {
 
         // Now that the page is allocated and persistent - update the counter which is the lock controlling access
         virtualFilePageCounts[virtualFileNumber].getAndIncrement();
+        pageAllocationCount.increment();
     }
 
     private void writeTailPointer(long pageStart, long previousPageStart) {

@@ -48,6 +48,12 @@ public class Benchmark {
     private volatile boolean isDone = false;
     private final String ioStatArgs;
 
+
+    AtomicReference<CacheStats> lookupKeyCacheStats;
+    AtomicReference<FlushStats> flushStats;
+    AtomicReference<PartitionStats> partitionStats;
+    AtomicReference<BlockStats> blockStats;
+
     public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count, String ioStatArgs) {
         this.mode = mode;
 
@@ -98,6 +104,11 @@ public class Benchmark {
             default:
                 throw new RuntimeException("Unknown mode: " + mode);
         }
+
+        lookupKeyCacheStats = new AtomicReference<>(testInstance.getLookupKeyCacheStats());
+        flushStats = new AtomicReference<>(testInstance.getFlushStats());
+        partitionStats = new AtomicReference<>(testInstance.getPartitionStats());
+        blockStats = new AtomicReference<>(testInstance.getBlockLongStats());
     }
 
     private BenchmarkWriter simpleWriter() {
@@ -166,8 +177,6 @@ public class Benchmark {
         AtomicLong read = new AtomicLong(readBytesMeter.getCount());
         AtomicLong readCount = new AtomicLong(readCounter.get());
 
-        AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<CacheStats>(testInstance.getLookupKeyCacheStats());
-        AtomicReference<FlushStats> flushStats = new AtomicReference<FlushStats>(testInstance.getFlushStats());
 
         return new TimerTask() {
             @Override
@@ -200,6 +209,15 @@ public class Benchmark {
 
                     FlushStats fstats = testInstance.getFlushStats();
                     log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
+
+
+                    PartitionStats pStats = testInstance.getPartitionStats();
+                    log.info("Partition Stats: {}", pStats.minus(partitionStats.getAndSet(pStats)));
+
+                    BlockStats bStats = testInstance.getBlockLongStats();
+                    log.info("Block Stats: {}", bStats.minus(blockStats.getAndSet(bStats)));
+
+
                 } catch (Exception e) {
                     log.info("logTimer failed with ", e);
                 }

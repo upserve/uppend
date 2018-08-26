@@ -50,7 +50,12 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
 
     @Override
     public BlockStats getBlockLongStats() {
-        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(ZERO_STATS, BlockStats::add);
+        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(BlockStats.ZERO_STATS, BlockStats::add);
+    }
+
+    @Override
+    public PartitionStats getPartitionStats(){
+        return partitionMap.values().parallelStream().map(AppendStorePartition::getPartitionStats).reduce(PartitionStats.ZERO_STATS, PartitionStats::add);
     }
 
     @Override

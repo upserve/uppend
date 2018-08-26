@@ -9,21 +9,21 @@ import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
 abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
-    public static final int MAX_NUM_PARTITIONS = 9999;
+    static final int MAX_NUM_PARTITIONS = 9999;
 
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    protected final Path dir;
-    protected final Path partitionsDir;
+    final Path dir;
+    final Path partitionsDir;
 
     private final int flushDelaySeconds;
-    protected final Map<String, T> partitionMap;
+    final ConcurrentHashMap<String, T> partitionMap;
 
     protected final boolean readOnly;
     protected final String name;
@@ -33,7 +33,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
     private final int partitionSize;
     private final boolean doHashPartitionValues;
 
-    protected final AtomicBoolean isClosed;
+    final AtomicBoolean isClosed;
 
     private static final int PARTITION_HASH_SEED = 626433832;
     private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
@@ -83,7 +83,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         isClosed = new AtomicBoolean(false);
     }
 
-    protected String partitionHash(String partition) {
+    String partitionHash(String partition) {
         if (doHashPartitionValues) {
             HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
             return String.format("%04d", Math.abs(hcode.asInt()) % partitionSize);
