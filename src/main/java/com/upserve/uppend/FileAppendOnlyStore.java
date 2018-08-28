@@ -145,7 +145,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + name);
 
-        log.info("Flushing!");
+        log.debug("Flushing!");
 
         ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
             partitionMap.values().parallelStream().forEach(appendStorePartition -> {
@@ -173,7 +173,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
             log.error("Flush execution exception", e);
         }
 
-        log.info("Flushed!");
+        log.debug("Flushed!");
     }
 
     @Override
