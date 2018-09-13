@@ -44,7 +44,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         }
         this.dir = dir;
         try {
-            Files.createDirectories((Files.isSymbolicLink(dir) ? Files.readSymbolicLink(dir) : dir).toRealPath());
+            Files.createDirectories((Files.isSymbolicLink(dir) ? Files.readSymbolicLink(dir).toRealPath() : dir));
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
