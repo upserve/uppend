@@ -2,36 +2,42 @@ package com.upserve.uppend;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.common.primitives.Longs;
-import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Paths;
+import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
+    private final Path path = Paths.get("build/test/file-append-only-store");
+
     private AppendOnlyStore newStore() {
-        return new AppendOnlyStoreBuilder().withDir(Paths.get("build/test/file-append-only-store")).withLongLookupHashSize(8).build(false);
+        return newStore(false);
     }
 
+    private AppendOnlyStore newStore(boolean readOnly) {
+        return TestHelper.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
+    }
     private AppendOnlyStore store;
 
     @Rule
     public ExpectedException thrown = ExpectedException.none();
 
     @Before
-    public void initialize() {
+    public void initialize() throws IOException {
+        SafeDeleting.removeDirectory(path);
         store = newStore();
-        store.clear();
     }
 
     @After
-    public void cleanUp() {
+    public void cleanUp() throws IOException {
         try {
             store.close();
         } catch (Exception e) {
@@ -57,6 +63,27 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
+    public void testEmptyReadOnlyStore() throws Exception {
+        cleanUp();
+
+        store = newStore(true);
+
+        assertEquals(0, store.keyCount());
+        assertEquals(0, store.read("foo", "bar").count());
+        assertEquals(0, store.scan().count());
+
+        try (AppendOnlyStore readWriteStore = newStore(false)) {
+
+            readWriteStore.append("foo", "bar", "bytes".getBytes());
+            readWriteStore.flush();
+
+            assertEquals(1, store.keyCount());
+            assertEquals(1, store.read("foo", "bar").count());
+            assertEquals(1, store.scan().count());
+        }
+    }
+
+    @Test
     public void testClear() throws Exception {
         String key = "foobar";
 
@@ -64,6 +91,9 @@ public class AppendOnlyStoreTest {
         store.append("partition", key, bytes);
         store.clear();
         assertEquals(0, store.read("partition", key).count());
+
+        assertEquals(0, store.keys().count());
+
         store.append("partition", key, bytes);
         assertEquals(1, store.read("partition", key).count());
     }
@@ -80,54 +110,59 @@ public class AppendOnlyStoreTest {
         assertEquals(2, store.read("partition", key).count());
     }
 
-
     @Test
     public void testAppendWhileFlushing() throws Exception {
-        // This test is currently slow but it works.
-        // If you purge instead of flush it locks
-        // Concurrent implementation of LongLookup will fix this issue
         ConcurrentHashMap<String, ArrayList<Long>> testData = new ConcurrentHashMap<>();
 
-        Thread flusherThread = new Thread(() -> {
-            while (true) {
-                store.flush();
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException e) {
-                    break;
-                }
-            }
-        });
-        flusherThread.start();
+        ExecutorService executor = new ForkJoinPool();
+        Future future = executor.submit(() -> {
+            new Random(314159)
+                    .longs(100_000, 0, 5_000)
+                    .parallel()
+                    .forEach(val -> {
+                        String key = String.valueOf(val);
 
-        new Random(314159)
-                .longs(50_000, 0, 1000)
-                .parallel()
-                .forEach(val -> {
-                    String key = String.valueOf(val);
+                        testData.compute(key, (k, list) -> {
+                            if (list == null) {
+                                list = new ArrayList<>();
+                            }
+                            list.add(val + 5);
 
-                    testData.compute(key, (k, list) -> {
-                        if (list == null) {
-                            list = new ArrayList<>();
-                        }
-                        list.add(val);
+                            store.append("_" + k.substring(0, 1), k, Longs.toByteArray(val + 5));
 
-                        store.append("_" + key.substring(0, 1), key, Longs.toByteArray(val));
+                            long[] expected = list.stream().mapToLong(v -> v).toArray();
+                            long[] result = store.read("_" + k.substring(0, 1), k).mapToLong(Longs::fromByteArray).toArray();
 
-                        assertArrayEquals(
-                                list.stream().mapToLong(v -> v).toArray(),
-                                store.read("_" + key.substring(0, 1), key).mapToLong(Longs::fromByteArray).toArray()
-                        );
+                            if (expected.length != result.length) {
+                                fail("Array lenth does not match");
+                            }
 
-                        return list;
+                            assertArrayEquals(
+                                    expected,
+                                    result
+                            );
+
+                            return list;
+                        });
+
                     });
+        });
 
-                });
+        future.get(40_000, TimeUnit.MILLISECONDS);
+    }
 
-        Thread.sleep(100);
-
-        flusherThread.interrupt();
-        flusherThread.join();
+    @Test
+    public void testKeyCount() {
+        assertEquals(0, store.keyCount());
+        store.append("foo", "bar", "bytes".getBytes());
+        store.append("foo", "bar", "bytes".getBytes());
+        store.append("foo", "barone", "bytes".getBytes());
+        store.append("footwo", "barone", "bytes".getBytes());
+        assertEquals(0, store.keyCount());
+        store.flush();
+        assertEquals(3, store.keyCount());
+        store.clear();
+        assertEquals(0, store.keyCount());
     }
 
     @Test
@@ -144,8 +179,8 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void fillTheCache() {
-        int keys = LongLookup.DEFAULT_WRITE_CACHE_SIZE * 2;
+    public void fillTheCache() throws Exception {
+        int keys = TestHelper.getDefaultTestBuilder().getInitialLookupKeyCacheSize() * 2;
 
         Random random = new Random(9876);
         Set<String> uuidSet = new HashSet<>();
@@ -158,7 +193,7 @@ public class AppendOnlyStoreTest {
                 .parallel()
                 .forEach(uuid -> store.append("_" + uuid.substring(0, 2), uuid, uuid.getBytes()));
 
-        cleanUp();
+        store.close();
         store = newStore();
         String[] uuids2 = Arrays.copyOf(uuids, uuids.length);
         Collections.shuffle(Arrays.asList(uuids2));
@@ -188,36 +223,6 @@ public class AppendOnlyStoreTest {
         assertNotNull(valueBytes);
         String value = new String(valueBytes);
         assertEquals("baz", value);
-    }
-
-    @Test
-    public void testReadFlushed() throws Exception {
-        store.append("partition", "foo", "bar".getBytes());
-        assertEquals(0, store.readFlushed("partition", "foo").count());
-        store.flush();
-        Optional<byte[]> val = store.readFlushed("partition", "foo").findFirst();
-        assertTrue(val.isPresent());
-        assertEquals("bar", new String(val.get()));
-    }
-
-    @Test
-    public void testReadSequentialFlushed() throws Exception {
-        store.append("partition", "foo", "bar".getBytes());
-        store.append("partition", "foo", "baz".getBytes());
-        assertEquals(0, store.readSequentialFlushed("partition", "foo").count());
-        store.flush();
-        String[] vals = store.readSequentialFlushed("partition", "foo").map(String::new).toArray(String[]::new);
-        assertArrayEquals(new String[]{"bar", "baz"}, vals);
-    }
-
-    @Test
-    public void testReadLastFlushed() throws Exception {
-        store.append("partition", "foo", "bar".getBytes());
-        store.append("partition", "foo", "baz".getBytes());
-        assertEquals(null, store.readLastFlushed("partition", "foo"));
-        store.flush();
-        String val = new String(store.readLastFlushed("partition", "foo"));
-        assertEquals("baz", val);
     }
 
     @Test
@@ -293,17 +298,7 @@ public class AppendOnlyStoreTest {
         store.append("partition2", "three", "baz".getBytes());
         store.close();
         store = newStore();
-        assertArrayEquals(new String[]{"one", "two"}, store.keys("partition").sorted().toArray(String[]::new));
-    }
-
-    @Test
-    public void testPartitions() throws Exception {
-        store.append("partition_one", "one", "bar".getBytes());
-        store.append("partition_two", "two", "baz".getBytes());
-        store.append("partition$three", "three", "bop".getBytes());
-        store.append("partition-four", "four", "bap".getBytes());
-        store.append("_2016-01-02", "five", "bap".getBytes());
-        assertArrayEquals(new String[]{"_2016-01-02", "partition$three", "partition-four", "partition_one", "partition_two"}, store.partitions().sorted().toArray(String[]::new));
+        assertArrayEquals(new String[]{"one", "three", "two", "two"}, store.keys().sorted().toArray(String[]::new));
     }
 
     @Test
@@ -315,7 +310,7 @@ public class AppendOnlyStoreTest {
         store.append("partition_two", "five", "bap".getBytes());
 
         Map<String, List<String>> result = store
-                .scan("partition_one")
+                .scan()
                 .collect(Collectors
                         .toMap(
                                 Map.Entry::getKey,
@@ -329,7 +324,8 @@ public class AppendOnlyStoreTest {
         Map<String, List<String>> expected = ImmutableMap.of(
                 "one", Arrays.asList("bar", "bap"),
                 "two", Collections.singletonList("baz"),
-                "three", Collections.singletonList("bop")
+                "three", Collections.singletonList("bop"),
+                "five", Collections.singletonList("bap")
         );
 
         assertEquals(expected, result);

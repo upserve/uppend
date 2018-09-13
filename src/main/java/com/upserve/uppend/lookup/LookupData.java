@@ -1,545 +1,658 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
-import com.upserve.uppend.Blobs;
-import com.upserve.uppend.util.*;
-import it.unimi.dsi.fastutil.objects.*;
+import com.upserve.uppend.AutoFlusher;
+import com.upserve.uppend.blobs.*;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.ByteBuffer;
-import java.nio.channels.*;
-import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.*;
+import java.util.concurrent.locks.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class LookupData implements AutoCloseable, Flushable {
+public class LookupData implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final AtomicBoolean isClosed;
-    private final AtomicBoolean isDirty;
+    private final PartitionLookupCache partitionLookupCache;
+    private final Function<LookupKey, Long> lookupFunction;
+    private final BiConsumer<LookupKey, Long> lookupBiConsumer;
 
-    private final Path path;
-    private final Path metadataPath;
-    private final Supplier<ByteBuffer> recordBufSupplier;
-    private final FileChannel chan;
+    private final AtomicInteger writeCacheCounter;
 
-    private final Object memMonitor = new Object();
-    private Object2LongSortedMap<LookupKey> mem;
-    private Object2IntLinkedOpenHashMap<LookupKey> memOrder;
+    private final int flushThreshold;
 
-    private final Blobs keyBlobs;
+    // The container for stuff we need to write - Only new keys can be in the write cache
+    final ConcurrentHashMap<LookupKey, Long> writeCache;
+    // keys written but not yet written to the metadata live here
+    final ConcurrentHashMap<LookupKey, Long> flushCache;
 
-    public LookupData(Path path, Path metadataPath) {
-        log.trace("opening lookup data: {}", path);
 
-        this.path = path;
-        this.metadataPath = metadataPath;
-        Path parentPath = path.getParent();
-        if (!Files.exists(parentPath) /* notExists() returns true erroneously */) {
-            try {
-                Files.createDirectories(parentPath);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to make parent dir: " + parentPath, e);
-            }
+    private final AtomicReference<LookupMetadata> flushReference;
+    private final ReadWriteLock metadataLock;
+    private final Lock metadataReadLock;
+    private final Lock metadataWriteLock;
+
+
+    private final boolean readOnly;
+
+    private final VirtualLongBlobStore keyLongBlobs;
+
+    private final VirtualMutableBlobStore metadataBlobs;
+
+    private final ReadWriteLock consistentWriteCacheLock;
+    private final Lock consistentWriteCacheReadLock;
+    private final Lock consistentWriteCacheWriteLock;
+
+    // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
+    private AtomicInteger metaDataGeneration;
+
+    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, boolean readOnly) {
+        this(keyLongBlobs, metadataBlobs, lookupCache, -1, readOnly);
+    }
+
+    public LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold, boolean readOnly) {
+
+        this.keyLongBlobs = keyLongBlobs;
+        this.metadataBlobs = metadataBlobs;
+
+        this.partitionLookupCache = lookupCache;
+        if (lookupCache.isKeyCacheActive()) {
+            lookupFunction = key -> partitionLookupCache.getLong(key , this::findValueFor);
+            lookupBiConsumer = partitionLookupCache::putLookup;
+        } else {
+            lookupFunction = this::findValueFor;
+            lookupBiConsumer = (key, value) -> {};
         }
 
-        recordBufSupplier = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(16);
+        this.readOnly = readOnly;
 
-        try {
-            chan = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-        } catch (IOException e) {
-            throw new UncheckedIOException("can't open file: " + path, e);
+        this.flushThreshold = flushThreshold;
+
+        if (readOnly) {
+            writeCache = null;
+            flushCache = null;
+            flushReference = null;
+
+            metadataLock = null;
+            metadataReadLock = null;
+            metadataWriteLock = null;
+
+        } else {
+            writeCache = new ConcurrentHashMap<>();
+            flushCache = new ConcurrentHashMap<>();
+            flushReference = new AtomicReference<>();
+
+            metadataLock = new ReentrantReadWriteLock();
+            metadataReadLock = metadataLock.readLock();
+            metadataWriteLock = metadataLock.writeLock();
         }
 
-        keyBlobs = new Blobs(path.resolveSibling("keys"));
+        writeCacheCounter = new AtomicInteger();
 
-        try {
-            init();
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to initialize data at " + path, e);
-        }
+        metaDataGeneration = new AtomicInteger();
 
-        isClosed = new AtomicBoolean(false);
-        isDirty = new AtomicBoolean(false);
+        consistentWriteCacheLock = new ReentrantReadWriteLock();
+        consistentWriteCacheReadLock = consistentWriteCacheLock.readLock();
+        consistentWriteCacheWriteLock = consistentWriteCacheLock.writeLock();
     }
 
     /**
      * Return the value associated with the given key
      *
      * @param key the key to look up
-     * @return the value associated with the key, or {@code Long.MIN_VALUE} if
-     *         the key was not found
+     * @return the value associated with the key, null if the key was not found
      */
-    public long get(LookupKey key) {
-        synchronized (memMonitor) {
-            return mem.getLong(key);
+    public Long getValue(LookupKey key) {
+        if (readOnly) {
+            return getCached(key);
+        } else {
+            return writeCache.getOrDefault(key, getCached(key));
+        }
+    }
+
+    VirtualMutableBlobStore getMetadataBlobs() {
+        return metadataBlobs;
+    }
+
+    private void flushThreshold() {
+        if (flushThreshold != -1 && writeCacheCounter.getAndIncrement() == flushThreshold) {
+            AutoFlusher.submitWork(this::flush);
         }
     }
 
     /**
-     * Set the value associated with the given key and return the prior value
+     * Set the value of the key if it does not exist and return the new value. If it does exist, return the existing value.
      *
-     * @param key the key whose value to set
-     * @param value the new value set
-     * @return the old value associated with the key, or {@code Long.MIN_VALUE}
-     *         if the entry didn't exist yet
+     * @param key the key to check or set
+     * @param allocateLongFunc the function to call to getLookupData the value if this is a new key
+     * @return the value associated with the key
      */
-    public long put(LookupKey key, final long value) {
-        log.trace("putting {}={} in {}", key, value, path);
-
-        final long existingValue;
-        final int index;
-        final boolean existing;
-
-        synchronized (memMonitor) {
-            existingValue = mem.put(key, value);
-            if (existing = existingValue != Long.MIN_VALUE) {
-                index = memOrder.getInt(key);
-                if (index == Integer.MIN_VALUE) {
-                    throw new IllegalStateException("unknown index order for existing key: " + key);
-                }
-            } else {
-                index = memOrder.size();
-                if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-                }
-            }
-        }
-
-        if (existing) {
-            set(index, value);
-        } else {
-            set(index, key, value);
-        }
-
-        return existingValue;
-    }
-
-    public long putIfNotExists(LookupKey key, final long value) {
-        log.trace("putting (if not exists) {}={} in {}", key, value, path);
-
-        final int index;
-
-        synchronized (memMonitor) {
-            long existingValue = mem.getLong(key);
-            if (existingValue != Long.MIN_VALUE) {
-                return existingValue;
-            }
-            if (mem.put(key, value) != Long.MIN_VALUE) {
-                throw new IllegalStateException("race while performing conditional put within synchronized block");
-            }
-
-            index = memOrder.size();
-            if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-            }
-        }
-        set(index, key, value);
-        return value;
-    }
-
     public long putIfNotExists(LookupKey key, LongSupplier allocateLongFunc) {
-        log.trace("putting (if not exists) {}=<lambda> in {}", key, path);
+        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
 
-        final long newValue;
-        final int index;
+        long[] ref = new long[1];
+        writeCache.compute(key, (k, value) -> {
+            if (value == null) {
+                Long existingValue = getCached(k);
+                if (existingValue == null) {
+                    long val = allocateLongFunc.getAsLong();
+                    ref[0] = val;
+                    flushThreshold();
+                    return val;
 
-        synchronized (memMonitor) {
-            long firstExistingValue = mem.getLong(key);
-            if (firstExistingValue != Long.MIN_VALUE) {
-                return firstExistingValue;
-            }
-
-            newValue = allocateLongFunc.getAsLong();
-            long existingValue = mem.put(key, newValue);
-
-            if (existingValue != Long.MIN_VALUE) {
-                throw new IllegalStateException("race while putting (if not exists) " + key + "=<lambda> in " + path);
-            }
-            index = memOrder.size();
-            if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-            }
-        }
-
-        set(index, key, newValue);
-
-        return newValue;
-    }
-
-    public long increment(LookupKey key, long delta) {
-        log.trace("incrementing {} by {} in {}", key, delta, path);
-
-        final long existingValue;
-        final long newValue;
-        final int index;
-        final boolean existing;
-
-        synchronized (memMonitor) {
-            existingValue = mem.getLong(key);
-            if (existing = existingValue != Long.MIN_VALUE) {
-                newValue = existingValue + delta;
-                index = memOrder.getInt(key);
-                if (index == Integer.MIN_VALUE) {
-                    throw new IllegalStateException("unknown index order for existing key: " + key);
+                } else {
+                    ref[0] = existingValue;
+                    return null;
                 }
             } else {
-                newValue = delta;
-                index = memOrder.size();
-                if (memOrder.put(key, index) != Integer.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem order key at index " + index + ": " + key);
-                }
+                ref[0] = value;
+                return value;
             }
-            if (mem.put(key, newValue) != existingValue) {
-                throw new IllegalStateException("race while incrementing key " + key + " in " + path);
-            }
-        }
+        });
 
-        if (existing) {
-            set(index, newValue);
-        } else {
-            set(index, key, newValue);
-        }
-
-        return newValue;
+        return ref[0];
     }
 
     /**
-     * Check if this LookupData is dirty before calling flush
-     * @return
+     * Set the value of the key if it does not exist and return the new value. If it does exist, return the existing value.
+     *
+     * @param key the key to check or set
+     * @param value the value to put if this is a new key
+     * @return the value associated with the key
      */
-    public boolean isDirty(){
-        return isDirty.get();
-    }
+    public long putIfNotExists(LookupKey key, long value) {
+        if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
 
-    private void set(int index, LookupKey key, long value) {
-        isDirty.set(true);
-        try {
-            long keyPos = keyBlobs.append(key.bytes());
-            ByteBuffer buf = recordBufSupplier.get();
-            buf.putLong(keyPos);
-            buf.putLong(value);
-            buf.flip();
-            chan.write(buf, index * 16);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to write key: " + key, e);
-        }
-    }
+        long[] ref = new long[1];
+        writeCache.compute(key, (k, val) -> {
+            if (val == null) {
+                Long existingValue = getCached(k);
+                if (existingValue == null) {
+                    ref[0] = value;
+                    flushThreshold();
+                    return value;
 
-    private void set(int index, long value) {
-        isDirty.set(true);
-        try {
-            ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
-            buf.putLong(value);
-            buf.flip();
-            chan.write(buf, index * 16 + 8);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to write value (" + value + ") at index: " + index, e);
-        }
-    }
-
-
-    @Override
-    public void close() throws IOException {
-        log.trace("closing lookup data at {}", path);
-        synchronized (chan) {
-            if (isClosed.compareAndSet(false, true)) {
-                try {
-                    keyBlobs.close();
-                } catch (Exception e) {
-                    log.error("unable to close key blobs", e);
+                } else {
+                    ref[0] = existingValue;
+                    return null;
                 }
-                chan.close();
-                log.trace("closed lookup data at {}", path);
-                LookupMetadata metadata = generateMetadata();
-                metadata.writeTo(metadataPath);
-                log.trace("wrote lookup metadata at {}: {}", metadataPath, metadata);
             } else {
-                log.warn("lookup data already closed: " + path, new RuntimeException("already closed") /* get stack */);
+                ref[0] = val;
+                return val;
+            }
+        });
+
+        return ref[0];
+    }
+
+    /**
+     * Increment the value associated with this key by the given amount
+     *
+     * @param key the key to be incremented
+     * @param delta the amount to increment the value by
+     * @return the value new associated with the key
+     */
+    public long increment(LookupKey key, long delta) {
+        if (readOnly) throw new RuntimeException("Can not increment in read only LookupData");
+
+        long[] ref = new long[1];
+        writeCache.compute(key, (writeKey, value) -> {
+            if (value == null) {
+                Long existingValue = getCached(writeKey);
+                if (existingValue == null) {
+                    ref[0] = delta;
+                    flushThreshold();
+                    return delta; // must write a new key with delta as the value when we flush
+
+                } else {
+                    long newValue = existingValue + delta;
+                    ref[0] = newValue;
+
+                    flushCache.computeIfPresent(writeKey, (flushKey, v) -> newValue);
+                    lookupBiConsumer.accept(writeKey, newValue); // Update the read cache
+                    keyLongBlobs.writeLong(writeKey.getPosition(), newValue); // Update the value on disk
+
+                    // No need to add this to the write cache
+                    return null;
+                }
+            } else {
+                // This value is only in the write cache!
+                value += delta;
+                ref[0] = value;
+                return value;
+            }
+        });
+
+        return ref[0];
+    }
+
+    /**
+     * Set the value of this key.
+     *
+     * @param key the key to check or set
+     * @param value the value to set for this key
+     * @return the previous value associated with the key or null if it did not exist
+     */
+    public Long put(LookupKey key, final long value) {
+        if (readOnly) throw new RuntimeException("Can not put in read only LookupData");
+
+        Long[] ref = new Long[1];
+        writeCache.compute(key, (writeKey, val) -> {
+            if (val == null) {
+                Long existingValue = getCached(writeKey);
+                if (existingValue == null) {
+                    ref[0] = null;
+                    flushThreshold();
+                    return value; // must write a new key with the value when we flush
+
+                } else {
+                    ref[0] = existingValue;
+
+                    flushCache.computeIfPresent(writeKey, (flushKey, v) -> value);
+                    lookupBiConsumer.accept(writeKey, value); // Update the read cache
+                    keyLongBlobs.writeLong(writeKey.getPosition(), value); // Update the value on disk
+
+                    // No need to add this to the write cache
+                    return null;
+                }
+            } else {
+                // This value is only in the write cache!
+                ref[0] = val;
+                return value;
+            }
+        });
+
+        return ref[0];
+    }
+
+    private Long getCached(LookupKey key) {
+        if (readOnly) {
+            return lookupFunction.apply(key);
+        } else {
+            return flushCache.getOrDefault(key, lookupFunction.apply(key));
+        }
+    }
+
+    /**
+     * read the LookupKey by index
+     *
+     * @param keyPosition the position in the longBlobs files
+     * @return the cached lookup key
+     */
+    public LookupKey readKey(Long keyPosition) {
+        return new LookupKey(keyLongBlobs.readBlob(keyPosition));
+    }
+
+    /**
+     * Used in iterators to return an entry containing the key as a string and the value
+     *
+     * @param keyPosition the position in the longBlobs files
+     * @return the key and the long value associated with it
+     */
+    public Map.Entry<LookupKey, Long> readEntry(long keyPosition) {
+        return Maps.immutableEntry(readKey(keyPosition), readValue(keyPosition));
+    }
+
+
+    /**
+     * Read the long value associated with a particular key number
+     *
+     * @param keyPosition the position in the longBlobs files
+     * @return the long value
+     */
+    public long readValue(long keyPosition) {
+        return keyLongBlobs.readLong(keyPosition);
+    }
+
+    /**
+     * load a key from paged files for the partition lookup cache
+     * Must return null to prevent loading missing value into cache
+     *
+     * @param key the Key we are looking for
+     * @return Long value or null if not present
+     */
+    private Long findValueFor(PartitionLookupKey key) {
+        return findValueFor(key.getLookupKey());
+    }
+
+    /**
+     * Load a key from cached pages
+     *
+     * @param key the key we are looking for
+     * @return Long value or null if not present
+     */
+    private Long findValueFor(LookupKey key) {
+        return getMetadata().findKey(keyLongBlobs, key);
+    }
+
+    LookupMetadata loadMetadata() {
+        if (readOnly) {
+            try {
+                return LookupMetadata.open(
+                        getMetadataBlobs(),
+                        getMetaDataGeneration()
+                );
+            } catch (IllegalStateException e) {
+                // Try again and let the exception bubble if it fails
+                log.warn("getMetaData failed for read only store - attempting to reload!", e);
+                return LookupMetadata.open(
+                        getMetadataBlobs(),
+                        getMetaDataGeneration()
+                );
+            }
+        } else {
+            try {
+                return LookupMetadata.open(
+                        getMetadataBlobs(),
+                        getMetaDataGeneration()
+                );
+            } catch (IllegalStateException e) {
+                log.warn("getMetaData failed for read write store - attempting to repair it!", e);
+                return repairMetadata();
             }
         }
     }
+
+    private synchronized LookupMetadata repairMetadata() {
+        int[] sortedPositions = keyLongBlobs.positionBlobStream()
+                .sorted(Comparator.comparing(entry -> new LookupKey(entry.getValue())))
+                .mapToInt(entry -> entry.getKey().intValue())
+                .toArray();
+        try {
+            int sortedPositionsSize = sortedPositions.length;
+            LookupKey minKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[0]) : null;
+            LookupKey maxKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[sortedPositionsSize - 1]) : null;
+            return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet());
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to write repaired metadata!", e);
+        }
+    }
+
+    private int getMetaDataGeneration() {
+        return metaDataGeneration.get();
+    }
+
+    /**
+     * Create a copy of the keys currently in the write cache
+     *
+     * @return the key set
+     */
+    private Set<LookupKey> writeCacheKeySetCopy() {
+        if (writeCache != null) {
+            return new HashSet<>(writeCache.keySet());
+        } else {
+            return Collections.emptySet();
+        }
+    }
+
+    /**
+     * Create a copy of the write cache
+     *
+     * @return the copy of the Map
+     */
+    private Map<LookupKey, Long> writeCacheCopy() {
+        if (writeCache != null) {
+            return new HashMap<>(writeCache);
+        } else {
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
+     * Only counts flushed keys.
+     *
+     * @return the number of keys
+     */
+    public int keyCount() {
+        return getMetadata().getNumKeys();
+    }
+
+    void flushWriteCache(LookupMetadata currentMetadata) {
+
+        Set<LookupKey> keys = writeCacheKeySetCopy();
+
+        // Now stream the keys and do sorted merge join on the keyStorageOrder from the current metadata
+
+        int currentMetadataGeneration = currentMetadata.getMetadataGeneration();
+        log.debug("Flushing {} entries", keys.size());
+
+        try {
+            // Write lock while we move entries from the writeCache to the flush cache
+            // This does not block new inserts - only scan operations that need a consistent view of the flushCache and writeCache
+            consistentWriteCacheWriteLock.lock();
+            keys.stream()
+                    .peek(key -> {
+                        // Check the metadata generation of the LookupKeys
+                        if (key.getMetaDataGeneration() != currentMetadataGeneration) {
+                            // Update the index of the key for the current metadata generation for so we can insert it correctly
+                            currentMetadata.findKey(keyLongBlobs, key);
+                        }
+                    })
+                    .forEach(key -> {
+                                writeCache.computeIfPresent(key, (k, v) -> {
+                                    flushCache.put(k, v);
+
+                                    if (k.byteLength() > 256) log.warn("Key length greater than 256: {}", key.toString());
+                                    final long pos = keyLongBlobs.append(v, k.bytes());
+                                    if (pos > Integer.MAX_VALUE) {
+                                        // TODO is there a way to deal with this?
+                                        throw new IllegalStateException("Maximum key store size exceeded!");
+                                    }
+                                    key.setPosition((int) pos);
+
+                                    return null;
+                                });
+                            }
+
+                    );
+
+        } finally {
+            consistentWriteCacheWriteLock.unlock();
+        }
+
+        log.debug("flushed keys");
+
+    }
+
+    void generateMetaData(LookupMetadata currentMetadata) {
+        int[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
+
+        int flushSize = flushCache.size();
+
+        // Update the counter and flush again if there are still more entries in the write cache than the threshold
+        if (flushThreshold != -1 && writeCacheCounter.addAndGet(-flushSize) > flushThreshold) {
+            AutoFlusher.submitWork(this::flush);
+        }
+
+        int[] newKeySortOrder = new int[currentKeySortOrder.length + flushSize];
+
+        Map<Integer, List<LookupKey>> newKeysGroupedBySortOrderIndex = flushCache.keySet().stream().collect(Collectors.groupingBy(LookupKey::getInsertAfterSortIndex, Collectors.toList()));
+
+        int index = 0;
+
+        LookupKey minKey = currentMetadata.getMinKey();
+        LookupKey maxKey = currentMetadata.getMaxKey();
+
+        List<LookupKey> newEntries = null;
+
+        for (int i = -1; i < currentKeySortOrder.length; i++) {
+            newEntries = newKeysGroupedBySortOrderIndex.getOrDefault(i, Collections.emptyList());
+            newEntries.sort(LookupKey::compareTo);
+
+            if (i == -1) {
+                if (newEntries.size() > 0) minKey = newEntries.get(0);
+            } else {
+                newKeySortOrder[index] = currentKeySortOrder[i];
+                index++;
+            }
+
+            for (LookupKey key : newEntries) {
+                newKeySortOrder[index] = key.getPosition();
+                index++;
+            }
+
+            if (i == currentKeySortOrder.length - 1 && newEntries.size() > 0) {
+                maxKey = newEntries.get(newEntries.size() - 1);
+            }
+        }
+
+        log.debug("Finished creating sortOrder");
+
+        try {
+            synchronized (flushReference) {
+                LookupMetadata metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet());
+                partitionLookupCache.putMetadata(this, metadata);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to write new metadata!", e);
+        }
+    }
+
+    void flushCacheToReadCache() {
+        Iterator<Map.Entry<LookupKey, Long>> iterator = flushCache.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<LookupKey, Long> entry = iterator.next();
+            lookupBiConsumer.accept(entry.getKey(), entry.getValue());
+            iterator.remove();
+        }
+    }
+
+    private LookupMetadata getMetadata() {
+        if (readOnly){
+            return partitionLookupCache.getMetadata(this);
+        } else {
+
+            try {
+                metadataReadLock.lock();
+                LookupMetadata metadata = flushReference.get();
+                if (Objects.isNull(metadata)) {
+                    metadata = partitionLookupCache.getMetadata(this);
+                }
+                return metadata;
+            } finally {
+                metadataReadLock.unlock();
+            }
+        }
+    }
+
 
     @Override
-    public void flush() throws IOException {
-        if (isDirty.getAndSet(false)) {
-            synchronized (chan) {
-                if (isClosed.get()) {
-                    log.debug("ignoring flush of closed lookup data at {}", path);
-                    return;
-                }
-                log.trace("flushing lookup and metadata at {}", metadataPath);
-                keyBlobs.flush();
-                chan.force(true);
-                LookupMetadata metadata = generateMetadata();
-                metadata.writeTo(metadataPath);
-                log.trace("flushed lookup and metadata at {}: {}", metadataPath, metadata);
+    public synchronized void flush() {
+        if (readOnly) throw new RuntimeException("Can not flush read only LookupData");
+
+        if (writeCache.size() > 0) {
+            log.debug("starting flush");
+
+            LookupMetadata currentMetadata;
+            try {
+                // Need to atomically get the cached metadata and hold the reference while we flush
+                metadataWriteLock.lock();
+                currentMetadata = partitionLookupCache.getMetadata(this);
+                flushReference.set(currentMetadata);
+            } finally {
+                metadataWriteLock.unlock();
             }
+
+            try {
+                flushWriteCache(currentMetadata);
+
+                generateMetaData(currentMetadata);
+
+                // record stats about flushing
+                partitionLookupCache.addFlushCount(flushCache.size());
+            } finally {
+                flushReference.set(null);
+            }
+            flushCacheToReadCache();
+            log.debug("flushed");
         }
     }
 
-    private void init() throws IOException {
-        synchronized (memMonitor) {
-            mem = new Object2LongAVLTreeMap<>();
-            mem.defaultReturnValue(Long.MIN_VALUE);
-
-            memOrder = new Object2IntLinkedOpenHashMap<>();
-            memOrder.defaultReturnValue(Integer.MIN_VALUE);
-
-            chan.position(0);
-            long pos = 0;
-            long size = chan.size();
-            DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
-            // don't call dis.close() on wrapping InputStream since we don't want it to chain to chan.close()
-            while (pos < size) {
-                long nextPos = pos + 16;
-                if (nextPos > size) {
-                    // corrupt; fix
-                    log.error("truncating at pos " + pos + " for file of corrupted size " + size);
-                    chan.truncate(pos);
-                    break;
-                }
-                long keyPos;
-                try {
-                    keyPos = dis.readLong();
-                } catch (IOException e) {
-                    throw new IOException("read bad key pos at pos " + pos, e);
-                }
-                byte[] keyBytes = keyBlobs.read(keyPos);
-                LookupKey key = new LookupKey(keyBytes);
-                long val;
-                try {
-                    val = dis.readLong();
-                } catch (IOException e) {
-                    throw new IOException("read bad value for key " + key + " at pos " + pos, e);
-                }
-                if (mem.put(key, val) != Long.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem key at pos " + pos + ": " + key);
-                }
-                if (memOrder.put(key, memOrder.size()) != Integer.MIN_VALUE) {
-                    throw new IllegalStateException("encountered repeated mem order key at pos " + pos + ": " + key);
-                }
-                pos = nextPos;
-            }
-            if (chan.position() != chan.size()) {
-                log.warn("init incomplete at pos " + chan.position() + " / " + chan.size());
-            }
+    private int[] getKeyPosition() {
+        if (readOnly) {
+            return getMetadata().getKeyStorageOrder();
+        } else {
+            return IntStream.concat(
+                    flushCache.keySet().stream().mapToInt(LookupKey::getPosition),
+                    Arrays.stream(getMetadata().getKeyStorageOrder())
+            ).distinct().toArray();
         }
     }
 
-    private LookupMetadata generateMetadata() {
-        final LookupKey minKey;
-        final LookupKey maxKey;
-        final int[] keyStorageOrder;
-        final String[] keyStrings;
-
-        synchronized (memMonitor) {
-            minKey = mem.firstKey();
-            maxKey = mem.lastKey();
-            keyStorageOrder = memOrder.values().toIntArray();
-            keyStrings = memOrder.keySet().stream().map(LookupKey::toString).toArray(String[]::new);
-        }
-
-        IntArrayCustomSort.sort(keyStorageOrder, (a, b) -> keyStrings[a].compareTo(keyStrings[b]));
-        return new LookupMetadata(
-                keyStrings.length,
-                minKey,
-                maxKey,
-                keyStorageOrder
-        );
-    }
-
-    static Stream<LookupKey> keys(Path path) {
-        KeyIterator iter;
+    public Stream<LookupKey> keys() {
+        LookupDataIterator<LookupKey> iter;
         try {
-            iter = new KeyIterator(path);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
+            consistentWriteCacheReadLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
+            Set<LookupKey> keySet = writeCacheKeySetCopy();
+            iter = new LookupDataIterator<>(
+                    getKeyPosition(),
+                    keySet.size(),
+                    keySet.iterator(),
+                    position -> {
+                        LookupKey key = readKey(position);
+                        return key;
+                    }
+            );
+        } finally {
+            consistentWriteCacheReadLock.unlock();
         }
         Spliterator<LookupKey> spliter = Spliterators.spliterator(
                 iter,
                 iter.getNumKeys(),
                 Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
         );
-        return StreamSupport.stream(spliter, true).onClose(iter::close);
+        return StreamSupport.stream(spliter, true);
     }
 
-    static Stream<Map.Entry<String, Long>> scan(Path path) {
-        if (Files.notExists(path)) {
-            return Stream.empty();
-        }
-        KeyLongIterator iter;
+    public Stream<Map.Entry<LookupKey, Long>> scan() {
+
+        LookupDataIterator<Map.Entry<LookupKey, Long>> iter;
         try {
-            iter = new KeyLongIterator(path);
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to create key iterator for path: " + path, e);
+            consistentWriteCacheReadLock.lock(); // Read lock the WriteCache while initializing the KeyIterator
+            Map<LookupKey, Long> map = writeCacheCopy();
+            iter = new LookupDataIterator<>(
+                    getKeyPosition(),
+                    map.size(),
+                    map.entrySet().stream().map(entry -> Maps.immutableEntry(entry.getKey(), entry.getValue())).iterator(),
+                    this::readEntry
+            );
+        } finally {
+            consistentWriteCacheReadLock.unlock();
         }
-        Spliterator<Map.Entry<String, Long>> spliter = Spliterators.spliterator(
+
+        Spliterator<Map.Entry<LookupKey, Long>> spliter = Spliterators.spliterator(
                 iter,
                 iter.getNumKeys(),
                 Spliterator.DISTINCT | Spliterator.NONNULL | Spliterator.SIZED
         );
-        return StreamSupport.stream(spliter, true).onClose(iter::close);
+        return StreamSupport.stream(spliter, true);
     }
 
-    static void scan(Path path, ObjLongConsumer<String> keyValueFunction) {
-        if (Files.notExists(path)) {
-            return;
+    public void scan(BiConsumer<LookupKey, Long> keyValueFunction) {
+        final int[] positions;
+        final Map<LookupKey, Long> writeCacheCopy;
+        try {
+            consistentWriteCacheReadLock.lock(); // Read lock the WriteCache while initializing the data to scan
+            positions = getKeyPosition();
+
+            writeCacheCopy = writeCacheCopy();
+        } finally {
+            consistentWriteCacheReadLock.unlock();
         }
-        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
-            try (Blobs keyBlobs = new Blobs(path.resolveSibling("keys"))) {
-                chan.position(0);
-                long pos = 0;
-                long size = chan.size();
-                DataInputStream dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
-                while (pos < size) {
-                    long nextPos = pos + 16;
-                    if (nextPos > size) {
-                        log.warn("scanned past size (" + size + ") of file (" + path + ") at pos " + pos);
-                        break;
-                    }
-                    long keyPos = dis.readLong();
-                    byte[] keyBytes = keyBlobs.read(keyPos);
-                    LookupKey key = new LookupKey(keyBytes);
-                    long val = dis.readLong();
-                    keyValueFunction.accept(key.string(), val);
-                    pos = nextPos;
-                }
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to scan " + path, e);
-        }
+
+        writeCacheCopy
+                .forEach(keyValueFunction);
+
+        // Read but do not cache these keys - easy to add but is it helpful?
+        Arrays.stream(positions)
+                .parallel()
+                .mapToObj(this::readEntry)
+                .forEach(entry -> keyValueFunction
+                        .accept(entry.getKey(), entry.getValue()));
     }
 
-    private static class KeyIterator implements Iterator<LookupKey>, AutoCloseable {
-        private final Path path;
-        private final Path keysPath;
-        private final FileChannel chan;
-        private final FileChannel keysChan;
-        private final int numKeys;
-        private int keyIndex = 0;
-
-        KeyIterator(Path path) throws IOException {
-            this.path = path;
-            chan = FileChannel.open(path, StandardOpenOption.READ);
-            numKeys = (int) (chan.size() / 16);
-            keysPath = path.resolveSibling("keys");
-            keysChan = numKeys > 0 ? FileChannel.open(keysPath, StandardOpenOption.READ) : null;
-        }
-
-        int getNumKeys() {
-            return numKeys;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return keyIndex < numKeys;
-        }
-
-        @Override
-        public LookupKey next() {
-            LookupKey key;
-            try {
-                key = LookupData.readKey(chan, keysChan, keyIndex);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to read at key index " + keyIndex + " from " + path, e);
-            }
-            keyIndex++;
-            return key;
-        }
-
-        @Override
-        public void close() {
-            try {
-                chan.close();
-            } catch (IOException e) {
-                log.error("trouble closing: " + path, e);
-            }
-            try {
-                keysChan.close();
-            } catch (IOException e) {
-                log.error("trouble closing: " + keysPath, e);
-            }
-        }
-    }
-
-    private static class KeyLongIterator implements Iterator<Map.Entry<String, Long>>, AutoCloseable {
-        private final Path path;
-        private final Path keysPath;
-        private final FileChannel chan;
-
-        private final Blobs keyBlobs;
-        private final int numKeys;
-        private int keyIndex = 0;
-        private final DataInputStream dis;
-
-        KeyLongIterator(Path path) throws IOException {
-            this.path = path;
-            chan = FileChannel.open(path, StandardOpenOption.READ);
-            chan.position(0);
-            keysPath = path.resolveSibling("keys");
-            keyBlobs = new Blobs(keysPath);
-            numKeys = (int) chan.size() / 16;
-            dis = new DataInputStream(new BufferedInputStream(Channels.newInputStream(chan), 8192));
-        }
-
-        int getNumKeys() {
-            return numKeys;
-        }
-
-        @Override
-        public boolean hasNext() {
-            return keyIndex < numKeys;
-        }
-
-        @Override
-        public Map.Entry<String, Long> next() {
-            try {
-                long keyPos = dis.readLong();
-                byte[] keyBytes = keyBlobs.read(keyPos);
-                LookupKey key = new LookupKey(keyBytes);
-                long val = dis.readLong();
-                keyIndex++;
-                return Maps.immutableEntry(key.string(), val);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to read at key index " + keyIndex + " from " + path, e);
-            }
-        }
-
-        @Override
-        public void close() {
-            try {
-                chan.close();
-            } catch (IOException e) {
-                log.error("trouble closing: " + path, e);
-            }
-            keyBlobs.close();
-        }
-    }
-
-    static int numEntries(FileChannel chan) throws IOException {
-        return (int) (chan.size() / 16);
-    }
-
-    static LookupKey readKey(FileChannel chan, FileChannel keysChan, int keyNumber) throws IOException {
-        ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
-        long pos = keyNumber * 16;
-        chan.read(longBuf, pos);
-        longBuf.flip();
-        long keyPos = longBuf.getLong();
-        byte[] keyBytes = Blobs.read(keysChan, keyPos);
-        return new LookupKey(keyBytes);
-    }
-
-    static long readValue(FileChannel chan, int keyIndex) throws IOException {
-        long pos = keyIndex * 16 + 8;
-        ByteBuffer buf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
-        chan.read(buf, pos);
-        buf.flip();
-        return buf.getLong();
-    }
 }

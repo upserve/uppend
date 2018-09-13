@@ -1,99 +1,130 @@
 package com.upserve.uppend;
 
-import com.codahale.metrics.MetricRegistry;
-import com.upserve.uppend.lookup.LongLookup;
+import com.upserve.uppend.blobs.PageCache;
 import com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics;
 
-import java.nio.file.Path;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.*;
 
-public class AppendOnlyStoreBuilder {
-    private Path dir;
-    private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
-    private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
-    private int flushDelaySeconds = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
-    private int blobsPerBlock = FileAppendOnlyStore.DEFAULT_BLOBS_PER_BLOCK;
-    private int suggestedBufferSize = 0;
-    private ExecutorService executorService = null;
+public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuilder> {
 
-    private MetricRegistry metrics;
+    // Blocked Longs Config Options
+    public static final int DEFAULT_BLOBS_PER_BLOCK = 127;
 
-    public AppendOnlyStoreBuilder withDir(Path dir) {
-        this.dir = dir;
-        return this;
-    }
+    private int blobsPerBlock = DEFAULT_BLOBS_PER_BLOCK;
 
-    public AppendOnlyStoreBuilder withBufferedAppend(int suggestedBufferSize){
-        this.suggestedBufferSize = suggestedBufferSize;
-        return this;
-    }
+    // Blob Cache Options
+    public static final int DEFAULT_BLOB_PAGE_SIZE = 4 * 1024 * 1024;
+    public static final int DEFAULT_MAXIMUM_CACHED_BLOB_PAGES = 1024;
+    public static final int DEFAULT_INITIAL_BLOB_PAGE_CACHE_SIZE = 256;
 
-    public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock){
+    private int blobPageSize = DEFAULT_BLOB_PAGE_SIZE;
+    private int maximumCachedBlobPages = DEFAULT_MAXIMUM_CACHED_BLOB_PAGES;
+    private int initialBlobPageCacheSize = DEFAULT_INITIAL_BLOB_PAGE_CACHE_SIZE;
+
+    private ExecutorService blobCacheExecutorService = ForkJoinPool.commonPool();
+
+    // Blocked Long Options
+    public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock) {
         this.blobsPerBlock = blobsPerBlock;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withBufferedAppend(int maxBufferSize, ExecutorService executorService){
-        this.suggestedBufferSize = maxBufferSize;
-        this.executorService = executorService;
+    // Blob Cache Options
+    public AppendOnlyStoreBuilder withBlobPageSize(int blobPageSize) {
+        this.blobPageSize = blobPageSize;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
-        this.longLookupHashSize = longLookupHashSize;
+    public AppendOnlyStoreBuilder withMaximumBlobCacheSize(int maximumBlobCacheSize) {
+        this.maximumCachedBlobPages = maximumBlobCacheSize;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withLongLookupWriteCacheSize(int longLookupWriteCacheSize) {
-        this.longLookupWriteCacheSize = longLookupWriteCacheSize;
+    public AppendOnlyStoreBuilder withInitialBlobCacheSize(int initialBlobCacheSize) {
+        this.initialBlobPageCacheSize = initialBlobCacheSize;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withFlushDelaySeconds(int flushDelaySeconds) {
-        this.flushDelaySeconds = flushDelaySeconds;
+    public AppendOnlyStoreBuilder withBlobCacheExecutorService(ExecutorService blobCacheExecutorService) {
+        this.blobCacheExecutorService = blobCacheExecutorService;
         return this;
     }
 
-    public AppendOnlyStoreBuilder withMetrics(MetricRegistry metrics) {
-        this.metrics = metrics;
-        return this;
+    public AppendOnlyStore build() {
+        return build(false);
     }
 
     public AppendOnlyStore build(boolean readOnly) {
-        AppendOnlyStore store;
-
-        if (readOnly) {
-            store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize, 0, blobsPerBlock);
-        } else if (suggestedBufferSize > 0) {
-            store = new BufferedAppendOnlyStore(dir, true, longLookupHashSize, suggestedBufferSize, blobsPerBlock, executorService);
-        } else {
-            store = new FileAppendOnlyStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize, blobsPerBlock);
-        }
-
-        if (metrics != null) {
-            store = new AppendOnlyStoreWithMetrics(store, metrics);
-        }
+        AppendOnlyStore store = new FileAppendOnlyStore(readOnly, this);
+        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
         return store;
     }
 
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        AppendOnlyStore store = new FileAppendOnlyStore(dir, -1, false, longLookupHashSize,  0, blobsPerBlock);
-        if (metrics != null) {
-            store = new AppendOnlyStoreWithMetrics(store, metrics);
-        }
-        return store;
+        return build(true);
+    }
+
+    public PageCache buildBlobPageCache(String metricsPrefix) {
+        return new PageCache(
+                getBlobPageSize(),
+                getInitialBlobPageCacheSize(),
+                getMaximumCachedBlobPages(),
+                getBlobCacheExecutorService(),
+                metricsSupplier(metricsPrefix, BLOB_PAGE_CACHE_METRICS)
+        );
+    }
+
+    public int getBlobsPerBlock() {
+        return blobsPerBlock;
+    }
+
+    public int getBlobPageSize() {
+        return blobPageSize;
+    }
+
+    public int getMaximumCachedBlobPages() {
+        return maximumCachedBlobPages;
+    }
+
+    public int getInitialBlobPageCacheSize() {
+        return initialBlobPageCacheSize;
+    }
+
+    public ExecutorService getBlobCacheExecutorService() {
+        return blobCacheExecutorService;
     }
 
     @Override
     public String toString() {
         return "AppendOnlyStoreBuilder{" +
-                "dir=" + dir +
-                ", longLookupHashSize=" + longLookupHashSize +
-                ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +
+                "blobsPerBlock=" + blobsPerBlock +
+                ", blobPageSize=" + blobPageSize +
+                ", maximumCachedBlobPages=" + maximumCachedBlobPages +
+                ", initialBlobPageCacheSize=" + initialBlobPageCacheSize +
+                ", blobCacheExecutorService=" + blobCacheExecutorService +
+                ", storeName='" + storeName + '\'' +
+                ", partitionSize=" + partitionSize +
+                ", lookupHashSize=" + lookupHashSize +
+                ", lookupPageSize=" + lookupPageSize +
+                ", initialLookupPageCacheSize=" + initialLookupPageCacheSize +
+                ", maximumLookupPageCacheSize=" + maximumLookupPageCacheSize +
+                ", maximumLookupKeyCacheWeight=" + maximumLookupKeyCacheWeight +
+                ", initialLookupKeyCacheSize=" + initialLookupKeyCacheSize +
+                ", maximumMetaDataCacheWeight=" + maximumMetaDataCacheWeight +
+                ", initialMetaDataCacheSize=" + initialMetaDataCacheSize +
+                ", metadataTTL=" + metadataTTL +
+                ", metaDataPageSize=" + metaDataPageSize +
+                ", lookupKeyCacheExecutorService=" + lookupKeyCacheExecutorService +
+                ", lookupMetaDataCacheExecutorService=" + lookupMetaDataCacheExecutorService +
+                ", lookupPageCacheExecutorService=" + lookupPageCacheExecutorService +
                 ", flushDelaySeconds=" + flushDelaySeconds +
-                ", blobsPerBlock=" + blobsPerBlock +
-                ", bufferedAppendSize=" + suggestedBufferSize +
-                ", metrics=" + metrics +
+                ", flushThreshold=" + flushThreshold +
+                ", dir=" + dir +
+                ", storeMetricsRegistry=" + storeMetricsRegistry +
+                ", metricsRootName='" + metricsRootName + '\'' +
+                ", storeMetrics=" + storeMetrics +
+                ", cacheMetricsRegistry=" + cacheMetricsRegistry +
+                ", cacheMetrics=" + cacheMetrics +
                 '}';
     }
 }

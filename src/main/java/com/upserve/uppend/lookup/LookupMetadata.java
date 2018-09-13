@@ -1,150 +1,191 @@
 package com.upserve.uppend.lookup;
 
-import com.upserve.uppend.util.ThreadLocalByteBuffers;
-import me.lemire.integercompression.differential.IntegratedIntCompressor;
+import com.upserve.uppend.blobs.*;
 import org.slf4j.Logger;
 
-import java.io.*;
+import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
-import java.nio.channels.FileChannel;
-import java.nio.file.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 9;
+
+    private final int metadataGeneration;
 
     private final int numKeys;
     private final LookupKey minKey;
     private final LookupKey maxKey;
     private final int[] keyStorageOrder;
 
-    public LookupMetadata(int numKeys, LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder) {
-        this.numKeys = numKeys;
+    private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
+
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
+
+        LookupMetadata newMetadata = new LookupMetadata(
+                minKey,
+                maxKey,
+                keyStorageOrder,
+                metadataGeneration
+        );
+
+        newMetadata.writeTo(metaDataBlobs);
+
+        return newMetadata;
+    }
+
+    LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
+        this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
+        this.metadataGeneration = metadataGeneration;
+
+        bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public LookupMetadata(Path path) {
-        log.trace("constructing metadata at path: {}", path);
-        try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ)) {
-            int compressedSize, minKeyLength, maxKeyLength;
-            try (DataInputStream din = new DataInputStream(Files.newInputStream(path, StandardOpenOption.READ))) {
-                numKeys = din.readInt();
-                compressedSize = din.readInt();
-                minKeyLength = din.readInt();
-                byte[] minKeyBytes = new byte[minKeyLength];
-                din.read(minKeyBytes);
-                minKey = new LookupKey(minKeyBytes);
-                maxKeyLength = din.readInt();
-                byte[] maxKeyBytes = new byte[maxKeyLength];
-                din.read(maxKeyBytes);
-                maxKey = new LookupKey(maxKeyBytes);
-            }
-            long pos = 16 + minKeyLength + maxKeyLength;
-            int mapSize = 4 * compressedSize;
-            ByteBuffer bbuf = ByteBuffer.allocate(mapSize);
-            chan.read(bbuf, pos);
-            bbuf.rewind();
-            IntBuffer ibuf = bbuf.asIntBuffer();
-            int[] compressedOrdering = new int[compressedSize];
-            ibuf.get(compressedOrdering);
-            IntegratedIntCompressor iic = new IntegratedIntCompressor();
-            keyStorageOrder = iic.uncompress(compressedOrdering);
-            if (keyStorageOrder.length != numKeys) {
-                throw new IllegalStateException("expected " + numKeys + " keys, got " + keyStorageOrder.length + " at path: " + path);
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException("unable to construct metadata from path: " + path, e);
+    public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration) {
+        if (metadataBlobs.isPageAllocated(0L)) {
+            byte[] bytes = metadataBlobs.read(0L);
+            return new LookupMetadata(bytes, metadataGeneration);
+        } else {
+            return new LookupMetadata(null, null, new int[0], metadataGeneration);
         }
     }
 
-    public long readData(Path dataPath, LookupKey key) {
+    LookupMetadata(byte[] bytes, int metadataGeneration) {
+        ByteBuffer buffer = ByteBuffer.wrap(bytes);
+
+        int minKeyLength, maxKeyLength;
         try {
-            try (FileChannel dataChan = FileChannel.open(dataPath, StandardOpenOption.READ)) {
-                if (numKeys > LookupData.numEntries(dataChan)) {
-                    throw new IOException("metadata num keys (" + numKeys + ") exceeds num data entries");
-                }
+            numKeys = buffer.getInt();
+            minKeyLength = buffer.getInt();
+            byte[] minKeyBytes = new byte[minKeyLength];
+            buffer.get(minKeyBytes); // should check result - number of bytes read
+            minKey = new LookupKey(minKeyBytes);
+            maxKeyLength = buffer.getInt();
+            byte[] maxKeyBytes = new byte[maxKeyLength];
+            buffer.get(maxKeyBytes);
+            maxKey = new LookupKey(maxKeyBytes);
 
-                Path keysPath = dataPath.resolveSibling("keys");
-                try (FileChannel keysChan = FileChannel.open(keysPath, StandardOpenOption.READ)) {
-                    int keyIndexLower = 0;
-                    int keyIndexUpper = numKeys - 1;
-                    LookupKey lowerKey = minKey;
-                    LookupKey upperKey = maxKey;
-                    do {
-                        int comparison = lowerKey.compareTo(key);
-                        if (comparison > 0 /* lowerKey is greater than key */) {
-                            return -1;
-                        }
-                        if (comparison == 0) {
-                            return LookupData.readValue(dataChan, keyStorageOrder[keyIndexLower]);
-                        }
-                        comparison = upperKey.compareTo(key);
-                        if (comparison < 0 /* upperKey is less than key */) {
-                            return -1;
-                        }
-                        if (comparison == 0) {
-                            return LookupData.readValue(dataChan, keyStorageOrder[keyIndexUpper]);
-                        }
-                        int midpointPercentage = searchMidpointPercentage(lowerKey.string(), upperKey.string(), key.string());
-                        int midpointKeyIndex = keyIndexLower + 1 + ((keyIndexUpper - keyIndexLower) * midpointPercentage / 100);
-                        if (midpointKeyIndex >= keyIndexUpper) {
-                            midpointKeyIndex = keyIndexUpper - 1;
-                        }
-                        log.trace("reading {} from {}: [{}, {}], [{}, {}], {}", key, dataPath, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
-                        int keyNumber = keyStorageOrder[midpointKeyIndex];
-                        LookupKey midpointKey = LookupData.readKey(dataChan, keysChan, keyNumber);
-                        comparison = key.compareTo(midpointKey);
-                        if (comparison < 0) {
-                            keyIndexUpper = midpointKeyIndex - 1;
-                            keyIndexLower++;
-                        } else if (comparison > 0) {
-                            keyIndexLower = midpointKeyIndex + 1;
-                            keyIndexUpper--;
-                        } else {
-                            return LookupData.readValue(dataChan, keyNumber);
-                        }
-                        upperKey = LookupData.readKey(dataChan, keysChan, keyStorageOrder[keyIndexUpper]);
-                        lowerKey = LookupData.readKey(dataChan, keysChan, keyStorageOrder[keyIndexLower]);
-                    } while (keyIndexLower <= keyIndexUpper);
-                    return -1;
-                }
-            }
-        } catch (IOException e) {
-            throw new UncheckedIOException("could not read key " + key + " at " + dataPath, e);
+            IntBuffer ibuf = buffer.asIntBuffer();
+            keyStorageOrder = new int[numKeys];
+            ibuf.get(keyStorageOrder);
+        } catch (BufferUnderflowException e) {
+            throw new IllegalStateException("Meta blob is corrupted", e); // The checksum is correct - indicates a format change!
         }
+
+        this.metadataGeneration = metadataGeneration;
+
+        bisectKeys = new ConcurrentHashMap<>();
     }
 
-    public void writeTo(Path path) throws IOException {
-        log.trace("writing metadata to path: {}", path);
-        Path tmpPath = path.resolveSibling(path.getFileName() + ".tmp");
-        try (FileChannel chan = FileChannel.open(tmpPath, StandardOpenOption.READ, StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-            IntegratedIntCompressor iic = new IntegratedIntCompressor();
-            int[] compressedOrdering = iic.compress(keyStorageOrder);
-            int compressedSize = compressedOrdering.length;
+    /**
+     * Finds the value associated with a key or null if not present using bisect on the sorted storage order
+     * If the result is null (key not found) the key is marked with the generation of the metadata used and the
+     * sortIndex it should be inserted after.
+     * If the result is not null (key was found) the key is marked with its position in the longBlob file.
+     *
+     * @param longBlobStore The longBlobStore to read keys and values
+     * @param key the key to find and mark
+     * @return the position of the key
+     */
 
-            int bufSize = 16 + minKey.byteLength() + maxKey.byteLength();
-            ByteBuffer headBuf = ByteBuffer.allocate(bufSize);
-            headBuf.putInt(numKeys);
-            headBuf.putInt(compressedSize);
-            headBuf.putInt(minKey.byteLength());
-            headBuf.put(minKey.bytes());
-            headBuf.putInt(maxKey.byteLength());
-            headBuf.put(maxKey.bytes());
-            headBuf.flip();
-            chan.write(headBuf, 0);
+    public Long findKey(VirtualLongBlobStore longBlobStore, LookupKey key) {
 
-            int mapSize = 4 * compressedSize;
-            ByteBuffer bbuf = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(mapSize).get();
-            IntBuffer ibuf = bbuf.asIntBuffer();
-            ibuf.put(compressedOrdering);
-            bbuf.rewind();
-            chan.write(bbuf, bufSize);
-            log.trace("compressed metadata: {}/{}", compressedSize, numKeys);
+        key.setMetaDataGeneration(metadataGeneration);
+
+        if (numKeys == 0) {
+            key.setInsertAfterSortIndex(-1);
+            return null;
         }
-        Files.move(tmpPath, path, StandardCopyOption.ATOMIC_MOVE);
-        log.trace("wrote metadata to path: {}: numKeys={}, minKey={}, maxKey={}", path, numKeys, minKey, maxKey);
+
+        int keyIndexLower = 0;
+        int keyIndexUpper = numKeys - 1;
+        LookupKey lowerKey = minKey;
+        LookupKey upperKey = maxKey;
+
+        int bisectCount = 0;
+        int keyPosition;
+        LookupKey midpointKey;
+        int midpointKeyIndex;
+
+        int comparison = lowerKey.compareTo(key);
+        if (comparison > 0 /* new key is less than lowerKey */) {
+            key.setInsertAfterSortIndex(-1); // Insert it after this index in the sort order
+            return null;
+        }
+        if (comparison == 0) {
+            key.setPosition(keyStorageOrder[keyIndexLower]);
+            return longBlobStore.readLong(keyStorageOrder[keyIndexLower]);
+        }
+
+        comparison = upperKey.compareTo(key);
+        if (comparison < 0 /* new key is greater than upperKey */) {
+            key.setInsertAfterSortIndex(keyIndexUpper); // Insert it after this index in the sort order
+            return null;
+        }
+        if (comparison == 0) {
+            key.setPosition(keyStorageOrder[keyIndexUpper]);
+            return longBlobStore.readLong(keyStorageOrder[keyIndexUpper]);
+        }
+
+        if (numKeys == 2) { // There are no other values keys besides upper and lower
+            key.setInsertAfterSortIndex(keyIndexLower);
+            return null;
+        }
+
+        // bisect till we find the key or return null
+        do {
+            midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);
+
+            if (log.isTraceEnabled())
+                log.trace("reading {}: [{}, {}], [{}, {}], {}", key, keyIndexLower, keyIndexUpper, lowerKey, upperKey, midpointKeyIndex);
+
+            keyPosition = keyStorageOrder[midpointKeyIndex];
+            // Cache only the most frequently used midpoint keys
+            if (bisectCount < MAX_BISECT_KEY_CACHE_DEPTH) {
+                midpointKey = bisectKeys.computeIfAbsent(keyPosition, position -> new LookupKey(longBlobStore.readBlob(position)));
+            } else {
+                midpointKey = new LookupKey(longBlobStore.readBlob(keyPosition));
+            }
+
+            comparison = key.compareTo(midpointKey);
+            if (comparison < 0) {
+                upperKey = midpointKey;
+                keyIndexUpper = midpointKeyIndex;
+            } else if (comparison > 0) {
+                keyIndexLower = midpointKeyIndex;
+                lowerKey = midpointKey;
+            } else {
+                key.setPosition(keyPosition);
+                return longBlobStore.readLong(keyPosition);
+            }
+
+            bisectCount++;
+        } while ((keyIndexLower + 1) < keyIndexUpper);
+
+        key.setInsertAfterSortIndex(keyIndexLower); // Insert it in the sort order after this key
+        return null;
+    }
+
+    public void writeTo(VirtualMutableBlobStore metadataBlobs) {
+        int headerSize = 12 + minKey.byteLength() + maxKey.byteLength();
+        int intBufSize = 4 * numKeys;
+        ByteBuffer byteBuffer = ByteBuffer.allocate(headerSize + intBufSize);
+        byteBuffer.putInt(numKeys);
+        byteBuffer.putInt(minKey.byteLength());
+        byteBuffer.put(minKey.bytes());
+        byteBuffer.putInt(maxKey.byteLength());
+        byteBuffer.put(maxKey.bytes());
+
+        IntBuffer intBuffer = byteBuffer.asIntBuffer();
+        intBuffer.put(keyStorageOrder);
+        byteBuffer.rewind();
+
+        metadataBlobs.write(0L, byteBuffer.array());
     }
 
     @Override
@@ -156,40 +197,31 @@ public class LookupMetadata {
                 '}';
     }
 
-    static int searchMidpointPercentage(String lower, String upper, String key) {
-        int firstDifferentCharIndex = -1;
-        int minLength = Math.min(key.length(), Math.min(lower.length(), upper.length()));
-        char lowerChar = 0, upperChar = 0, keyChar = 0;
-        for (int i = 0; i < minLength; i++) {
-            lowerChar = lower.charAt(i);
-            upperChar = upper.charAt(i);
-            keyChar = key.charAt(i);
-            if (lowerChar != upperChar) {
-                firstDifferentCharIndex = i;
-                break;
-            }
-            if (keyChar != upperChar) {
-                log.warn("returning 50% search midpoint for key ({}); key is outside of range [{}, {}]", key, lower, upper);
-                return 50;
-            }
-        }
-        if (firstDifferentCharIndex == -1) {
-            log.trace("returning 50% search midpoint for key ({}) in single element range [{}, {}]", key, lower, upper);
-            return 50;
-        }
-        int keyDistance = keyChar - lowerChar;
-        int rangeDistance = upperChar - lowerChar;
-        if (keyDistance < 0 || rangeDistance < 0 || keyDistance > rangeDistance) {
-            log.warn("returning 50% search midpoint for key ({}); weight could not be determined from range [{}, {}]", key, lower, upper);
-            return 50;
-        }
-        int pct = 100 * keyDistance / rangeDistance;
-        if (pct > 90) {
-            return 90;
-        }
-        if (pct < 10) {
-            return 10;
-        }
-        return pct;
+    public int getMetadataGeneration() {
+        return metadataGeneration;
+    }
+
+    /**
+     * Size of keyStorageOrder in bytes
+     * @return the weight in bytes
+     */
+    public int weight() {
+        return numKeys * 4;
+    }
+
+    public int getNumKeys() {
+        return numKeys;
+    }
+
+    public int[] getKeyStorageOrder() {
+        return keyStorageOrder;
+    }
+
+    public LookupKey getMinKey() {
+        return minKey;
+    }
+
+    public LookupKey getMaxKey() {
+        return maxKey;
     }
 }

@@ -1,66 +1,66 @@
 package com.upserve.uppend;
 
-import com.codahale.metrics.MetricRegistry;
-import com.upserve.uppend.lookup.LongLookup;
 import com.upserve.uppend.metrics.CounterStoreWithMetrics;
-import org.slf4j.Logger;
 
-import java.lang.invoke.MethodHandles;
-import java.nio.file.Path;
-
-public class CounterStoreBuilder {
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
-    private Path dir;
-    private int longLookupHashSize = LongLookup.DEFAULT_HASH_SIZE;
-    private int longLookupWriteCacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
-    private int flushDelaySeconds = FileCounterStore.DEFAULT_FLUSH_DELAY_SECONDS;
-    private MetricRegistry metrics;
-
-    public CounterStoreBuilder withDir(Path dir) {
-        this.dir = dir;
-        return this;
-    }
-
-    public CounterStoreBuilder withLongLookupHashSize(int longLookupHashSize) {
-        this.longLookupHashSize = longLookupHashSize;
-        return this;
-    }
-
-    public CounterStoreBuilder withLongLookupWriteCacheSize(int longLookupWriteCacheSize) {
-        this.longLookupWriteCacheSize = longLookupWriteCacheSize;
-        return this;
-    }
-
-    public CounterStoreBuilder withFlushDelaySeconds(int flushDelaySeconds) {
-        this.flushDelaySeconds = flushDelaySeconds;
-        return this;
-    }
-
-    public CounterStoreBuilder withMetrics(MetricRegistry metrics) {
-        this.metrics = metrics;
-        return this;
-    }
+public class CounterStoreBuilder extends FileStoreBuilder<CounterStoreBuilder> {
 
     public CounterStore build() {
-        CounterStore store = new FileCounterStore(dir, flushDelaySeconds, true, longLookupHashSize, longLookupWriteCacheSize);
-        if (metrics != null) {
-            store = new CounterStoreWithMetrics(store, metrics);
-        }
+        return build(false);
+    }
+
+    public CounterStore build(boolean readOnly) {
+        if (readOnly && flushDelaySeconds != DEFAULT_FLUSH_DELAY_SECONDS)
+            throw new IllegalStateException("Can not set flush delay seconds in read only mode");
+        CounterStore store = new FileCounterStore(readOnly, this);
+        if (isStoreMetrics()) store = new CounterStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
         return store;
     }
 
     public ReadOnlyCounterStore buildReadOnly() {
-        return new FileCounterStore(dir, -1, false, longLookupHashSize, 1);
+        return build(true);
+    }
+
+    private static CounterStoreBuilder defaultTestBuilder = new CounterStoreBuilder()
+            .withStoreName("test")
+            .withInitialLookupKeyCacheSize(64)
+            .withMaximumLookupKeyCacheWeight(100 * 1024)
+            .withInitialMetaDataCacheSize(64)
+            .withMaximumMetaDataCacheWeight(100 * 1024)
+            .withMetaDataPageSize(1024)
+            .withLongLookupHashSize(16)
+            .withLookupPageSize(16 * 1024)
+            .withCacheMetrics();
+
+    public static CounterStoreBuilder getDefaultTestBuilder() {
+        return defaultTestBuilder;
     }
 
     @Override
     public String toString() {
         return "CounterStoreBuilder{" +
-                "dir=" + dir +
-                ", longLookupHashSize=" + longLookupHashSize +
-                ", longLookupWriteCacheSize=" + longLookupWriteCacheSize +
+                "storeName='" + storeName + '\'' +
+                ", partitionSize=" + partitionSize +
+                ", lookupHashSize=" + lookupHashSize +
+                ", lookupPageSize=" + lookupPageSize +
+                ", initialLookupPageCacheSize=" + initialLookupPageCacheSize +
+                ", maximumLookupPageCacheSize=" + maximumLookupPageCacheSize +
+                ", maximumLookupKeyCacheWeight=" + maximumLookupKeyCacheWeight +
+                ", initialLookupKeyCacheSize=" + initialLookupKeyCacheSize +
+                ", maximumMetaDataCacheWeight=" + maximumMetaDataCacheWeight +
+                ", initialMetaDataCacheSize=" + initialMetaDataCacheSize +
+                ", metadataTTL=" + metadataTTL +
+                ", metaDataPageSize=" + metaDataPageSize +
+                ", lookupKeyCacheExecutorService=" + lookupKeyCacheExecutorService +
+                ", lookupMetaDataCacheExecutorService=" + lookupMetaDataCacheExecutorService +
+                ", lookupPageCacheExecutorService=" + lookupPageCacheExecutorService +
                 ", flushDelaySeconds=" + flushDelaySeconds +
+                ", flushThreshold=" + flushThreshold +
+                ", dir=" + dir +
+                ", storeMetricsRegistry=" + storeMetricsRegistry +
+                ", metricsRootName='" + metricsRootName + '\'' +
+                ", storeMetrics=" + storeMetrics +
+                ", cacheMetricsRegistry=" + cacheMetricsRegistry +
+                ", cacheMetrics=" + cacheMetrics +
                 '}';
     }
 }

@@ -3,13 +3,13 @@ package com.upserve.uppend;
 import com.upserve.uppend.util.*;
 import org.junit.*;
 
-import java.io.*;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.function.*;
+import java.util.function.Supplier;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
@@ -17,6 +17,7 @@ import static org.junit.Assert.*;
 public class BlockedLongsTest {
     private Path path = Paths.get("build/test/tmp/block");
     private Path posPath = path.resolveSibling(path.getFileName() + ".pos");
+    private boolean readOnly = false;
 
     @Before
     public void initialize() throws Exception {
@@ -26,40 +27,40 @@ public class BlockedLongsTest {
 
     @Test
     public void testCtor() {
-        new BlockedLongs(path, 1);
-        new BlockedLongs(path, 10);
-        new BlockedLongs(path, 100);
-        new BlockedLongs(path, 1000);
+        new BlockedLongs(path, 1, readOnly);
+        new BlockedLongs(path, 10, readOnly);
+        new BlockedLongs(path, 100, readOnly);
+        new BlockedLongs(path, 1000, readOnly);
     }
 
     @Test(expected = UncheckedIOException.class)
     public void testCtorNoPosFile() throws Exception {
-        BlockedLongs block = new BlockedLongs(path, 1);
+        BlockedLongs block = new BlockedLongs(path, 1, readOnly);
         block.close();
         Files.delete(posPath);
         Files.createDirectories(posPath);
-        new BlockedLongs(path, 1);
+        new BlockedLongs(path, 1, readOnly);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testCtorWithNullFile() {
-        new BlockedLongs(null, 1);
+        new BlockedLongs(null, 1, readOnly);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testCtorWithZeroValuesPerBlock() {
-        new BlockedLongs(path, 0);
+        new BlockedLongs(path, 0, readOnly);
     }
 
     @Test(expected = IllegalArgumentException.class)
     public void testCtorWithNegativeValuesPerBlock() {
-        new BlockedLongs(path, -1);
+        new BlockedLongs(path, -1, readOnly);
     }
 
     @Test
     public void testAllocate() throws Exception {
         for (int i = 1; i <= 20; i++) {
-            BlockedLongs v = new BlockedLongs(path, i);
+            BlockedLongs v = new BlockedLongs(path, i, readOnly);
             long pos1 = v.allocate();
             long pos2 = v.allocate();
             assertEquals(0, pos1);
@@ -70,7 +71,7 @@ public class BlockedLongsTest {
 
     @Test
     public void testAppend() throws Exception {
-        BlockedLongs v = new BlockedLongs(path, 10);
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
         long pos1 = v.allocate();
         for (long i = 0; i < 20; i++) {
             v.append(pos1, i);
@@ -89,7 +90,7 @@ public class BlockedLongsTest {
 
     @Test(expected = IllegalStateException.class)
     public void testAppendAtNonStartingBlock() throws Exception {
-        BlockedLongs v = new BlockedLongs(path, 10);
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
         long pos1 = v.allocate();
         for (long i = 0; i < 21; i++) {
             v.append(pos1, i);
@@ -100,7 +101,7 @@ public class BlockedLongsTest {
 
     @Test(expected = IllegalStateException.class)
     public void testAppendTooHighNumValues() throws Exception {
-        BlockedLongs v = new BlockedLongs(path, 10);
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
         long pos1 = v.allocate();
         try (FileChannel chan = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
             ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
@@ -113,7 +114,7 @@ public class BlockedLongsTest {
 
     @Test
     public void testLastValue() throws Exception {
-        BlockedLongs v = new BlockedLongs(path, 4);
+        BlockedLongs v = new BlockedLongs(path, 4, readOnly);
         long pos = v.allocate();
         for (long i = 0; i < 257; i++) {
             v.append(pos, i);
@@ -123,7 +124,7 @@ public class BlockedLongsTest {
 
     @Test
     public void testFlushAndCloseTwice() throws Exception {
-        BlockedLongs block = new BlockedLongs(path, 1);
+        BlockedLongs block = new BlockedLongs(path, 1, readOnly);
         block.flush();
         block.flush();
         block.close();
@@ -140,22 +141,22 @@ public class BlockedLongsTest {
         BlockedLongs block;
         LongStream positions;
 
-        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        block = new BlockedLongs(path, VALS_PER_BLOCK, readOnly);
         positions = new Random().longs(0, TEST_POSITIONS).limit(TEST_APPENDS).parallel();
         blockBeating(block, valueSupplier, positions, testData);
         block.close();
 
-        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        block = new BlockedLongs(path, VALS_PER_BLOCK, readOnly);
         positions = new Random().longs(0, TEST_POSITIONS * 2).limit(TEST_APPENDS).parallel();
         blockBeating(block, valueSupplier, positions, testData);
         block.close();
 
-        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        block = new BlockedLongs(path, VALS_PER_BLOCK, readOnly);
         positions = new Random().longs(0, TEST_POSITIONS * 3).limit(TEST_APPENDS).parallel();
         blockBeating(block, valueSupplier, positions, testData);
         block.close();
 
-        block = new BlockedLongs(path, VALS_PER_BLOCK);
+        block = new BlockedLongs(path, VALS_PER_BLOCK, readOnly);
         positions = new Random().longs(0, TEST_POSITIONS * 4).limit(TEST_APPENDS).parallel();
         blockBeating(block, valueSupplier, positions, testData);
         block.close();
@@ -202,7 +203,7 @@ public class BlockedLongsTest {
 
     @Test
     public void testTrim() {
-        BlockedLongs blocks = new BlockedLongs(path, 524_286); // Page size blocks
+        BlockedLongs blocks = new BlockedLongs(path, 524_286, readOnly); // Page size blocks
 
         long block1 = blocks.allocate();
         blocks.append(block1, 1L);
@@ -228,7 +229,7 @@ public class BlockedLongsTest {
 
     @Test
     public void testReadRepair() {
-        BlockedLongs block = new BlockedLongs(path, 3);
+        BlockedLongs block = new BlockedLongs(path, 3, readOnly);
         long pos = block.allocate();
         block.append(pos, 1L);
         block.append(pos, 1L);
@@ -252,5 +253,42 @@ public class BlockedLongsTest {
         // the tail pointer from first to last is still missing but the value is recoverable
         block.append(pos, 3L);
         assertArrayEquals(new long[]{1L, 1L, 1L, 2L, 3L}, block.values(pos).toArray());
+    }
+
+    @Test
+    public void testStats() {
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
+        BlockStats stats = v.stats();
+        assertNotNull(stats);
+        Assert.assertEquals(0, stats.getAllocCount());
+        Assert.assertEquals(0, stats.getAppendCount());
+        Assert.assertEquals(0, stats.getPagesLoaded());
+        Assert.assertEquals(0, stats.getSize());
+        Assert.assertEquals(0, stats.getValuesReadCount());
+        long pos1 = v.allocate();
+        for (long i = 0; i < 20; i++) {
+            v.append(pos1, i);
+        }
+        v.values(0L);
+        stats = v.stats();
+        assertNotNull(stats);
+        Assert.assertEquals(2, stats.getAllocCount());
+        Assert.assertEquals(20, stats.getAppendCount());
+        Assert.assertEquals(1, stats.getPagesLoaded());
+        Assert.assertTrue(stats.getSize() > 10);
+        Assert.assertTrue(stats.getSize() < 1000);
+        Assert.assertEquals(1, stats.getValuesReadCount());
+    }
+
+    @Test
+    public void testEmptyCases() {
+        BlockedLongs v = new BlockedLongs(path, 10, readOnly);
+        OptionalLong val = v.values(0L).findAny();
+        assertFalse(val.isPresent());
+        val = v.values(null).findAny();
+        assertFalse(val.isPresent());
+        val = v.values(-1L).findAny();
+        assertFalse(val.isPresent());
+        assertEquals(-1, v.lastValue(0));
     }
 }

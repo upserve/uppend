@@ -1,123 +1,198 @@
 package com.upserve.uppend;
 
+import com.google.common.hash.*;
 import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.channels.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
-abstract class FileStore implements AutoCloseable, Flushable, Trimmable {
+abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
+    public static final int MAX_NUM_PARTITIONS = 9999;
+
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    /**
-     * DEFAULT_FLUSH_DELAY_SECONDS is the number of seconds to wait between
-     * automatically flushing writes.
-     */
-    public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
-
     protected final Path dir;
+    protected final Path partitionsDir;
 
     private final int flushDelaySeconds;
+    protected final Map<String, T> partitionMap;
 
-    private final boolean doLock;
+    protected final boolean readOnly;
+    protected final String name;
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
+    private final int partitionSize;
+    private final boolean doHashPartitionValues;
 
-    private final AtomicBoolean isClosed;
+    protected final AtomicBoolean isClosed;
 
-    FileStore(Path dir, int flushDelaySeconds, boolean doLock) {
+    private static final int PARTITION_HASH_SEED = 626433832;
+    private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
+
+    FileStore(Path dir, int flushDelaySeconds, int partitionSize, boolean readOnly, String name) {
+        if (dir == null) {
+            throw new NullPointerException("null dir");
+        }
         this.dir = dir;
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
+        partitionsDir = dir.resolve("partitions");
+        if (partitionSize > MAX_NUM_PARTITIONS) {
+            throw new IllegalArgumentException("bad partition size: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionSize);
+        }
+        if (partitionSize < 0) {
+            throw new IllegalArgumentException("bad partition size: negative: " + partitionSize);
+        }
+        this.partitionSize = partitionSize;
+        if (partitionSize == 0) {
+            partitionMap = new ConcurrentHashMap<>();
+            doHashPartitionValues = false;
+        } else {
+            partitionMap = new ConcurrentHashMap<>(partitionSize);
+            doHashPartitionValues = true;
+        }
+        this.name = name;
 
         this.flushDelaySeconds = flushDelaySeconds;
-        if (flushDelaySeconds > 0) {
-            AutoFlusher.register(flushDelaySeconds, this);
-        }
+        if (!readOnly && flushDelaySeconds > 0) register(flushDelaySeconds);
 
-        this.doLock = doLock;
-        if (doLock) {
-            lockPath = dir.resolve("lock");
-            try {
-                lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-                lock = lockChan.lock();
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to open lock: " + lockPath, e);
-            } catch (OverlappingFileLockException e) {
-                throw new IllegalStateException("lock busy: " + lockPath, e);
-            }
-        } else {
-            lockPath = null;
-            lockChan = null;
-            lock = null;
+        this.readOnly = readOnly;
+        lockPath = readOnly ? dir.resolve("readLock") : dir.resolve("writeLock");
+
+        try {
+            lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
+            lock = readOnly ? lockChan.lock(0L, Long.MAX_VALUE, true) : lockChan.lock(); // Write lock is exclusive
+        } catch (IOException e) {
+            throw new UncheckedIOException("unable to open lock: " + lockPath, e);
+        } catch (OverlappingFileLockException e) {
+            throw new IllegalStateException("lock busy: " + lockPath, e);
         }
 
         isClosed = new AtomicBoolean(false);
     }
 
-    protected abstract void flushInternal();
+    protected String partitionHash(String partition) {
+        if (doHashPartitionValues) {
+            HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
+            return String.format("%04d", Math.abs(hcode.asInt()) % partitionSize);
+        } else {
+            return partition;
+        }
+    }
 
-    protected abstract void closeInternal();
+    abstract Function<String, T> getOpenPartitionFunction();
 
-    protected abstract void trimInternal();
+    abstract Function<String, T> getCreatePartitionFunction();
+
+    Optional<T> getIfPresent(String partitionEntropy) {
+        return Optional.ofNullable(partitionMap.computeIfAbsent(
+                partitionHash(partitionEntropy),
+                getOpenPartitionFunction()
+        ));
+    }
+
+    T getOrCreate(String partitionEntropy) {
+        return partitionMap.computeIfAbsent(
+                partitionHash(partitionEntropy),
+                getCreatePartitionFunction()
+        );
+    }
+
+    Stream<T> streamPartitions() {
+        try {
+            Files
+                    .list(partitionsDir)
+                    .map(path -> path.toFile().getName())
+                    .forEach(partition -> partitionMap.computeIfAbsent(
+                            partition,
+                            getOpenPartitionFunction()
+                    ));
+        } catch (NoSuchFileException e) {
+            log.debug("Partitions directory does not exist: {}", partitionsDir);
+            return Stream.empty();
+
+        } catch (IOException e) {
+            log.error("Unable to list partitions in " + partitionsDir, e);
+            return Stream.empty();
+        }
+        return partitionMap.values().parallelStream();
+    }
+
+
+    protected abstract void flushInternal() throws IOException;
+
+    protected abstract void closeInternal() throws IOException;
+
+    protected abstract void trimInternal() throws IOException;
 
     @Override
-    public void trim(){
-        log.info("Triming {}", dir);
-        trimInternal();
-        log.info("Trimed {}", dir);
-    };
+    public void trim() {
+        log.debug("Triming {}", name);
+        try {
+            trimInternal();
+        } catch (Exception e) {
+            log.error("unable to trim {}", name, e);
+        }
+        log.debug("Trimed {}", name);
+    }
+
+    @Override
+    public void register(int seconds) {
+        AutoFlusher.register(seconds, this);
+    }
+
+    @Override
+    public void deregister() {
+        AutoFlusher.deregister(this);
+    }
 
     @Override
     public void flush() {
-        log.info("flushing {}", dir);
+        log.info("flushing {}", name);
         try {
             flushInternal();
         } catch (Exception e) {
-            log.error("unable to flush", e);
+            log.error("unable to flush {}", name, e);
         }
-        log.info("flushed {}", dir);
+        log.info("flushed {}", name);
     }
 
     @Override
     public void close() {
         if (!isClosed.compareAndSet(false, true)) {
-            log.warn("close called twice on file store: " + dir);
+            log.warn("close called twice on file store: " + name);
             return;
         }
 
-        if (flushDelaySeconds > 0) {
-            AutoFlusher.deregister(this);
-        }
+        if (!readOnly && flushDelaySeconds > 0) AutoFlusher.deregister(this);
 
         try {
             closeInternal();
         } catch (Exception e) {
-            log.error("unable to close", e);
+            log.error("unable to close {}", name, e);
         }
 
-        if (doLock) {
-            try {
-                lock.release();
-            } catch (IOException e) {
-                log.error("unable to release lock file: " + lockPath, e);
-            }
-            try {
-                lockChan.close();
-            } catch (IOException e) {
-                log.error("unable to close lock file: " + lockPath, e);
-            }
-            try {
-                Files.deleteIfExists(lockPath);
-            } catch (IOException e) {
-                log.error("unable to delete lock file: " + lockPath, e);
-            }
+        try {
+            lock.release();
+        } catch (IOException e) {
+            log.error("unable to release lock file: " + lockPath, e);
+        }
+        try {
+            lockChan.close();
+        } catch (IOException e) {
+            log.error("unable to close lock file: " + lockPath, e);
         }
     }
 }

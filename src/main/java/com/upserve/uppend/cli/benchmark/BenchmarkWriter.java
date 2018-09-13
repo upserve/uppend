@@ -12,7 +12,7 @@ public class BenchmarkWriter implements Runnable {
     private final LongStream longStream;
     private final Function<Long, Integer> longFunction;
 
-    BenchmarkWriter(LongStream longStream, Function<Long, Integer> longFunction){
+    BenchmarkWriter(LongStream longStream, Function<Long, Integer> longFunction) {
         this.longStream = longStream;
         this.longFunction = longFunction;
     }
@@ -27,12 +27,12 @@ public class BenchmarkWriter implements Runnable {
             return;
         }
         log.info("starting writer...");
-        long tic = -1*System.currentTimeMillis();
+        long tic = -1 * System.currentTimeMillis();
         longStream.forEach(longFunction::apply);
         log.info(
                 String.format(
                         "done writing in %5.2f seconds",
-                        (tic + System.currentTimeMillis())/1000.0
+                        (tic + System.currentTimeMillis()) / 1000.0
                 )
         );
     }

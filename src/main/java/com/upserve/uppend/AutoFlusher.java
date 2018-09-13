@@ -8,6 +8,7 @@ import java.lang.invoke.MethodHandles;
 import java.util.ArrayList;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 
 public class AutoFlusher {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -18,8 +19,16 @@ public class AutoFlusher {
     private static final ConcurrentMap<Integer, ConcurrentLinkedQueue<Flushable>> delayFlushables = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Integer, ScheduledFuture> delayFutures = new ConcurrentHashMap<>();
 
+    private static final ConcurrentLinkedQueue<ForkJoinTask> flushTasks = new ConcurrentLinkedQueue<>();
+
     private static final ThreadFactory threadFactory;
     public static final ExecutorService flushExecPool;
+
+    public static final ForkJoinPool flusherWorkPool;
+
+    public static Function<String, ForkJoinPool.ForkJoinWorkerThreadFactory> threadFactoryFunction;
+
+    public static Function<String, ForkJoinPool> forkJoinPoolFunction;
 
     static {
         ThreadGroup threadGroup = new ThreadGroup("auto-flush");
@@ -34,6 +43,26 @@ public class AutoFlusher {
         AtomicInteger flushExecPoolThreadNumber = new AtomicInteger();
         ThreadFactory flushExecPoolThreadFactory = r -> new Thread(threadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
         flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
+
+        threadFactoryFunction = name -> pool ->
+        {
+            final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
+            worker.setName(name + worker.getPoolIndex());
+            return worker;
+        };
+
+
+        forkJoinPoolFunction = name -> new ForkJoinPool(
+                Runtime.getRuntime().availableProcessors(),
+                threadFactoryFunction.apply(name),
+                (t, e) -> {
+                    log.error("In pool {}, thread {} threw exception {}", name, t, e);
+                },
+                true
+        );
+
+        flusherWorkPool = forkJoinPoolFunction.apply("flush-worker");
+
     }
 
     public static synchronized void register(int delaySeconds, Flushable flushable) {
@@ -88,8 +117,9 @@ public class AutoFlusher {
             } else {
                 ConcurrentLinkedQueue<Flushable> errorFlushables = new ConcurrentLinkedQueue<>();
                 ArrayList<Future> futures = new ArrayList<>();
+                log.info("Flush worker pool size: {}, active: {}", flusherWorkPool.getPoolSize(), flusherWorkPool.getActiveThreadCount());
                 for (Flushable flushable : flushables) {
-                    futures.add(flushExecPool.submit(() -> {
+                    futures.add(flusherWorkPool.submit(() -> {
                         try {
                             flushable.flush();
                         } catch (IOException e) {
@@ -106,4 +136,11 @@ public class AutoFlusher {
         }
         log.info("flushed {}", delaySeconds);
     }
+
+    public static void submitWork(Runnable runnable) {
+
+        ForkJoinTask task = flusherWorkPool.submit(runnable);
+    }
+
+
 }

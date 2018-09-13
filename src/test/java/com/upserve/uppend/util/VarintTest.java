@@ -141,6 +141,30 @@ public class VarintTest {
         }
     }
 
+    @Test
+    public void malformed() {
+        ByteArrayInputStream in = new ByteArrayInputStream(new byte[] {
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff,
+                (byte) 0xff
+        });
+        IOException expected = null;
+        try {
+            Varint.readLong(in);
+        } catch (IOException e) {
+            expected = e;
+        }
+        Assert.assertNotNull(expected);
+        Assert.assertTrue(expected.getMessage().contains("malformed"));
+    }
+
     private static int varintBytesSizeof(long value) {
         return varintBytes(value).length;
     }

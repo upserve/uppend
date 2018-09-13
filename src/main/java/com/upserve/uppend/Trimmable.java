@@ -1,7 +1,5 @@
 package com.upserve.uppend;
 
-import java.io.Flushable;
-
 public interface Trimmable {
 
     /**

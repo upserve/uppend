@@ -1,11 +1,13 @@
 package com.upserve.uppend.cli;
 
-import com.upserve.uppend.FileAppendOnlyStore;
+import com.codahale.metrics.MetricRegistry;
+import com.upserve.uppend.*;
 import com.upserve.uppend.cli.benchmark.*;
-import com.upserve.uppend.lookup.LongLookup;
+import org.slf4j.Logger;
 import picocli.CommandLine.*;
 
-import java.nio.file.Path;
+import java.lang.invoke.MethodHandles;
+import java.nio.file.*;
 import java.util.concurrent.Callable;
 
 @SuppressWarnings({"WeakerAccess", "unused"})
@@ -21,29 +23,25 @@ import java.util.concurrent.Callable;
         footerHeading = "%n"
 )
 public class CommandBenchmark implements Callable<Void> {
-    @Parameters(index = "0", description = "Benchmark mode (read|write|readwrite)") BenchmarkMode mode;
-    @Parameters(index = "1", description = "Store path") Path path;
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+    public static final String ROOT_NAME = "Root";
+    public static final String STORE_NAME = "Benchmark";
 
-    @Option(names = {"-p", "--max-partitions"}, description = "Max partitions")
-    int maxPartitions = 1;
 
-    @Option(names = {"-k", "--max-keys"}, description = "Max keys")
-    int maxKeys = 100_000;
+    @Parameters(index = "0", description = "Store path")
+    Path path;
 
-    @Option(names = {"-n", "--count"}, description = "Count")
-    int count = 1_000_000;
+    @Option(names = {"-m", "--mode"}, description = "Benchmark mode (read|write|readwrite|scan)")
+    BenchmarkMode mode = BenchmarkMode.write;
 
-    @Option(names = {"-h", "--hash-size"}, description = "Hash size")
-    int hashSize = LongLookup.DEFAULT_HASH_SIZE;
+    @Option(names = {"-s", "--size"}, description = "Benchmark size (nano|micro|small|medium|large|huge|gigantic)")
+    BenchmarkSize size = BenchmarkSize.medium;
 
-    @Option(names = {"-c", "--cache-size"}, description = "Cache size")
-    int cacheSize = LongLookup.DEFAULT_WRITE_CACHE_SIZE;
+    @Option(names = {"-c", "--case"}, description = "Benchmark class (narrow|wide) key space")
+    BenchmarkCase benchmarkCase = BenchmarkCase.narrow;
 
-    @Option(names = {"-b", "--buffered"}, description = "Use BufferedAppendOnlyStore with this size")
-    int buffered = 0;
-
-    @Option(names = {"-f", "--flush-delay"}, description = "Flush delay (sec)")
-    int flushDelay = FileAppendOnlyStore.DEFAULT_FLUSH_DELAY_SECONDS;
+    @Option(names= {"-i", "--iostat"}, description = "arguments for iostat process")
+    String ioStatArgs = "5";
 
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
@@ -51,8 +49,129 @@ public class CommandBenchmark implements Callable<Void> {
 
     @Override
     public Void call() throws Exception {
-        Benchmark benchmark = new Benchmark(mode, path, maxPartitions, maxKeys, count, hashSize, cacheSize, flushDelay, buffered);
+
+        if (Files.exists(path)) {
+            log.warn("Location already exists: appending to {}", path);
+        }
+
+        Benchmark benchmark = createBenchmark();
         benchmark.run();
         return null;
+    }
+
+
+    private Benchmark createBenchmark() {
+        long keys;
+        long count;
+
+        final int blockSize;
+        int partitions;
+        int hashSize;
+
+        int keyCacheSize;
+        long keyCacheWeight;
+
+        int blobCacheSize;
+        int blobPageSize;
+
+        int keyPageCacheSize;
+        int keyPageSize;
+
+        int metadataCacheSize;
+        int metadataPageSize;
+        long metadataCacheWeight;
+
+        int flushThreshold;
+        int flushDelay;
+
+        switch (benchmarkCase) {
+            case narrow:
+                count = size.getSize();
+                keys = (long) Math.pow(Math.log10(count), 2.0) * 100;
+
+                blockSize = 16_384;
+                partitions = 64;
+                hashSize = 64;
+
+                // Cache all the keys
+                keyCacheSize = (int) keys;
+                keyCacheWeight = keys * 9 + 1000; // 9 bytes per key plus some room
+
+                blobCacheSize = 16_384;
+                blobPageSize = 16 * 1024 * 1024;
+
+                keyPageCacheSize = 16 * partitions * hashSize;
+                keyPageSize = 1024 * 1024;
+
+                metadataCacheSize = partitions * hashSize;
+                metadataCacheWeight = keys * 4 + 1000; // one int per key plus some room
+                metadataPageSize = 1024 * 1024;
+
+                flushDelay = 60;
+                flushThreshold = -1;
+
+                break;
+
+            case wide:
+                keys = size.getSize();
+                count = keys * 2;
+
+                blockSize = 4;
+                hashSize = 512;
+                partitions = 128;
+                keyCacheSize = 0;
+                keyCacheWeight = 0;
+
+                blobCacheSize = 524_288;
+                blobPageSize = 1024 * 1024; // Pages will roll over at 135M keys 
+
+                keyPageCacheSize = 16 * partitions * hashSize;
+                keyPageSize = 1024 * 1024; // Key pages will roll over at about 2.9B keys
+
+                metadataCacheSize = partitions * hashSize;
+                metadataCacheWeight = 4 * keys + 10_000; // one int per key plus some room
+                metadataPageSize = 1024 * 1024;
+
+                flushDelay = -1;
+                flushThreshold = 512;
+
+                break;
+
+            default:
+                throw new IllegalStateException("Ensure variables are initialized");
+        }
+
+        MetricRegistry metrics = new MetricRegistry();
+
+        AppendOnlyStoreBuilder builder = Uppend.store(path)
+                .withStoreName(STORE_NAME)
+                .withMetricsRootName(ROOT_NAME)
+
+                .withBlobsPerBlock(blockSize)
+                .withLongLookupHashSize(hashSize)
+                .withPartitionSize(partitions) // Use direct partition
+
+                .withInitialLookupKeyCacheSize(keyCacheSize)
+                .withMaximumLookupKeyCacheWeight(keyCacheWeight)
+
+                .withInitialBlobCacheSize(blobCacheSize)
+                .withMaximumBlobCacheSize(blobCacheSize)
+                .withBlobPageSize(blobPageSize)
+
+                .withInitialLookupPageCacheSize(keyPageCacheSize)
+                .withMaximumLookupPageCacheSize(keyPageCacheSize)
+                .withLookupPageSize(keyPageSize)
+
+                .withInitialMetaDataCacheSize(metadataCacheSize)
+                .withMetaDataPageSize(metadataPageSize)
+                .withMaximumMetaDataCacheWeight(metadataCacheWeight)
+
+                .withFlushThreshold(flushThreshold)
+                .withFlushDelaySeconds(flushDelay)
+
+                .withStoreMetrics(metrics)
+                .withCacheMetrics();
+
+        return new Benchmark(mode, builder, partitions, keys, count, ioStatArgs);
     }
 }

@@ -31,18 +31,20 @@ group 'com.upserve'
 description = """Uppend: fast, append-only key-multivalue store"""
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '3.3'
+    gradleVersion = '4.4'
 }
 
-gradleLint.rules += 'unused-dependency'
+// TODO unused-dependency is broken - claims all dependencies are unused!
+//gradleLint.rules += 'unused-dependency'
 
 apply plugin: 'java'
 apply plugin: 'maven'
 apply plugin: 'jacoco'
 apply plugin: 'com.bmuschko.nexus'
 
-sourceCompatibility = 1.8
-targetCompatibility = 1.8
+sourceCompatibility = 1.9
+targetCompatibility = 1.9
+// Requires 1.9 or greater due to unsafe memory access in MappebByteBuffer - Oracle Incident Report 9119653
 
 repositories {
     mavenCentral()
@@ -50,15 +52,16 @@ repositories {
 
 dependencies {
     compile 'com.google.guava:guava:21.0'
-    compile 'info.picocli:picocli:2.0.1'
+    compile 'com.github.ben-manes.caffeine:caffeine:2.6.2'
+    compile 'info.picocli:picocli:3.0.0'
     compile 'io.dropwizard.metrics:metrics-core:3.2.3'
     compile 'it.unimi.dsi:fastutil:7.0.13'
-    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
+//    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
     compile 'org.slf4j:slf4j-api:1.7.22'
 
     testCompile 'junit:junit:4.12'
     testCompile 'org.apache.logging.log4j:log4j-api:2.8'
-    testCompile 'org.mockito:mockito-core:2.7.13'
+    testCompile 'org.mockito:mockito-core:2.18.3'
 
     gradleLint.ignore {
         // gradle-lint doesn't like log4j because it's not used directly

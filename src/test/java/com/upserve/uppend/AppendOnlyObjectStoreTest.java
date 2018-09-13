@@ -1,20 +1,21 @@
 package com.upserve.uppend;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.mockito.stubbing.Answer;
 
 import java.util.*;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class AppendOnlyObjectStoreTest {
-
     static class Data {
         private final String value;
 
@@ -45,6 +46,7 @@ public class AppendOnlyObjectStoreTest {
             return new Data(new String(d));
         }
     }
+
     static final byte[] SERIALIZED01 = "SERIALIZED01".getBytes();
     static final Data DESERIALIZED01 = new Data("SERIALIZED01");
 
@@ -98,51 +100,44 @@ public class AppendOnlyObjectStoreTest {
     }
 
     @Test
-    public void testReadFlushed() throws Exception {
-        when(store.readFlushed("partition", "key1"))
-                .thenReturn(Stream.of(SERIALIZED02, SERIALIZED01));
-        assertArrayEquals(
-                Arrays.asList(DESERIALIZED02, DESERIALIZED01).toArray(),
-                instance.readFlushed("partition", "key1").toArray()
-        );
-    }
-
-    @Test
-    public void testReadSequentialFlushed() throws Exception {
-        when(store.readSequentialFlushed("partition", "key1"))
-                .thenReturn(Stream.of(SERIALIZED01, SERIALIZED02));
-        assertArrayEquals(
-                Arrays.asList(DESERIALIZED01, DESERIALIZED02).toArray(),
-                instance.readSequentialFlushed("partition", "key1").toArray()
-        );
-    }
-
-    @Test
-    public void testReadLastFlushed() throws Exception {
-        when(store.readLastFlushed("partition", "key1"))
-                .thenReturn(SERIALIZED02);
-        assertEquals(
-                DESERIALIZED02,
-                instance.readLastFlushed("partition", "key1")
-        );
-    }
-
-    @Test
     public void testKeys() {
-        instance.keys("partition");
-        verify(store).keys("partition");
-    }
-
-    @Test
-    public void testPartitions() {
-        instance.partitions();
-        verify(store).partitions();
+        instance.keys();
+        verify(store).keys();
     }
 
     @Test
     public void testClear() {
         instance.clear();
         verify(store).clear();
+    }
+
+    @Test
+    public void testRegister() {
+        instance.register(10);
+        verify(store).register(10);
+    }
+
+    @Test
+    public void testDeregister() {
+        instance.deregister();
+        verify(store).deregister();
+    }
+
+    @Test
+    public void testTrim() {
+        instance.trim();
+        verify(store).trim();
+    }
+
+    @Test
+    public void testGetName() {
+        when(store.getName()).thenReturn("my-name");
+        assertEquals("my-name", instance.getName());
+    }
+
+    @Test
+    public void testGetStore() {
+        assertEquals(store, instance.getStore());
     }
 
     @Test
@@ -157,4 +152,50 @@ public class AppendOnlyObjectStoreTest {
         verify(store).close();
     }
 
+    @Test
+    public void testKeyCount() {
+        when(store.keyCount()).thenReturn(7L);
+        assertEquals(7, instance.keyCount());
+    }
+
+    @Test
+    public void testScanStream() {
+        Map<String, List<String>> results = new HashMap<>();
+        when(store.scan())
+                .thenReturn(Map.of(
+                        "key1", Stream.of("val1.1".getBytes(), "val1.2".getBytes()),
+                        "key2", Stream.of("val2.1".getBytes())
+                ).entrySet().stream());
+        instance.scan().forEach(entry -> {
+            String key = entry.getKey();
+            results.computeIfAbsent(key, k -> new ArrayList<>());
+            entry.getValue().forEach(val -> results.get(key).add(val.value));
+        });
+        assertEquals(2, results.size());
+        assertArrayEquals(new String[] { "key1", "key2" }, results.keySet().stream().sorted().toArray());
+        assertArrayEquals(new String[] { "val1.1", "val1.2" }, results.get("key1").toArray());
+        assertArrayEquals(new String[] { "val2.1" }, results.get("key2").toArray());
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    public void testScanCallback() {
+        Map<String, List<String>> results = new HashMap<>();
+        BiConsumer<String, Stream<Data>> callback = (key, vals) -> {
+            results.computeIfAbsent(key, k -> new ArrayList<>());
+            vals.forEach(val -> results.get(key).add(val.value));
+        };
+        //noinspection Duplicates
+        doAnswer((Answer<Void>) invocation -> {
+            BiConsumer<String, Stream<byte[]>> _callback = invocation.getArgument(0);
+            _callback.accept("key1", Stream.of("val1.1".getBytes(), "val1.2".getBytes()));
+            _callback.accept("key2", Stream.of("val2.1".getBytes()));
+            return null;
+        }).when(store).scan(any(BiConsumer.class));
+        instance.scan(callback);
+        assertEquals(2, results.size());
+        assertArrayEquals(new String[] { "key1", "key2" }, results.keySet().stream().sorted().toArray());
+        assertArrayEquals(new String[] { "val1.1", "val1.2" }, results.get("key1").toArray());
+        assertArrayEquals(new String[] { "val2.1" }, results.get("key2").toArray());
+    }
 }

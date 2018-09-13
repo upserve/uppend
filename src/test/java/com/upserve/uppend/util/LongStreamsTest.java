@@ -14,7 +14,7 @@ public class LongStreamsTest {
                 LongStream.of(1, 2, 3),
                 () -> LongStream.of(4, 5, 6)
         );
-        assertArrayEquals(new long[] {1, 2, 3, 4, 5, 6}, stream.toArray());
+        assertArrayEquals(new long[]{1, 2, 3, 4, 5, 6}, stream.toArray());
     }
 
     @Test

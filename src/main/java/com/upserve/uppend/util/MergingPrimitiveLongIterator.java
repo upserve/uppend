@@ -5,7 +5,7 @@ import java.util.*;
 public class MergingPrimitiveLongIterator implements PrimitiveIterator.OfLong {
     private final PriorityQueue<PeekingPrimitiveLongIterator> iterators;
 
-    public MergingPrimitiveLongIterator(PrimitiveIterator.OfLong ... iterators) {
+    public MergingPrimitiveLongIterator(PrimitiveIterator.OfLong... iterators) {
         this.iterators = new PriorityQueue<>(Comparator.comparingLong(PeekingPrimitiveLongIterator::peek));
         for (PrimitiveIterator.OfLong iterator : iterators) {
             if (iterator != null && iterator.hasNext()) {

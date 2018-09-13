@@ -1,201 +1,204 @@
 package com.upserve.uppend;
 
-import com.google.common.collect.Maps;
-import com.upserve.uppend.lookup.LongLookup;
+import com.github.benmanes.caffeine.cache.stats.CacheStats;
+import com.upserve.uppend.blobs.PageCache;
+import com.upserve.uppend.lookup.*;
+import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
+import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.Path;
-import java.util.Map;
-import java.util.function.BiConsumer;
-import java.util.stream.*;
+import java.nio.channels.ClosedChannelException;
+import java.util.*;
+import java.util.function.*;
+import java.util.stream.Stream;
 
-public class FileAppendOnlyStore extends FileStore implements AppendOnlyStore {
+import static com.upserve.uppend.BlockStats.ZERO_STATS;
+
+public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    protected static final int DEFAULT_BLOBS_PER_BLOCK = 127;
+    private final PageCache blobPageCache;
+    private final PageCache keyPageCache;
+    private final LookupCache lookupCache;
 
-    protected final LongLookup lookups;
-    protected final BlockedLongs blocks;
-    protected final Blobs blobs;
+    private final Function<String, AppendStorePartition> openPartitionFunction;
+    private final Function<String, AppendStorePartition> createPartitionFunction;
 
-    FileAppendOnlyStore(Path dir, int flushDelaySeconds, boolean doLock, int longLookupHashSize, int longLookupWriteCacheSize, int blobsPerBlock) {
-        super(dir, flushDelaySeconds, doLock);
+    FileAppendOnlyStore(boolean readOnly, AppendOnlyStoreBuilder builder) {
+        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
 
-        lookups = new LongLookup(
-                dir.resolve("lookups"),
-                longLookupHashSize,
-                longLookupWriteCacheSize
-        );
-        blocks = new BlockedLongs(dir.resolve("blocks"), blobsPerBlock);
-        blobs = new Blobs(dir.resolve("blobs"));
+        blobPageCache = builder.buildBlobPageCache(getName());
+
+        keyPageCache = builder.buildLookupPageCache(getName());
+
+        lookupCache = builder.buildLookupCache(getName(), readOnly);
+
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
+
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
     }
 
     @Override
-    public void append(String partition, String key, byte[] value) {
-        log.trace("appending for key '{}'", key);
-        long blobPos = blobs.append(value);
-        long blockPos = lookups.putIfNotExists(partition, key, blocks::allocate);
-        log.trace("appending {} bytes (blob pos {}, block pos {}) for key '{}'", value.length, blobPos, blockPos, key);
-        blocks.append(blockPos, blobPos);
+    public String getName() {
+        return name;
     }
 
     @Override
-    public Stream<byte[]> read(String partition, String key) {
-        log.trace("reading in partition {} with key {}", partition, key);
-        return blockValues(partition, key, true)
-                .parallel()
-                .mapToObj(blobs::read);
+    public FlushStats getFlushStats() {
+        return lookupCache.getFlushStats();
     }
 
     @Override
-    public Stream<byte[]> readSequential(String partition, String key) {
-        log.trace("reading sequential in partition {} with key {}", partition, key);
-        return blockValues(partition, key, true)
-                .mapToObj(blobs::read);
-    }
-
-    public byte[] readLast(String partition, String key) {
-        log.trace("reading last in partition {} with key {}", partition, key);
-        long pos = blockLastValue(partition, key, true);
-        if (pos == -1) {
-            return null;
-        }
-        return blobs.read(pos);
+    public CacheStats getBlobPageCacheStats() {
+        return blobPageCache.stats();
     }
 
     @Override
-    public Stream<byte[]> readFlushed(String partition, String key) {
-        log.trace("reading cached in partition {} with key {}", partition, key);
-        return blockValues(partition, key, false)
-                .parallel()
-                .mapToObj(blobs::read);
+    public CacheStats getKeyPageCacheStats() {
+        return keyPageCache.stats();
     }
 
     @Override
-    public Stream<byte[]> readSequentialFlushed(String partition, String key) {
-        log.trace("reading sequential cached in partition {} with key {}", partition, key);
-        return blockValues(partition, key, false)
-                .mapToObj(blobs::read);
+    public CacheStats getLookupKeyCacheStats() {
+        return lookupCache.keyStats();
     }
 
     @Override
-    public byte[] readLastFlushed(String partition, String key) {
-        log.trace("reading last cached in partition {} with key {}", partition, key);
-        long pos = blockLastValue(partition, key, false);
-        if (pos == -1) {
-            return null;
-        }
-        return blobs.read(pos);
+    public CacheStats getMetadataCacheStats() {
+        return lookupCache.metadataStats();
     }
 
     @Override
-    public Stream<String> keys(String partition) {
-        log.trace("getting keys in partition {}", partition);
-        return lookups.keys(partition);
+    public BlockStats getBlockLongStats() {
+        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(ZERO_STATS, BlockStats::add);
     }
 
     @Override
-    public Stream<String> partitions() {
-        log.trace("getting partitions");
-        return lookups.partitions();
+    public long keyCount() {
+        return streamPartitions()
+                .mapToLong(AppendStorePartition::keyCount)
+                .sum();
     }
 
     @Override
-    public Stream<Map.Entry<String, Stream<byte[]>>> scan(String partition) {
-        return lookups.scan(partition)
-                .map(entry ->
-                        Maps.immutableEntry(
-                                entry.getKey(),
-                                blocks.values(entry.getValue())
-                                        .parallel()
-                                        .mapToObj(blobs::read)
-                        )
-                );
+    public void append(String partitionEntropy, String key, byte[] value) {
+        log.trace("appending for partition '{}', key '{}'", partitionEntropy, key);
+        if (readOnly) throw new RuntimeException("Can not append to store opened in read only mode:" + dir);
+        getOrCreate(partitionEntropy).append(key, value);
     }
 
     @Override
-    public void scan(String partition, BiConsumer<String, Stream<byte[]>> callback) {
-        lookups.scan(
-                partition,
-                (key, blobRefs) ->  callback.accept(
-                        key,
-                        blocks.values(blobRefs).mapToObj(blobs::read)
-                )
-        );
+    public Stream<byte[]> read(String partitionEntropy, String key) {
+        log.trace("reading in partition {} with key {}", partitionEntropy, key);
+
+        return getIfPresent(partitionEntropy)
+                .map(partitionObject -> partitionObject.read(key))
+                .orElse(Stream.empty());
+    }
+
+    @Override
+    public Stream<byte[]> readSequential(String partitionEntropy, String key) {
+        log.trace("reading sequential in partition {} with key {}", partitionEntropy, key);
+        return getIfPresent(partitionEntropy)
+                .map(partitionObject -> partitionObject.readSequential(key))
+                .orElse(Stream.empty());
+    }
+
+    public byte[] readLast(String partitionEntropy, String key) {
+        log.trace("reading last in partition {} with key {}", partitionEntropy, key);
+        return getIfPresent(partitionEntropy)
+                .map(partitionObject -> partitionObject.readLast(key))
+                .orElse(null);
+    }
+
+    @Override
+    public Stream<String> keys() {
+        log.trace("getting keys for {}", getName());
+        return streamPartitions()
+                .flatMap(AppendStorePartition::keys);
+    }
+
+    @Override
+    public Stream<Map.Entry<String, Stream<byte[]>>> scan() {
+        return streamPartitions()
+                .flatMap(AppendStorePartition::scan);
+    }
+
+    @Override
+    public void scan(BiConsumer<String, Stream<byte[]>> callback) {
+        streamPartitions()
+                .forEach(partitionObject -> partitionObject.scan(callback));
     }
 
     @Override
     public void clear() {
+        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + name);
         log.trace("clearing");
-        blocks.clear();
-        blobs.clear();
-        lookups.clear();
+
+        closeInternal();
+
+        try {
+            SafeDeleting.removeDirectory(partitionsDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to clear partitions directory", e);
+        }
+    }
+
+    @Override
+    Function<String, AppendStorePartition> getOpenPartitionFunction() {
+        return openPartitionFunction;
+    }
+
+    @Override
+    Function<String, AppendStorePartition> getCreatePartitionFunction() {
+        return createPartitionFunction;
     }
 
     @Override
     protected void flushInternal() {
         // Flush lookups, then blocks, then blobs, since this is the access order of a read.
         // Check non null because the super class is registered in the autoflusher before the constructor finishes
-        if (lookups != null) lookups.flush();
-        if (blocks != null) blocks.flush();
-        if (blobs != null) blobs.flush();
+        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + name);
+
+        partitionMap.values().parallelStream().forEach(appendStorePartition -> {
+            try {
+                appendStorePartition.flush();
+            } catch (ClosedChannelException e) {
+                if (isClosed.get()) {
+                    log.debug("Tried to flush a closed store {}", name, e);
+                } else {
+                    throw new UncheckedIOException("Error flushing store " + name, e);
+                }
+
+            } catch (IOException e) {
+                if (isClosed.get())
+                    throw new UncheckedIOException("Error flushing store " + name, e);
+            }
+        });
     }
 
     @Override
     public void trimInternal() {
-        lookups.close();
-        blocks.trim();
-        blobs.flush();
+        if (!readOnly) flushInternal();
+        lookupCache.flush();
+        blobPageCache.flush();
+        keyPageCache.flush();
     }
 
     @Override
     protected void closeInternal() {
-        // Close blobs first to stop appends
-        try {
-            blobs.close();
-        } catch (Exception e) {
-            log.error("unable to close blobs", e);
-        }
-        try {
-            lookups.close();
-        } catch (Exception e) {
-            log.error("unable to close lookups", e);
-        }
-        try {
-            blocks.close();
-        } catch (Exception e) {
-            log.error("unable to close blocks", e);
-        }
-    }
+        partitionMap.values().parallelStream().forEach(appendStorePartition -> {
+            try {
+                appendStorePartition.close();
+            } catch (IOException e) {
+                throw new UncheckedIOException("Error closing store " + name, e);
+            }
+        });
 
-    private LongStream blockValues(String partition, String key, boolean useCache) {
-        log.trace("reading block values for key: {}", key);
-        long blockPos = blockPos(partition, key, useCache);
-        if (blockPos == -1) {
-            log.trace("key not found: {}", key);
-            return LongStream.empty();
-        }
-        log.trace("streaming values at block pos {} for key: {}", blockPos, key);
-        return blocks.values(blockPos);
-    }
-
-    private long blockLastValue(String partition, String key, boolean useCache) {
-        log.trace("reading last value for key: {}", key);
-        long blockPos = blockPos(partition, key, useCache);
-        if (blockPos == -1) {
-            log.trace("key not found: {}", key);
-            return -1;
-        }
-        log.trace("returning last value at block pos {} for key: {}", blockPos, key);
-        return blocks.lastValue(blockPos);
-    }
-
-    private long blockPos(String partition, String key, boolean useCache) {
-        if (useCache) {
-            return lookups.get(partition, key);
-        } else {
-            return lookups.getFlushed(partition, key);
-        }
+        partitionMap.clear();
+        lookupCache.flush();
+        blobPageCache.flush();
+        keyPageCache.flush();
     }
 }
