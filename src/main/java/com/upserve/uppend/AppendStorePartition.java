@@ -46,7 +46,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize),false);
 
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, lookupCache, hashSize, flushThreshold, reloadInterval, false);
     }
 
     public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, LookupCache lookupCache, boolean readOnly) {
@@ -62,7 +62,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize), readOnly);
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize), readOnly);
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, lookupCache, hashSize, flushThreshold, reloadInterval, false);
     }
 
     PartitionStats getPartitionStats(){
@@ -74,7 +74,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 );
     }
 
-    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, LookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
         super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, reloadInterval, readOnly);
 
         this.blocks = blocks;
@@ -145,12 +145,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     @Override
-    public void flush() throws IOException {
-        log.debug("Starting flush for partition: {}", lookupCache.getPartition());
-
+    public void flush() {
         Arrays.stream(lookups).forEach(LookupData::flush);
-
-        log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
     BlockStats blockedLongStats() {

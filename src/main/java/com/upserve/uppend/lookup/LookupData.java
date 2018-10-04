@@ -17,7 +17,7 @@ import java.util.stream.*;
 public class LookupData implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PartitionLookupCache partitionLookupCache;
+    private final LookupCache lookupCache;
     private final Function<LookupKey, Long> lookupFunction;
     private final BiConsumer<LookupKey, Long> lookupBiConsumer;
 
@@ -52,23 +52,23 @@ public class LookupData implements Flushable {
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
 
-    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold){
+    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int flushThreshold){
         return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, flushThreshold, -1, false);
     }
 
-    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int reloadInterval){
+    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int reloadInterval){
         return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, -1, reloadInterval, true);
     }
 
-    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, PartitionLookupCache lookupCache, int flushThreshold, int reloadInterval, boolean readOnly) {
+    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int flushThreshold, int reloadInterval, boolean readOnly) {
 
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
 
-        this.partitionLookupCache = lookupCache;
+        this.lookupCache = lookupCache;
         if (lookupCache.isKeyCacheActive()) {
-            lookupFunction = key -> partitionLookupCache.getLong(key , this::findValueFor);
-            lookupBiConsumer = partitionLookupCache::putLookup;
+            lookupFunction = key -> this.lookupCache.getLong(key , this::findValueFor);
+            lookupBiConsumer = this.lookupCache::putLookup;
         } else {
             lookupFunction = this::findValueFor;
             lookupBiConsumer = (key, value) -> {};
@@ -324,17 +324,6 @@ public class LookupData implements Flushable {
     }
 
     /**
-     * load a key from paged files for the partition lookup cache
-     * Must return null to prevent loading missing value into cache
-     *
-     * @param key the Key we are looking for
-     * @return Long value or null if not present
-     */
-    private Long findValueFor(PartitionLookupKey key) {
-        return findValueFor(key.getLookupKey());
-    }
-
-    /**
      * Load a key from cached pages
      *
      * @param key the key we are looking for
@@ -584,7 +573,7 @@ public class LookupData implements Flushable {
             generateMetaData(metadata);
 
             // record stats about flushing
-            partitionLookupCache.addFlushCount(flushCache.size());
+            lookupCache.addFlushCount(flushCache.size());
 
             flushCacheToReadCache();
             log.debug("flushed");

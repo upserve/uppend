@@ -148,21 +148,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
         log.debug("Flushing!");
 
         ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
-            partitionMap.values().parallelStream().forEach(appendStorePartition -> {
-                try {
-                    appendStorePartition.flush();
-                } catch (ClosedChannelException e) {
-                    if (isClosed.get()) {
-                        log.debug("Tried to flush a closed store {}", name, e);
-                    } else {
-                        throw new UncheckedIOException("Error flushing store " + name, e);
-                    }
-
-                } catch (IOException e) {
-                    if (isClosed.get())
-                        throw new UncheckedIOException("Error flushing store " + name, e);
-                }
-            })
+            partitionMap.values().parallelStream().forEach(AppendStorePartition::flush)
         );
         try {
             task.get();
