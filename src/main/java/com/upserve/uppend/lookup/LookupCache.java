@@ -14,7 +14,7 @@ public class LookupCache implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     // An LRU cache of Lookup Keys
-    private final Cache<PartitionLookupKey, Long> keyLongLookupCache;
+    private final Cache<LookupKey, Long> keyLongLookupCache;
 
     private final boolean keyCacheActive;
 
@@ -23,12 +23,12 @@ public class LookupCache implements Flushable {
 
     public LookupCache(int initialKeyCapacity, long maximumKeyWeight, ExecutorService executorServiceKeyCache, Supplier<StatsCounter> keyCacheMetricsSupplier) {
 
-        Caffeine<PartitionLookupKey, Long> keyCacheBuilder = Caffeine
-                .<PartitionLookupKey, Long>newBuilder()
+        Caffeine<LookupKey, Long> keyCacheBuilder = Caffeine
+                .<LookupKey, Long>newBuilder()
                 .executor(executorServiceKeyCache)
                 .initialCapacity(initialKeyCapacity)
                 .maximumWeight(maximumKeyWeight)  // bytes
-                .<PartitionLookupKey, Long>weigher((k, v) -> k.weight());
+                .<LookupKey, Long>weigher((k, v) -> k.byteLength());
 
         if (keyCacheMetricsSupplier != null) {
             keyCacheBuilder = keyCacheBuilder.recordStats(keyCacheMetricsSupplier);
@@ -36,7 +36,7 @@ public class LookupCache implements Flushable {
 
         keyCacheActive = maximumKeyWeight > 0;
 
-        keyLongLookupCache = keyCacheBuilder.<PartitionLookupKey, Long>build();
+        keyLongLookupCache = keyCacheBuilder.<LookupKey, Long>build();
 
         keysFlushed = new LongAdder();
         lookupsFlushed = new LongAdder();
@@ -55,11 +55,11 @@ public class LookupCache implements Flushable {
         return keyCacheActive;
     }
 
-    public void putLookup(PartitionLookupKey key, long val) {
+    public void putLookup(LookupKey key, long val) {
         keyLongLookupCache.put(key, val);
     }
 
-    public Long getLong(PartitionLookupKey lookupKey, Function<PartitionLookupKey, Long> cacheLoader) {
+    public Long getLong(LookupKey lookupKey, Function<LookupKey, Long> cacheLoader) {
         return keyLongLookupCache.get(lookupKey, cacheLoader);
     }
 
