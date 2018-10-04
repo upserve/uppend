@@ -19,7 +19,7 @@ public abstract class Partition {
     final VirtualPageFile longKeyFile;
     final VirtualPageFile metadataBlobFile;
 
-    final PartitionLookupCache lookupCache;
+    final LookupCache lookupCache;
 
     private final HashFunction hashFunction;
 
@@ -27,7 +27,7 @@ public abstract class Partition {
 
     final LookupData[] lookups;
 
-    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, LookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
         this.longKeyFile = longKeyFile;
         this.metadataBlobFile = metadataBlobFile;
 

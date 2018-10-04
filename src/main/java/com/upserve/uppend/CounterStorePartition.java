@@ -30,7 +30,7 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize), false);
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize), false);
 
-        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
+        return new CounterStorePartition(keys, metadata, lookupCache, hashSize, flushThreshold, reloadInterval, false);
     }
 
     public static CounterStorePartition openPartition(Path partentDir, String partition, int hashSize, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize, LookupCache lookupCache, boolean readOnly) {
@@ -42,10 +42,10 @@ public class CounterStorePartition extends Partition implements Flushable, Close
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize), readOnly);
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, keyPageSize, targetBufferSize, readOnly);
 
-        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, reloadInterval, false);
+        return new CounterStorePartition(keys, metadata, lookupCache, hashSize, flushThreshold, reloadInterval, false);
     }
 
-    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, LookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
         super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, reloadInterval, readOnly);
     }
 
@@ -93,14 +93,8 @@ public class CounterStorePartition extends Partition implements Flushable, Close
     }
 
     @Override
-    public void flush() throws IOException {
-        log.debug("Starting flush for partition: {}", lookupCache.getPartition());
-
+    public void flush() {
         Arrays.stream(lookups).parallel().forEach(LookupData::flush);
-
-//        longKeyFile.flush();
-//        metadataBlobFile.flush();
-        log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
     void clear() throws IOException {

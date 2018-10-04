@@ -133,13 +133,7 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     protected void flushInternal() {
         if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
-        partitionMap.values().parallelStream().forEach(counterStorePartition -> {
-            try {
-                counterStorePartition.flush();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error flushing store " + dir, e);
-            }
-        });
+        partitionMap.values().parallelStream().forEach(CounterStorePartition::flush);
     }
 
     @Override
