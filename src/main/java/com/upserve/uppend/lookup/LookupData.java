@@ -17,13 +17,18 @@ import java.util.stream.*;
 public class LookupData implements Flushable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    private static final Random random = new Random();
+
     private final LookupCache lookupCache;
     private final Function<LookupKey, Long> lookupFunction;
     private final BiConsumer<LookupKey, Long> lookupBiConsumer;
 
     private final AtomicInteger writeCacheCounter;
+    private final AtomicBoolean flushing;
+    private final AtomicBoolean firstFlush;
 
     private final int flushThreshold;
+    private final int firstFlushThreshold;
     private final int reloadInterval;
 
     // The container for stuff we need to write - Only new keys can be in the write cache
@@ -76,6 +81,9 @@ public class LookupData implements Flushable {
 
         this.readOnly = readOnly;
 
+        this.firstFlush = new AtomicBoolean(true);
+        this.firstFlushThreshold = flushThreshold *  (random.nextInt(100) + 5) / 100;
+        this.flushing = new AtomicBoolean(false);
         this.flushThreshold = flushThreshold;
         this.reloadInterval = reloadInterval;
 
@@ -126,8 +134,23 @@ public class LookupData implements Flushable {
     }
 
     private void flushThreshold() {
-        if (flushThreshold != -1 && writeCacheCounter.getAndIncrement() == flushThreshold) {
+        if (flushThreshold != -1) return;
+
+        if (shouldFlush(writeCacheCounter.getAndIncrement())) {
             AutoFlusher.submitWork(this::flush);
+        }
+    }
+
+    private boolean shouldFlush(int writeCount) {
+        if (flushing.get() && firstFlush.get() && writeCount == firstFlushThreshold) {
+            flushing.set(true);
+            firstFlush.set(false);
+            return true;
+        } else if (flushing.get() && writeCount == flushThreshold){
+            flushing.set(true);
+            return true;
+        } else {
+            return false;
         }
     }
 
@@ -565,6 +588,7 @@ public class LookupData implements Flushable {
     public synchronized void flush() {
         if (readOnly) throw new RuntimeException("Can not flush read only LookupData");
 
+        flushing.set(true);
         if (writeCache.size() > 0) {
             log.debug("starting flush");
 
@@ -576,6 +600,8 @@ public class LookupData implements Flushable {
             lookupCache.addFlushCount(flushCache.size());
 
             flushCacheToReadCache();
+
+            flushing.set(false);
             log.debug("flushed");
         }
     }
