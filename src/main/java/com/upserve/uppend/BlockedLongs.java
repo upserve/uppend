@@ -22,8 +22,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int LOCK_SIZE = 10007;
     private final Striped<Lock> stripedLocks;
 
-    private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
-    private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
+    private static final int PAGE_SIZE = 128 * 1024 * 1024; // allocate 128 MB chunks
+    private static final int MAX_PAGES = 32 * 1024; // max 4 TB
 
     private final Path file;
 
@@ -73,7 +73,13 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         this.valuesPerBlock = valuesPerBlock;
         blockSize = 16 + valuesPerBlock * 8;
 
-        StandardOpenOption[] openOptions = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
+        StandardOpenOption[] openOptions;
+        if (readOnly){
+            openOptions = new StandardOpenOption[]{StandardOpenOption.READ};
+        } else {
+            openOptions = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
+        }
+
         try {
             blocks = FileChannel.open(file, openOptions);
         } catch (IOException e) {
