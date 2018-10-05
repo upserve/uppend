@@ -93,7 +93,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (readOnly) {
             stripedLocks = null;
             pages = null;
-            currentPage = null;
+            currentPage = new AtomicInteger(0);
 
         } else {
             stripedLocks = Striped.lock(LOCK_SIZE);

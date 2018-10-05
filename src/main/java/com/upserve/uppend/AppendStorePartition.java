@@ -70,7 +70,9 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 longKeyFile.getAllocatedPageCount(),
                 blobFile.getAllocatedPageCount(),
                 Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupMissCount).sum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupHitCount).sum()
+                Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupHitCount).sum(),
+                Arrays.stream(lookups).mapToLong(LookupData::getMetadataSize).sum(),
+                Arrays.stream(lookups).mapToLong(LookupData::getFindKeyTimer).sum()
                 );
     }
 

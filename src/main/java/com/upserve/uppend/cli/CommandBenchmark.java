@@ -113,7 +113,7 @@ public class CommandBenchmark implements Callable<Void> {
 
                 blockSize = 4;
                 hashSize = 512;
-                partitions = 128;
+                partitions = 256;
                 keyCacheSize = 0;
                 keyCacheWeight = 0;
 
@@ -122,7 +122,7 @@ public class CommandBenchmark implements Callable<Void> {
                 metadataPageSize = 1024 * 1024;
 
                 flushDelay = -1;
-                flushThreshold = 512;
+                flushThreshold = 256;
 
                 break;
 
@@ -149,6 +149,6 @@ public class CommandBenchmark implements Callable<Void> {
                 .withStoreMetrics(metrics)
                 .withCacheMetrics();
 
-        return new Benchmark(mode, builder, partitions, keys, count, ioStatArgs);
+        return new Benchmark(mode, builder, keys, count, ioStatArgs);
     }
 }
