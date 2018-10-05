@@ -56,6 +56,7 @@ public class LookupData implements Flushable {
 
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
+    private LongAdder findKeyTimer;
 
     public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int flushThreshold){
         return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, flushThreshold, -1, false);
@@ -82,7 +83,7 @@ public class LookupData implements Flushable {
         this.readOnly = readOnly;
 
         this.firstFlush = new AtomicBoolean(true);
-        this.firstFlushThreshold = flushThreshold *  (random.nextInt(100) + 5) / 100;
+        this.firstFlushThreshold = flushThreshold *  (random.nextInt(100) + 25) / 100;
         this.flushing = new AtomicBoolean(false);
         this.flushThreshold = flushThreshold;
         this.reloadInterval = reloadInterval;
@@ -92,6 +93,7 @@ public class LookupData implements Flushable {
 
         writeCacheCounter = new AtomicInteger();
         metaDataGeneration = new AtomicInteger();
+        findKeyTimer = new LongAdder();
 
         if (readOnly) {
             writeCache = null;
@@ -134,7 +136,7 @@ public class LookupData implements Flushable {
     }
 
     private void flushThreshold() {
-        if (flushThreshold != -1) return;
+        if (flushThreshold == -1) return;
 
         if (shouldFlush(writeCacheCounter.getAndIncrement())) {
             AutoFlusher.submitWork(this::flush);
@@ -142,11 +144,11 @@ public class LookupData implements Flushable {
     }
 
     private boolean shouldFlush(int writeCount) {
-        if (flushing.get() && firstFlush.get() && writeCount == firstFlushThreshold) {
+        if (!flushing.get() && firstFlush.get() && writeCount == firstFlushThreshold) {
             flushing.set(true);
             firstFlush.set(false);
             return true;
-        } else if (flushing.get() && writeCount == flushThreshold){
+        } else if (!flushing.get() && writeCount == flushThreshold){
             flushing.set(true);
             return true;
         } else {
@@ -346,6 +348,14 @@ public class LookupData implements Flushable {
         return metadata.getHitCount();
     }
 
+    public long getMetadataSize(){
+        return metadata.getNumKeys();
+    }
+
+    public long getFindKeyTimer(){
+        return findKeyTimer.sum();
+    }
+
     /**
      * Load a key from cached pages
      *
@@ -353,7 +363,11 @@ public class LookupData implements Flushable {
      * @return Long value or null if not present
      */
     private Long findValueFor(LookupKey key) {
-        return getMetadata().findKey(keyLongBlobs, key);
+        LookupMetadata md = getMetadata();
+        long tic = -System.nanoTime();
+        Long val = md.findKey(keyLongBlobs, key);
+        findKeyTimer.add(System.nanoTime() + tic);
+        return val;
     }
 
     LookupMetadata loadMetadata() {
@@ -588,8 +602,8 @@ public class LookupData implements Flushable {
     public synchronized void flush() {
         if (readOnly) throw new RuntimeException("Can not flush read only LookupData");
 
-        flushing.set(true);
         if (writeCache.size() > 0) {
+            flushing.set(true);
             log.debug("starting flush");
 
             flushWriteCache(metadata);
@@ -601,9 +615,9 @@ public class LookupData implements Flushable {
 
             flushCacheToReadCache();
 
-            flushing.set(false);
             log.debug("flushed");
         }
+        flushing.set(false);
     }
 
     private int[] getKeyPosition() {

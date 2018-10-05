@@ -27,16 +27,14 @@ public class Benchmark {
     private Runnable writer;
     private Runnable reader;
 
-    private final Random random = new Random();
-
     private BenchmarkMode mode;
 
     private final MetricRegistry metrics;
     private long range;
     private long count;
-    private int maxPartitions;
-    private long maxKeys;
     private int sleep = 0;
+    private int partitionSize;
+    private int lookupHashSize;
 
     private final AppendOnlyStore testInstance;
 
@@ -54,12 +52,12 @@ public class Benchmark {
     AtomicReference<PartitionStats> partitionStats;
     AtomicReference<BlockStats> blockStats;
 
-    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count, String ioStatArgs) {
+    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, long maxKeys, long count, String ioStatArgs) {
         this.mode = mode;
 
         this.count = count;
-        this.maxPartitions = maxPartitions; // max ~ 2000
-        this.maxKeys = maxKeys; // max ~ 100,000,000
+        partitionSize = builder.getPartitionSize();
+        lookupHashSize = builder.getLookupHashSize();
 
         this.ioStatArgs = ioStatArgs;
 
@@ -113,7 +111,7 @@ public class Benchmark {
 
     private BenchmarkWriter simpleWriter() {
         return new BenchmarkWriter(
-                random.longs(count, 0, range).parallel(),
+                ThreadLocalRandom.current().longs(count, 0, range).parallel(),
                 longInt -> {
                     byte[] myBytes = bytes(longInt);
                     String formatted = format(longInt);
@@ -125,7 +123,7 @@ public class Benchmark {
 
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
-                random.longs(count, 0, range).parallel(),
+                ThreadLocalRandom.current().longs(count, 0, range).parallel(),
                 longInt -> {
                     String formatted = format(longInt);
                     return testInstance.read(formatted, formatted)
@@ -210,9 +208,8 @@ public class Benchmark {
                     FlushStats fstats = testInstance.getFlushStats();
                     log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
 
-
                     PartitionStats pStats = testInstance.getPartitionStats();
-                    log.info("Partition Stats: {}", pStats.minus(partitionStats.getAndSet(pStats)));
+                    log.info(pStats.present(partitionSize, lookupHashSize, partitionStats.getAndSet(pStats)));
 
                     BlockStats bStats = testInstance.getBlockLongStats();
                     log.info("Block Stats: {}", bStats.minus(blockStats.getAndSet(bStats)));
@@ -226,7 +223,7 @@ public class Benchmark {
     }
 
     public void run() throws InterruptedException, ExecutionException, IOException {
-        log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
+        log.info("Running Performance test with {} partitions {} hashSize, {} keys and {} count", range, count);
 
         ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
         log.info("Running IOSTAT: '{}'", processBuilder.command());
