@@ -11,15 +11,20 @@ public class PartitionStats {
     private final long metadataLookupMissCount;
     private final long metadataLookupHitCount;
 
-    public PartitionStats(int metadataPageCount, int keyPageCount, int blobPageCount, long metadataLookupMissCount, long metadataLookupHitCount) {
+    private final long metadataSize;
+    private final long findKeyTimer;
+
+    public PartitionStats(int metadataPageCount, int keyPageCount, int blobPageCount, long metadataLookupMissCount, long metadataLookupHitCount, long metadataSize, long findKeyTimer) {
         this.metadataPageCount = metadataPageCount;
         this.keyPageCount = keyPageCount;
         this.blobPageCount = blobPageCount;
         this.metadataLookupMissCount = metadataLookupMissCount;
         this.metadataLookupHitCount = metadataLookupHitCount;
+        this.metadataSize = metadataSize;
+        this.findKeyTimer = findKeyTimer;
     }
 
-    public static PartitionStats ZERO_STATS = new PartitionStats(0,0,0,0,0);
+    public static PartitionStats ZERO_STATS = new PartitionStats(0,0,0,0,0, 0, 0);
 
     public int getMetadataPageCount() {
         return metadataPageCount;
@@ -41,6 +46,14 @@ public class PartitionStats {
         return metadataLookupMissCount;
     }
 
+    public long getMetadataSize() {
+        return metadataSize;
+    }
+
+    public long getFindKeyTimer() {
+        return findKeyTimer;
+    }
+
     @Override
     public String toString() {
         return "PartitionStats{" +
@@ -49,8 +62,26 @@ public class PartitionStats {
                 ", blobPageCount=" + blobPageCount +
                 ", metadataLookupMissCount=" + metadataLookupMissCount +
                 ", metadataLookupHitCount=" + metadataLookupHitCount +
+                ", metadataSize=" + metadataSize +
+                ", findKeyTimer=" + findKeyTimer +
                 '}';
     }
+
+    public String present(int partitionCount, int hashCount, PartitionStats previous) {
+        PartitionStats deltaStats = this.minus(previous);
+
+        long lookupCount = Math.max(1, deltaStats.metadataLookupHitCount + deltaStats.metadataLookupMissCount);
+        return "PartitionStats{" +
+                "newMDPages=" + deltaStats.metadataPageCount +
+                ", newKeyPages=" + deltaStats.keyPageCount +
+                ", newBlobPages=" + deltaStats.blobPageCount +
+                ", missCount=" + deltaStats.metadataLookupMissCount +
+                ", hitCount=" + deltaStats.metadataLookupHitCount +
+                ", meanSize=" + metadataSize / (partitionCount * hashCount) +
+                ", meanFindTimer=" + deltaStats.findKeyTimer / (lookupCount * 1000)+
+                "us}";
+    }
+
 
     public PartitionStats minus(PartitionStats other) {
         if (Objects.isNull(other)) throw new NullPointerException("PartitionStats minus method argument is null");
@@ -59,7 +90,9 @@ public class PartitionStats {
                 keyPageCount - other.keyPageCount,
                 blobPageCount - other.blobPageCount,
                 metadataLookupMissCount - other.metadataLookupMissCount,
-                metadataLookupHitCount - other.metadataLookupHitCount
+                metadataLookupHitCount - other.metadataLookupHitCount,
+                metadataSize - other.metadataSize,
+                findKeyTimer - other.findKeyTimer
         );
     }
 
@@ -70,8 +103,9 @@ public class PartitionStats {
                 keyPageCount + other.keyPageCount,
                 blobPageCount + other.blobPageCount,
                 metadataLookupMissCount + other.metadataLookupMissCount,
-                metadataLookupHitCount + other.metadataLookupHitCount
+                metadataLookupHitCount + other.metadataLookupHitCount,
+                metadataSize + other.metadataSize,
+                findKeyTimer + other.findKeyTimer
         );
     }
 }
-
