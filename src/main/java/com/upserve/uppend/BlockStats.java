@@ -50,6 +50,7 @@ public class BlockStats {
                 ", size=" + size +
                 ", appendCount=" + appendCount +
                 ", allocCount=" + allocCount +
+                ", valuesReadCount=" + valuesReadCount +
                 '}';
     }
 
