@@ -70,5 +70,4 @@ public class FilePage implements Page {
 
         return actualWrite;
     }
-
 }

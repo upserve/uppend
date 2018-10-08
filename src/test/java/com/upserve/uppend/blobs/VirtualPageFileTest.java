@@ -84,13 +84,13 @@ public class VirtualPageFileTest {
 
         page = instance.getExistingPage(5,0);
 
-        assertEquals(304616L, instance.getFileSize());
+        assertEquals(304824, instance.getFileSize());
 
         instance.close();
 
         // We can open the file in read only after truncation
         VirtualPageFile roInstance = new VirtualPageFile(path, 36, 1024, 16384, true);
-        assertEquals(290056, roInstance.getFileSize());
+        assertEquals(289464, roInstance.getFileSize());
 
         page = roInstance.getExistingPage(5,0);
 
@@ -100,20 +100,20 @@ public class VirtualPageFileTest {
 
         // Make a new page - check that file is extended again.
         instance = new VirtualPageFile(path, 36, 1024, 16384, false);
-        assertEquals(304616L, instance.getFileSize());
+        assertEquals(304824L, instance.getFileSize());
 
         page = instance.getOrCreatePage(6,0);
         page.put(6, "def".getBytes(), 0);
         page.put(900, "ghi".getBytes(), 0);
 
         page = roInstance.getExistingPage(6,0);
-        assertEquals(304616L, roInstance.getFileSize());
+        assertEquals(304824L, roInstance.getFileSize());
         page.get(6, bytes, 0);
         assertArrayEquals("def".getBytes(), bytes);
 
         instance.close();
 
-        assertEquals(291096, roInstance.getFileSize());
+        assertEquals(290488L, roInstance.getFileSize());
 
         page.get(900, bytes, 0);
         assertArrayEquals("ghi".getBytes(), bytes);
