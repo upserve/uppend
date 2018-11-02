@@ -1,6 +1,5 @@
 package com.upserve.uppend.blobs;
 
-import com.google.common.collect.ImmutableList;
 import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
@@ -13,8 +12,6 @@ import java.util.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
-
-import static java.lang.StrictMath.min;
 
 /**
  * Simulates contiguous pages for virtual files in a single physical file
@@ -49,7 +46,6 @@ public class VirtualPageFile implements Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
-    private static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
 
     private static final int SELF_DESCRIBING_HEADER_SIZE = 8;
 
