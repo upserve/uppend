@@ -112,14 +112,14 @@ public class CommandBenchmark implements Callable<Void> {
                 count = keys * 2;
 
                 blockSize = 4;
-                hashSize = 512;
-                partitions = 256;
+                hashSize = 256;
+                partitions = 128;
                 keyCacheSize = 0;
                 keyCacheWeight = 0;
 
-                blobPageSize = 1024 * 1024; // Pages will roll over at 135M keys
-                keyPageSize = 1024 * 1024; // Key pages will roll over at about 2.9B keys
-                metadataPageSize = 1024 * 1024;
+                blobPageSize = 64 * 1024; // Pages will roll over at 135M keys
+                keyPageSize = 4 * 1024; // Key pages will roll over at about 2.9B keys
+                metadataPageSize = 4 * 1024;
 
                 flushDelay = -1;
                 flushThreshold = 256;
