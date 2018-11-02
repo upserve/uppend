@@ -238,9 +238,8 @@ public class VirtualPageFile implements Closeable {
         final long postHeaderPosition = startPosition - (totalHeaderSize);
         final int mapIndex = (int) (postHeaderPosition / bufferSize);
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
-        final int minimumCapacity = mapPosition + pageSize;
 
-        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
+        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex);
 
         return new MappedPage(bigbuffer, mapPosition, pageSize);
     }
@@ -249,11 +248,11 @@ public class VirtualPageFile implements Closeable {
         return new FilePage(channel, startPosition, pageSize);
     }
 
-    long getFileSize() {
+    long getFileSize(){
         try {
             return channel.size();
         } catch (IOException e) {
-            throw new UncheckedIOException("Could not get length of readonly file " + filePath, e);
+            throw new UncheckedIOException("Could not get file size for:" + filePath, e);
         }
     }
 
@@ -275,7 +274,7 @@ public class VirtualPageFile implements Closeable {
 
         OpenOption[] openOptions;
         if (readOnly) {
-            openOptions = new OpenOption[]{StandardOpenOption.READ};
+            openOptions = new OpenOption[]{StandardOpenOption.READ, StandardOpenOption.WRITE};
             mapMode = FileChannel.MapMode.READ_ONLY;
         } else {
             openOptions = new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
@@ -288,10 +287,10 @@ public class VirtualPageFile implements Closeable {
             throw new UncheckedIOException("Unable to open file: " + filePath, e);
         }
 
+        final long initialSize;
         try {
-            long initialSize = channel.size();
+            initialSize = channel.size();
             ByteBuffer intBuffer = LOCAL_INT_BUFFER.get();
-
             if (!readOnly && initialSize == 0) {
                 intBuffer.putInt(virtualFiles);
                 channel.write(intBuffer.flip(), 0);
@@ -310,7 +309,7 @@ public class VirtualPageFile implements Closeable {
                     throw new IllegalArgumentException("The specfied page size " + pageSize + " does not match the value in the datastore " + val + " in file " + getFilePath());
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Unable to get file size" + " in file " + getFilePath(), e);
+            throw new UncheckedIOException("Unable to read, write or get the size of " + getFilePath(), e);
         }
 
         headerSize = virtualFiles * HEADER_RECORD_SIZE;
@@ -363,8 +362,8 @@ public class VirtualPageFile implements Closeable {
             throw new IllegalStateException("file position " + lastStartPosition + " is less than header size: " + headerSize + " in file " + filePath);
         } else {
             nextPagePosition = new AtomicLong(lastStartPosition + pageSize);
+            preloadBuffers(lastStartPosition + pageSize);
         }
-        preloadBuffers();
     }
 
     private long getRawPageStart(int virtualFileNumber, int pageNumber) {
@@ -411,68 +410,46 @@ public class VirtualPageFile implements Closeable {
     private long allocatePosition(int virtualFileNumber, int pageNumber) {
         synchronized (virtualFilePageCounts[virtualFileNumber]) {
             // If another thread has already done it - just return the start position
-            while (pageNumber >= virtualFilePageCounts[virtualFileNumber].get()) {
-                allocatePage(virtualFileNumber);
+            final int currentPageCount = virtualFilePageCounts[virtualFileNumber].get();
+            if (pageNumber >= currentPageCount) {
+                allocatePage(virtualFileNumber, currentPageCount, pageNumber);
             }
         }
         return getValidPageStart(virtualFileNumber, pageNumber);
     }
 
-    private void allocatePage(int virtualFileNumber) {
+    private void allocatePage(int virtualFileNumber, int currentPageCount, int pageNumber) {
 
+        int pagesToAllocate = pageNumber - currentPageCount + 1;
         // Do the atomic stuff
-        long newPageStart = nextPagePosition.getAndAdd(pageSize);
-        int currentPageNumber = virtualFilePageCounts[virtualFileNumber].get(); // the result is the index, the value incremented at the end of the method is the new count!
+        long firstPageStart = nextPagePosition.getAndAdd(pageSize * pagesToAllocate);
 
-        // Update the persistent table of pages
-        putPageStart(virtualFileNumber, currentPageNumber, newPageStart);
+        for (int i=0; i < pagesToAllocate; i++) {
+            // Update the persistent table of pages
+            putPageStart(virtualFileNumber, currentPageCount + i, firstPageStart + i * pageSize);
 
-        // Now that the page is allocated and persistent - update the counter which is the lock controlling access
-        putHeaderVirtualFilePageCount(virtualFileNumber, currentPageNumber + 1);
-
-        // Must make sure the file is at least a long as the end of the new page so other processes can read it
-        // Add a transfer from command to padd out the file with zeros
-        try {
-            channel.write(ByteBuffer.wrap(new byte[]{0}), newPageStart + pageSize - 1);
-        } catch (IOException e) {
-            e.printStackTrace();
+            // Now that the page is allocated and persistent - update the counter which is the lock controlling access
         }
 
-        virtualFilePageCounts[virtualFileNumber].incrementAndGet();
-        pageAllocationCount.increment();
+        putHeaderVirtualFilePageCount(virtualFileNumber, currentPageCount + pagesToAllocate);
+        virtualFilePageCounts[virtualFileNumber].set(currentPageCount + pagesToAllocate);
+
+        // Stats only
+        pageAllocationCount.add(pagesToAllocate);
     }
 
-    private void writeLong(long startPosition, long value) {
-        ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
-        longBuffer.asLongBuffer().put(value);
-        try {
-            channel.write(longBuffer, startPosition);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to write tail pointer at " + startPosition + " in " + filePath, e);
-        }
-    }
 
-    private long readLong(long startPosition) {
-        final long postHeaderPosition = startPosition - (totalHeaderSize);
-        final int mapIndex = (int) (postHeaderPosition / bufferSize);
-        final int mapPosition = (int) (postHeaderPosition % bufferSize);
-        final int minimumCapacity = mapPosition + 8;
-
-        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex, minimumCapacity);
-        return bigbuffer.getLong(mapPosition);
-    }
-
-    private MappedByteBuffer ensureBuffered(int bufferIndex, int minimunmCapacity) {
+    private MappedByteBuffer ensureBuffered(int bufferIndex) {
         MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
-        if (buffer == null || buffer.capacity() < minimunmCapacity) {
+        if (buffer == null) {
             synchronized (mappedByteBuffers) {
                 buffer = mappedByteBuffers[bufferIndex];
-                if (buffer == null || buffer.capacity() < minimunmCapacity) {
+                if (buffer == null) {
                     long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
                     try {
-                        buffer = channel.map(mapMode, bufferStart, bufferSize(bufferStart, minimunmCapacity));
+                        buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
                     } catch (IOException e) {
-                        throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart + " + " + minimunmCapacity + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);
+                        throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
                     mappedByteBuffers[bufferIndex] = buffer;
                 }
@@ -481,43 +458,19 @@ public class VirtualPageFile implements Closeable {
         return buffer;
     }
 
-    private void preloadBuffers(){
-        final long fileLength = getFileSize();
+    // Called during initialize only - no need to synchronize
+    private void preloadBuffers(long nextPagePosition){
         for (int bufferIndex=0; bufferIndex<MAX_BUFFERS; bufferIndex++){
             long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
 
-            if (bufferStart >= fileLength) break;
-
-            final int bSize;
-            if (readOnly) {
-                bSize = (int) min(fileLength - bufferStart, bufferSize);
-            } else {
-                bSize = bufferSize;
-            }
+            if (bufferStart >= nextPagePosition) break;
 
             try {
-                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bSize);
+                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
                 mappedByteBuffers[bufferIndex] = buffer;
             } catch (IOException e) {
-                throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " + " + bSize + " minCapacity) in " + (readOnly ? "RO " : "RW") + " file "  + filePath + " with size +" + getFileSize(), e);
+                throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " start position) in file "  + filePath, e);
             }
-        }
-    }
-
-
-    private int bufferSize(long bufferStart, int minimumCapacity) throws IOException {
-        if (readOnly) {
-            final long fileLength = getFileSize();
-            final long available = fileLength - bufferStart;
-            if (available >= bufferSize) {
-                return bufferSize;
-            } else if (available > minimumCapacity) {
-                return (int) available;
-            } else {
-                throw new IOException("The request location " + (bufferStart + minimumCapacity) + " is beyond the end of the file " + fileLength);
-            }
-        } else {
-            return bufferSize;
         }
     }
 }

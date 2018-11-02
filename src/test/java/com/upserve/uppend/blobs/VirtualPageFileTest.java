@@ -90,7 +90,7 @@ public class VirtualPageFileTest {
 
         // We can open the file in read only after truncation
         VirtualPageFile roInstance = new VirtualPageFile(path, 36, 1024, 16384, true);
-        assertEquals(289464, roInstance.getFileSize());
+        assertEquals(304824, roInstance.getFileSize());
 
         page = roInstance.getExistingPage(5,0);
 
