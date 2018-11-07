@@ -223,7 +223,7 @@ public class Benchmark {
     }
 
     public void run() throws InterruptedException, ExecutionException, IOException {
-        log.info("Running Performance test with {} partitions {} hashSize, {} keys and {} count", range, count);
+        log.info("Running Performance test with {} partitions {} hashSize, {} keys and {} count", partitionSize, lookupHashSize, range, count);
 
         ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
         log.info("Running IOSTAT: '{}'", processBuilder.command());
