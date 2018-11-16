@@ -31,7 +31,7 @@ group 'com.upserve'
 description = """Uppend: fast, append-only key-multivalue store"""
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '4.4'
+    gradleVersion = '4.10.2'
 }
 
 // TODO unused-dependency is broken - claims all dependencies are unused!
