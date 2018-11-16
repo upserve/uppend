@@ -8,11 +8,32 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
-
+/**
+ * The bisect tree is linearized as follows
+ *              8
+ *          4
+ *              9
+ *      2
+ *              10
+ *          5
+ *              11
+ *  1
+ *              12
+ *          6
+ *              13
+ *      3
+ *              14
+ *          7
+ *              15
+ *  The size of the array containing the tree is 2^(n+1)
+ *  If n is the current index the branch above is 2*n and the branch below is 2*n+1
+ */
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 9;
+    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 9; // Size == 1024
+    private static final int MAX_TREE_NODES = treeSize(MAX_BISECT_KEY_CACHE_DEPTH);
+    private final LookupKey[] bisectKeys = new LookupKey[MAX_TREE_NODES];
 
     private final int metadataGeneration;
 
@@ -23,9 +44,6 @@ public class LookupMetadata {
 
     final LongAdder hitCount;
     final LongAdder missCount;
-
-    private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
-
     public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration, LongAdder missCount, LongAdder hitCount) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
@@ -57,7 +75,6 @@ public class LookupMetadata {
         this.hitCount = hitCount;
         this.missCount = missCount;
 
-        bisectKeys = new ConcurrentHashMap<>();
     }
 
     public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration) {
@@ -99,8 +116,6 @@ public class LookupMetadata {
 
         this.hitCount = hitCount;
         this.missCount = missCount;
-
-        bisectKeys = new ConcurrentHashMap<>();
     }
 
     /**
@@ -130,6 +145,8 @@ public class LookupMetadata {
         LookupKey upperKey = maxKey;
 
         int bisectCount = 0;
+        int bisectKeyTreeArrayIndex = 1;
+
         int keyPosition;
         LookupKey midpointKey;
         int midpointKeyIndex;
@@ -164,6 +181,7 @@ public class LookupMetadata {
             return null;
         }
 
+
         // bisect till we find the key or return null
         do {
             midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);
@@ -174,7 +192,11 @@ public class LookupMetadata {
             keyPosition = keyStorageOrder[midpointKeyIndex];
             // Cache only the most frequently used midpoint keys
             if (bisectCount < MAX_BISECT_KEY_CACHE_DEPTH) {
-                midpointKey = bisectKeys.computeIfAbsent(keyPosition, position -> new LookupKey(longBlobStore.readBlob(position)));
+                if (bisectKeys[bisectKeyTreeArrayIndex] == null){
+                    midpointKey = bisectKeys[bisectKeyTreeArrayIndex] = new LookupKey(longBlobStore.readBlob(keyPosition));
+                } else {
+                    midpointKey = bisectKeys[bisectKeyTreeArrayIndex];
+                }
             } else {
                 midpointKey = new LookupKey(longBlobStore.readBlob(keyPosition));
             }
@@ -183,9 +205,14 @@ public class LookupMetadata {
             if (comparison < 0) {
                 upperKey = midpointKey;
                 keyIndexUpper = midpointKeyIndex;
+
+                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2;
+
             } else if (comparison > 0) {
                 keyIndexLower = midpointKeyIndex;
                 lowerKey = midpointKey;
+
+                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2 + 1;
             } else {
                 key.setPosition(keyPosition);
                 hitCount.increment();
@@ -198,6 +225,10 @@ public class LookupMetadata {
         key.setInsertAfterSortIndex(keyIndexLower); // Insert it in the sort order after this key
         missCount.increment();
         return null;
+    }
+
+    public static int treeSize(int depth) {
+        return 1 << (depth +1);
     }
 
     public void writeTo(VirtualMutableBlobStore metadataBlobs) {
