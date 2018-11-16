@@ -139,15 +139,12 @@ public class CommandBenchmark implements Callable<Void> {
                 .withLongLookupHashSize(hashSize)
                 .withPartitionSize(partitions) // Use direct partition
                 .withTargetBufferSize(bufferSize.getSize())
-                .withInitialLookupKeyCacheSize(keyCacheSize)
-                .withMaximumLookupKeyCacheWeight(keyCacheWeight)
                 .withBlobPageSize(blobPageSize)
                 .withLookupPageSize(keyPageSize)
                 .withMetadataPageSize(metadataPageSize)
                 .withFlushThreshold(flushThreshold)
                 .withFlushDelaySeconds(flushDelay)
-                .withStoreMetrics(metrics)
-                .withCacheMetrics();
+                .withStoreMetrics(metrics);
 
         return new Benchmark(mode, builder, keys, count, ioStatArgs);
     }

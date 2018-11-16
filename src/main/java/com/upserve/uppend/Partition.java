@@ -4,6 +4,7 @@ import com.google.common.hash.*;
 import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.lookup.*;
 
+import java.io.*;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.*;
@@ -11,7 +12,7 @@ import java.util.stream.*;
 
 import static java.lang.Math.min;
 
-public abstract class Partition {
+public abstract class Partition implements Flushable, Closeable, Trimmable {
     private static final int MAX_HASH_SIZE = 1 << 14; /* 16,384 */
 
     private static final int HASH_SEED = 219370429;
@@ -19,19 +20,15 @@ public abstract class Partition {
     final VirtualPageFile longKeyFile;
     final VirtualPageFile metadataBlobFile;
 
-    final LookupCache lookupCache;
-
     private final HashFunction hashFunction;
 
     final int hashSize;
 
     final LookupData[] lookups;
 
-    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, LookupCache lookupCache, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
         this.longKeyFile = longKeyFile;
         this.metadataBlobFile = metadataBlobFile;
-
-        this.lookupCache = lookupCache;
 
         this.hashSize = hashSize;
 
@@ -60,14 +57,12 @@ public abstract class Partition {
             return virtualFileNumber -> LookupData.lookupReader(
                     new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
                     new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
-                    lookupCache,
                     relaodInterval
             );
         } else {
             return virtualFileNumber -> LookupData.lookupWriter(
                     new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
                     new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
-                    lookupCache,
                     flushThreshold
             );
         }
@@ -118,6 +113,25 @@ public abstract class Partition {
                 throw new IllegalArgumentException("bad char at position " + i + " of partition: " + partition);
             }
         }
+    }
+
+    @Override
+    public void flush() {
+        Arrays.stream(lookups).forEach(LookupData::flush);
+    }
+
+
+    @Override
+    public void trim() {
+        Arrays.stream(lookups).forEach(LookupData::trim);
+    }
+
+    @Override
+    public void close() throws IOException {
+        flush();
+
+        longKeyFile.close();
+        metadataBlobFile.close();
     }
 
     private static boolean isValidPartitionCharStart(char c) {

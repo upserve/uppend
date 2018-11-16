@@ -19,7 +19,6 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 
 public class LookupDataTest {
-    private static final String LOOKUP_KEY = "Lookup Key";
 
     private static final int RELOAD_INTERVAL = -1;
     private static final int FLUSH_THRESHOLD = -1;
@@ -27,12 +26,7 @@ public class LookupDataTest {
     private final String name = "lookupdata-test";
     private final Path lookupDir = Paths.get("build/test/lookup").resolve(name);
     private AppendOnlyStoreBuilder defaults = TestHelper
-            .getDefaultAppendStoreTestBuilder()
-            .withMaximumLookupKeyCacheWeight(1024 * 1024);
-
-    private final LookupCache lookupCache = defaults.buildLookupCache(name);
-
-    private AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<>(lookupCache.keyStats());
+            .getDefaultAppendStoreTestBuilder();
 
     private VirtualPageFile metadataPageFile;
     private VirtualMutableBlobStore mutableBlobStore;
@@ -63,7 +57,6 @@ public class LookupDataTest {
 
     @After
     public void tearDown() throws IOException {
-        lookupCache.flush();
         keyDataPageFile.close();
         metadataPageFile.close();
     }
@@ -72,7 +65,7 @@ public class LookupDataTest {
     public void testOpenEmptyReadOnly() throws IOException {
         tearDown(); // Close the page files
         setup(true);
-        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, lookupCache, RELOAD_INTERVAL);
+        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
         final LookupKey key = new LookupKey("mykey");
         assertNull(data.getValue(key));
 
@@ -82,7 +75,7 @@ public class LookupDataTest {
 
     @Test
     public void testOpenGetAndPut() {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         final LookupKey key = new LookupKey("mykey");
         assertNull(data.getValue(key));
         data.put(key, 80);
@@ -91,8 +84,9 @@ public class LookupDataTest {
 
     @Test
     public void testPutIfNotExists() {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         final LookupKey key = new LookupKey("mykey");
+        assertNull("The key should not exist yet", data.getValue(key));
         data.putIfNotExists(key, 1);
         assertEquals(Long.valueOf(1), data.getValue(key));
         data.putIfNotExists(key, 2);
@@ -101,8 +95,9 @@ public class LookupDataTest {
 
     @Test
     public void testPutIfNotExistsFunction() {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         final LookupKey key = new LookupKey("mykey");
+        assertNull("The key should not exist yet", data.getValue(key));
         data.putIfNotExists(key, () -> 1);
         assertEquals(Long.valueOf(1), data.getValue(key));
         data.putIfNotExists(key, () -> 2);
@@ -110,13 +105,35 @@ public class LookupDataTest {
     }
 
     @Test
+    public void testPut() {
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
+        final LookupKey key = new LookupKey("mykey");
+        assertNull("The key should not exist yet", data.getValue(key));
+        data.put(key, 1);
+        assertEquals(Long.valueOf(1), data.getValue(key));
+        data.put(key, 2);
+        assertEquals(Long.valueOf(2), data.getValue(key));
+    }
+
+    @Test
+    public void testIncrement() {
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
+        final LookupKey key = new LookupKey("mykey");
+        assertNull("The key should not exist yet", data.getValue(key));
+        data.increment(key, 10);
+        assertEquals(Long.valueOf(10), data.getValue(key));
+        data.increment(key, 2);
+        assertEquals(Long.valueOf(12), data.getValue(key));
+    }
+
+
+
+    @Test
     public void testFlushAndClose() throws IOException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         final LookupKey key = new LookupKey("mykey");
         data.put(key, 80);
         data.flush();
-
-        lookupCache.flush();
 
         Long result = data.getValue(key);
         assertEquals(Long.valueOf(80), result);
@@ -124,223 +141,14 @@ public class LookupDataTest {
         tearDown();
         setup(true);
 
-        data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, lookupCache, RELOAD_INTERVAL);
+        data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
         result = data.getValue(key);
         assertEquals(Long.valueOf(80), result);
     }
 
     @Test
-    public void testCachePutSupplierIfNotExistFlush() throws IOException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        final LookupKey key = new LookupKey("mykey");
-        assertEquals(16, data.putIfNotExists(key, () -> 16L));
-
-        assertEquals(Long.valueOf(16), data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 1, 0, 1);
-
-        // ignores new value - nothing changes
-        assertEquals(16, data.putIfNotExists(key, () -> 17L));
-
-        assertEquals(Long.valueOf(16), data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // Flush the write Cache and put the key in the read cache
-        data.flush();
-
-        assertNull(data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // call put if not exist again with the data on disk and in the read caches
-        assertEquals(16, data.putIfNotExists(key, () -> 17L));
-
-        assertLookupKeyCache(1, 0, 0, 0);
-
-        lookupCache.flush();
-
-        // call put if not exist again with the data on disk but not in the read cache
-        assertEquals(16, data.putIfNotExists(key, () -> 17L));
-
-        assertLookupKeyCache(0, 1, 1, 0);
-
-        tearDown();
-        setup(false);
-
-        data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        assertEquals(16, data.putIfNotExists(key, () -> 18L));
-
-        assertLookupKeyCache(0, 1, 1, 0);
-    }
-
-    @Test
-    public void testCachePutValIfNotExistFlush() throws IOException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        final LookupKey key = new LookupKey("mykey");
-        assertEquals(80, data.putIfNotExists(key, 80));
-
-        assertEquals(Long.valueOf(80), data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 1, 0, 1);
-
-        // ignores new value - nothing changes
-        assertEquals(80, data.putIfNotExists(key, 86));
-
-        assertEquals(Long.valueOf(80), data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // Flush the write Cache and put the key in the read cache
-        data.flush();
-
-        assertNull(data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // call put if not exist again with the data on disk and in the read caches
-        assertEquals(80, data.putIfNotExists(key, 86));
-
-        assertLookupKeyCache(1, 0, 0, 0);
-
-        lookupCache.flush();
-
-        // call put if not exist again with the data on disk but not in the read cache
-        assertEquals(80, data.putIfNotExists(key, 86));
-
-        assertLookupKeyCache(0, 1, 1, 0);
-
-        tearDown();
-        setup(false);
-
-        data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        assertEquals(80, data.putIfNotExists(key, 87));
-
-        assertLookupKeyCache(0, 1, 1, 0);
-    }
-
-    @Test
-    public void testCachePutFlush() throws IOException, InterruptedException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        final LookupKey key = new LookupKey("mykey");
-        assertNull(data.put(key, 80));
-
-        assertEquals(Long.valueOf(80), data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 1, 0, 1);
-
-        // Updating the value while still in the write cache changes nothing else
-        assertEquals(Long.valueOf(80), data.put(key, 81));
-
-        assertEquals(Long.valueOf(81), data.writeCache.get(key)); // write cache is updated...
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // Flush the key to disk and more the key/value to the read cache
-        data.flush();
-
-        assertNull(data.writeCache.get(key)); // the key has been written and moved from the write cache to the read cache
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // put a new value and see which cache entries change
-        assertEquals(Long.valueOf(81), data.put(key, 82));
-
-        assertNull(data.writeCache.get(key)); // Write cache is only for new keys.
-
-        assertLookupKeyCache(1, 0, 0, 0);
-
-        lookupCache.flush();
-
-        assertEquals(Long.valueOf(82), data.put(key, 83));
-
-        assertNull(data.writeCache.get(key)); // Write cache is only for new keys
-
-        assertLookupKeyCache(0, 1, 1, 0);
-
-        tearDown();
-        setup(false);
-
-        data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        assertEquals(Long.valueOf(83), data.put(key, 84));
-
-        assertLookupKeyCache(0, 1, 1, 0);
-    }
-
-    @Test
-    public void testCacheIncrementFlush() throws IOException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        final LookupKey key = new LookupKey("mykey");
-        assertEquals(12, data.increment(key, 12));
-
-        assertEquals(Long.valueOf(12), data.writeCache.get(key));
-
-        assertLookupKeyCache(0, 1, 0, 1);
-
-        // Updating the value while still in the write cache changes nothing else
-        assertEquals(24, data.increment(key, 12));
-
-        assertEquals(Long.valueOf(24), data.writeCache.get(key)); // write cache is updated...
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // Flush the key to disk and more the key/value to the read cache
-        data.flush();
-
-        assertNull(data.writeCache.get(key)); // the key has been written and moved from the write cache to the read cache
-
-        assertLookupKeyCache(0, 0, 0, 0);
-
-        // put a new value and see which cache entries change
-        assertEquals(36, data.increment(key, 12));
-
-        assertNull(data.writeCache.get(key)); // Write cache is only for new keys.
-
-        assertLookupKeyCache(1, 0, 0, 0);
-
-        lookupCache.flush();
-
-        assertEquals(48, data.increment(key, 12));
-
-        assertNull(data.writeCache.get(key)); // Write cache is only for new keys
-
-        assertLookupKeyCache(0, 1, 1, 0);
-
-        tearDown();
-        setup(false);
-
-        data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
-
-        assertEquals(60, data.increment(key, 12));
-
-        assertLookupKeyCache(0, 1, 1, 0);
-    }
-
-    // Test helpers
-    private void assertLookupKeyCache(long hitCount, long missCount, long loadSuccessCount, long loadFailureCount) {
-        CacheStats current = lookupCache.keyStats();
-        assertCache(LOOKUP_KEY, current.minus(lookupKeyCacheStats.getAndSet(current)), hitCount, missCount, loadSuccessCount, loadFailureCount);
-    }
-
-    private void assertCache(String name, CacheStats stats, long hitCount, long missCount, long loadSuccessCount, long loadFailureCount) {
-        if (hitCount > 0) assertEquals(name + " Cache Hit Count", hitCount, stats.hitCount());
-        if (missCount > 0) assertEquals(name + " Cache Miss Count", missCount, stats.missCount());
-        if (loadSuccessCount > 0)
-            assertEquals(name + " Cache Load Success Count", loadSuccessCount, stats.loadSuccessCount());
-        if (loadFailureCount > 0)
-            assertEquals(name + " Cache Load Failure Count", loadFailureCount, stats.loadFailureCount());
-    }
-
-    @Test
     public void testWriteCacheUnderLoad() throws IOException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
 
         LongStream.range(0, 100_000)
                 .forEach(val -> {
@@ -350,34 +158,28 @@ public class LookupDataTest {
 
         assertEquals(100_000, data.writeCache.size());
 
-        assertLookupKeyCache(0, 100_000, 0, 100_000);
-
         data.flush();
 
         assertEquals(0, data.writeCache.size());
 
-        assertLookupKeyCache(0, 0, 0, 0);
-
         LongStream.range(0, 100_000)
                 .forEach(val -> {
                     data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
                 });
 
-        assertLookupKeyCache(100_000, 0, 0, 0);
-
-        lookupCache.flush();
-
-        LongStream.range(0, 100_000)
+        LongStream.range(0, 100_010)
                 .forEach(val -> {
                     data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
                 });
 
-        assertLookupKeyCache(0, 100_000, 100_000, 0);
+        assertEquals(10, data.writeCache.size());
+
+
     }
 
     @Test
     public void testScan() throws IOException {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         LookupKey firstKey = new LookupKey("mykey1");
         LookupKey secondKey = new LookupKey("mykey2");
 
@@ -413,7 +215,7 @@ public class LookupDataTest {
         tearDown();
         setup(true);
 
-        data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         scanTestHelper(data, new LookupKey[]{firstKey, secondKey}, new Long[]{1L, 2L});
     }
 
@@ -436,7 +238,7 @@ public class LookupDataTest {
 
     @Test
     public void testScanNonExistant() {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
         data.scan((k, v) -> {
             throw new IllegalStateException("should not have called this");
         });
@@ -452,7 +254,7 @@ public class LookupDataTest {
 
     @Test
     public void testLoadReadOnlyMetadata() {
-        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, lookupCache, RELOAD_INTERVAL);
+        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
 
         mutableBlobStore.write(0, Ints.toByteArray(50));
         mutableBlobStore.write(4, Ints.toByteArray(284482732)); // Check checksum
@@ -465,7 +267,7 @@ public class LookupDataTest {
 
     @Test
     public void testLoadReadRepairMetadata() {
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, lookupCache, FLUSH_THRESHOLD);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
 
         Random random = new Random();
         LongStream.range(0, 100_000)
@@ -499,10 +301,8 @@ public class LookupDataTest {
     @Test
     public void testFlushWithAppendLoad() throws ExecutionException, InterruptedException {
 
-        // Force the metadata to be reloaded every time it is needed
-        LookupCache noCache = defaults.withMaximumLookupKeyCacheWeight(0).buildLookupCache(name);
 
-        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, noCache, 100);
+        LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, 100);
 
         int n = 500;
 

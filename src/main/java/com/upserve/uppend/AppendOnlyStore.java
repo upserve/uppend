@@ -46,6 +46,4 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, RegisteredFlus
      * @return the name
      */
     String getName();
-
-    FlushStats getFlushStats();
 }

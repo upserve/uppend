@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
+import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 /**
@@ -229,6 +230,10 @@ public class LookupMetadata {
 
     public static int treeSize(int depth) {
         return 1 << (depth +1);
+    }
+
+    void clearLookupTree(){
+        Arrays.fill(bisectKeys, null);
     }
 
     public void writeTo(VirtualMutableBlobStore metadataBlobs) {

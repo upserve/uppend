@@ -8,23 +8,22 @@ import org.slf4j.Logger;
 import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final LookupCache lookupCache;
     private final Function<String, CounterStorePartition> openPartitionFunction;
     private final Function<String, CounterStorePartition> createPartitionFunction;
 
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
         super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
 
-        lookupCache = builder.buildLookupCache(getName(), readOnly);
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache, readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize());
     }
 
     @Override
@@ -73,16 +72,6 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    public FlushStats getFlushStats() {
-        return lookupCache.getFlushStats();
-    }
-
-    @Override
-    public CacheStats getLookupKeyCacheStats() {
-        return lookupCache.keyStats();
-    }
-
-    @Override
     public long keyCount() {
         return streamPartitions()
                 .mapToLong(CounterStorePartition::keyCount)
@@ -110,13 +99,6 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
             throw new UncheckedIOException("Failed to clear partitions directory", e);
         }
         partitionMap.clear();
-        lookupCache.flush();
-    }
-
-    @Override
-    public void trimInternal() {
-        if (!readOnly) flushInternal();
-        lookupCache.flush();
     }
 
     @Override
@@ -129,23 +111,4 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         return createPartitionFunction;
     }
 
-    @Override
-    protected void flushInternal() {
-        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
-
-        partitionMap.values().parallelStream().forEach(CounterStorePartition::flush);
-    }
-
-    @Override
-    protected void closeInternal() {
-        partitionMap.values().parallelStream().forEach(counterStorePartition -> {
-            try {
-                counterStorePartition.close();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error closing store " + dir, e);
-            }
-        });
-
-        lookupCache.flush();
-    }
 }

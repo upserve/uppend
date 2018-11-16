@@ -186,16 +186,6 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public FlushStats getFlushStats() {
-        return store.getFlushStats();
-    }
-
-    @Override
-    public CacheStats getLookupKeyCacheStats() {
-        return store.getLookupKeyCacheStats();
-    }
-
-    @Override
     public BlockStats getBlockLongStats() {
         return store.getBlockLongStats();
     }

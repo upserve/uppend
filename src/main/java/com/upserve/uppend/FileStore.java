@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.google.common.hash.*;
+import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -14,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
+abstract class FileStore<T extends Partition> implements AutoCloseable, RegisteredFlushable, Trimmable {
     static final int MAX_NUM_PARTITIONS = 9999;
 
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -130,22 +131,46 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         return partitionMap.values().parallelStream();
     }
 
+    @Override
+    public void flush() {
+        // Flush lookups, then blocks, then blobs, since this is the access order of a read.
+        // NPE may occur because the super class is registered in the autoflusher before the constructor finishes
+        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
-    protected abstract void flushInternal() throws IOException;
+        log.debug("Flushing!");
 
-    protected abstract void closeInternal() throws IOException;
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+                partitionMap.values().parallelStream().forEach(T::flush)
+        );
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Flush interrupted", e);
 
-    protected abstract void trimInternal() throws IOException;
+        } catch (ExecutionException e) {
+            log.error("Flush execution exception", e);
+        }
+
+        log.debug("Flushed!");
+    }
 
     @Override
-    public void trim() {
-        log.debug("Triming {}", name);
+    public void trim(){
+        log.debug("Trimming!");
+
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+                partitionMap.values().parallelStream().forEach(T::trim)
+        );
         try {
-            trimInternal();
-        } catch (Exception e) {
-            log.error("unable to trim {}", name, e);
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Flush interrupted", e);
+
+        } catch (ExecutionException e) {
+            log.error("Flush execution exception", e);
         }
-        log.debug("Trimed {}", name);
+
+        log.debug("Trimmed!");
     }
 
     @Override
@@ -158,15 +183,17 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         AutoFlusher.deregister(this);
     }
 
-    @Override
-    public void flush() {
-        log.info("flushing {}", name);
+    public void clear() {
+        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + name);
+        log.trace("clearing");
+
+        close();
+
         try {
-            flushInternal();
-        } catch (Exception e) {
-            log.error("unable to flush {}", name, e);
+            SafeDeleting.removeDirectory(partitionsDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to clear partitions directory", e);
         }
-        log.info("flushed {}", name);
     }
 
     @Override
@@ -178,11 +205,26 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
 
         if (!readOnly && flushDelaySeconds > 0) AutoFlusher.deregister(this);
 
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+                partitionMap.values().parallelStream().forEach(counterStorePartition -> {
+                    try {
+                        counterStorePartition.close();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Error closing store " + name, e);
+                    }
+                })
+        );
+
         try {
-            closeInternal();
-        } catch (Exception e) {
-            log.error("unable to close {}", name, e);
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Flush interrupted", e);
+
+        } catch (ExecutionException e) {
+            log.error("Flush execution exception", e);
         }
+
+        partitionMap.clear();
 
         try {
             lock.release();

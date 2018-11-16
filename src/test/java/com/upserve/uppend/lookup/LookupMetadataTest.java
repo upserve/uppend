@@ -433,15 +433,12 @@ public class LookupMetadataTest {
     @Test
     public void testMetadataLookup() {
         AppendOnlyStoreBuilder defaults = TestHelper.getDefaultAppendStoreTestBuilder()
-                .withLookupPageSize(32 * 1024)
-                .withMaximumLookupKeyCacheWeight(1024 * 1024);
-
-        LookupCache lookupCache = defaults.buildLookupCache(name);
+                .withLookupPageSize(32 * 1024);
 
         VirtualPageFile keysData = new VirtualPageFile(keysPath, NUMBER_OF_STORES, defaults.getLookupPageSize(), defaults.getTargetBufferSize(), false);
         VirtualLongBlobStore keyStore = new VirtualLongBlobStore(5, keysData);
 
-        LookupData lookupData = LookupData.lookupWriter(keyStore, metadataBlobs, lookupCache, -1);
+        LookupData lookupData = LookupData.lookupWriter(keyStore, metadataBlobs, -1);
         List<Integer> keys = Ints.asList(IntStream.range(0, 4000).map(i -> i * 2).toArray());
         Collections.shuffle(keys, new Random(1234));
         keys.forEach(k -> lookupData.put(new LookupKey(String.valueOf(k)), 1000 + k));

@@ -41,8 +41,6 @@ public class Benchmark {
     private final ForkJoinPool writerPool;
     private final ForkJoinPool readerPool;
 
-    private final ForkJoinPool cachePool;
-
     private volatile boolean isDone = false;
     private final String ioStatArgs;
 
@@ -63,10 +61,6 @@ public class Benchmark {
 
         writerPool = forkJoinPoolFunction.apply("benchmark-writer");
         readerPool = forkJoinPoolFunction.apply("benchmark-reader");
-
-        cachePool = forkJoinPoolFunction.apply("cache");
-
-        builder.withLookupKeyCacheExecutorService(cachePool);
 
         metrics = builder.getStoreMetricsRegistry();
 
@@ -103,8 +97,6 @@ public class Benchmark {
                 throw new RuntimeException("Unknown mode: " + mode);
         }
 
-        lookupKeyCacheStats = new AtomicReference<>(testInstance.getLookupKeyCacheStats());
-        flushStats = new AtomicReference<>(testInstance.getFlushStats());
         partitionStats = new AtomicReference<>(testInstance.getPartitionStats());
         blockStats = new AtomicReference<>(testInstance.getBlockLongStats());
     }
@@ -201,12 +193,6 @@ public class Benchmark {
                     double free = runtime.freeMemory() / (1024.0 * 1024.0);
 
                     log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
-
-                    stats = testInstance.getLookupKeyCacheStats();
-                    log.info("Lookup Key Cache: {}", stats.minus(lookupKeyCacheStats.getAndSet(stats)));
-
-                    FlushStats fstats = testInstance.getFlushStats();
-                    log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
 
                     PartitionStats pStats = testInstance.getPartitionStats();
                     log.info(pStats.present(partitionSize, lookupHashSize, partitionStats.getAndSet(pStats)));
