@@ -159,20 +159,6 @@ public class CounterStoreWithMetricsTest {
     }
 
     @Test
-    public void testGetFlushStats() {
-        FlushStats v = new FlushStats(0, 0);
-        when(store.getFlushStats()).thenReturn(v);
-        assertEquals(v, instance.getFlushStats());
-    }
-
-    @Test
-    public void testGetLookupKeyCacheStats() {
-        CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
-        when(store.getLookupKeyCacheStats()).thenReturn(v);
-        assertEquals(v, instance.getLookupKeyCacheStats());
-    }
-
-    @Test
     public void testKeyCount() {
         when(store.keyCount()).thenReturn(5L);
         assertEquals(5, instance.keyCount());

@@ -14,7 +14,10 @@ public class PartitionStats {
     private final long metadataSize;
     private final long findKeyTimer;
 
-    public PartitionStats(int metadataPageCount, int keyPageCount, int blobPageCount, long metadataLookupMissCount, long metadataLookupHitCount, long metadataSize, long findKeyTimer) {
+    private final long flushedKeyCount;
+    private final long flushCount;
+
+    public PartitionStats(int metadataPageCount, int keyPageCount, int blobPageCount, long metadataLookupMissCount, long metadataLookupHitCount, long metadataSize, long findKeyTimer, long flushedKeyCount, long flushCount) {
         this.metadataPageCount = metadataPageCount;
         this.keyPageCount = keyPageCount;
         this.blobPageCount = blobPageCount;
@@ -22,9 +25,11 @@ public class PartitionStats {
         this.metadataLookupHitCount = metadataLookupHitCount;
         this.metadataSize = metadataSize;
         this.findKeyTimer = findKeyTimer;
+        this.flushedKeyCount = flushedKeyCount;
+        this.flushCount = flushCount;
     }
 
-    public static PartitionStats ZERO_STATS = new PartitionStats(0,0,0,0,0, 0, 0);
+    public static PartitionStats ZERO_STATS = new PartitionStats(0,0,0,0,0, 0, 0, 0 ,0);
 
     public int getMetadataPageCount() {
         return metadataPageCount;
@@ -54,6 +59,10 @@ public class PartitionStats {
         return findKeyTimer;
     }
 
+    public long getFlushedKeyCount() { return flushedKeyCount; }
+
+    public long getFlushCount() { return flushCount; }
+
     @Override
     public String toString() {
         return "PartitionStats{" +
@@ -64,6 +73,8 @@ public class PartitionStats {
                 ", metadataLookupHitCount=" + metadataLookupHitCount +
                 ", metadataSize=" + metadataSize +
                 ", findKeyTimer=" + findKeyTimer +
+                ", flushedKeyCount=" + flushedKeyCount +
+                ", flushCount=" + flushCount +
                 '}';
     }
 
@@ -71,15 +82,19 @@ public class PartitionStats {
         PartitionStats deltaStats = this.minus(previous);
 
         long lookupCount = Math.max(1, deltaStats.metadataLookupHitCount + deltaStats.metadataLookupMissCount);
-        return "PartitionStats{" +
-                "newMDPages=" + deltaStats.metadataPageCount +
-                ", newKeyPages=" + deltaStats.keyPageCount +
-                ", newBlobPages=" + deltaStats.blobPageCount +
-                ", missCount=" + deltaStats.metadataLookupMissCount +
-                ", hitCount=" + deltaStats.metadataLookupHitCount +
-                ", meanSize=" + metadataSize / (partitionCount * hashCount) +
-                ", meanFindTimer=" + deltaStats.findKeyTimer / (lookupCount * 1000)+
-                "us}";
+        return "PartitionStats{ Deltas: " +
+                "MDPages=" + deltaStats.metadataPageCount +
+                ", KeyPages=" + deltaStats.keyPageCount +
+                ", BlobPages=" + deltaStats.blobPageCount +
+                ", NewKeys=" + deltaStats.metadataLookupMissCount +
+                ", ExistingKeys=" + deltaStats.metadataLookupHitCount +
+                ", MeanLookupTime=" + deltaStats.findKeyTimer / (lookupCount * 1000)+ "us" +
+                ", flushedKeys=" + deltaStats.flushedKeyCount +
+                ", flushCount=" + deltaStats.flushCount +
+                "; Totals:" +
+                "MeanLookupSize=" + metadataSize / (partitionCount * hashCount) +
+
+                "}";
     }
 
 
@@ -92,7 +107,9 @@ public class PartitionStats {
                 metadataLookupMissCount - other.metadataLookupMissCount,
                 metadataLookupHitCount - other.metadataLookupHitCount,
                 metadataSize - other.metadataSize,
-                findKeyTimer - other.findKeyTimer
+                findKeyTimer - other.findKeyTimer,
+                flushedKeyCount - other.flushedKeyCount,
+                flushCount - other.flushCount
         );
     }
 
@@ -105,7 +122,9 @@ public class PartitionStats {
                 metadataLookupMissCount + other.metadataLookupMissCount,
                 metadataLookupHitCount + other.metadataLookupHitCount,
                 metadataSize + other.metadataSize,
-                findKeyTimer + other.findKeyTimer
+                findKeyTimer + other.findKeyTimer,
+                flushedKeyCount + other.flushedKeyCount,
+                flushCount + other.flushCount
         );
     }
 }

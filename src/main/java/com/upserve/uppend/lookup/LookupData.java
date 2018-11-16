@@ -1,7 +1,7 @@
 package com.upserve.uppend.lookup;
 
 import com.google.common.collect.Maps;
-import com.upserve.uppend.AutoFlusher;
+import com.upserve.uppend.*;
 import com.upserve.uppend.blobs.*;
 import org.slf4j.Logger;
 
@@ -14,14 +14,10 @@ import java.util.concurrent.locks.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-public class LookupData implements Flushable {
+public class LookupData implements Flushable, Trimmable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final Random random = new Random();
-
-    private final LookupCache lookupCache;
-    private final Function<LookupKey, Long> lookupFunction;
-    private final BiConsumer<LookupKey, Long> lookupBiConsumer;
 
     private final AtomicInteger writeCacheCounter;
     private final AtomicBoolean flushing;
@@ -57,28 +53,21 @@ public class LookupData implements Flushable {
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
     private LongAdder findKeyTimer;
+    private int flushCounter;
+    private long flushedKeyCounter;
 
-    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int flushThreshold){
-        return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, flushThreshold, -1, false);
+    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold){
+        return new LookupData(keyLongBlobs, metadataBlobs, flushThreshold, -1, false);
     }
 
-    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int reloadInterval){
-        return new LookupData(keyLongBlobs, metadataBlobs, lookupCache, -1, reloadInterval, true);
+    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int reloadInterval){
+        return new LookupData(keyLongBlobs, metadataBlobs, -1, reloadInterval, true);
     }
 
-    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, LookupCache lookupCache, int flushThreshold, int reloadInterval, boolean readOnly) {
+    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold, int reloadInterval, boolean readOnly) {
 
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
-
-        this.lookupCache = lookupCache;
-        if (lookupCache.isKeyCacheActive()) {
-            lookupFunction = key -> this.lookupCache.getLong(key , this::findValueFor);
-            lookupBiConsumer = this.lookupCache::putLookup;
-        } else {
-            lookupFunction = this::findValueFor;
-            lookupBiConsumer = (key, value) -> {};
-        }
 
         this.readOnly = readOnly;
 
@@ -125,9 +114,9 @@ public class LookupData implements Flushable {
      */
     public Long getValue(LookupKey key) {
         if (readOnly) {
-            return getCached(key);
+            return findValueFor(key);
         } else {
-            return writeCache.getOrDefault(key, getCached(key));
+            return writeCache.getOrDefault(key, findValueFor(key));
         }
     }
 
@@ -169,7 +158,7 @@ public class LookupData implements Flushable {
         long[] ref = new long[1];
         writeCache.compute(key, (k, value) -> {
             if (value == null) {
-                Long existingValue = getCached(k);
+                Long existingValue = findValueFor(k);
                 if (existingValue == null) {
                     long val = allocateLongFunc.getAsLong();
                     ref[0] = val;
@@ -202,7 +191,7 @@ public class LookupData implements Flushable {
         long[] ref = new long[1];
         writeCache.compute(key, (k, val) -> {
             if (val == null) {
-                Long existingValue = getCached(k);
+                Long existingValue = findValueFor(k);
                 if (existingValue == null) {
                     ref[0] = value;
                     flushThreshold();
@@ -234,7 +223,7 @@ public class LookupData implements Flushable {
         long[] ref = new long[1];
         writeCache.compute(key, (writeKey, value) -> {
             if (value == null) {
-                Long existingValue = getCached(writeKey);
+                Long existingValue = findValueFor(writeKey);
                 if (existingValue == null) {
                     ref[0] = delta;
                     flushThreshold();
@@ -245,7 +234,6 @@ public class LookupData implements Flushable {
                     ref[0] = newValue;
 
                     flushCache.computeIfPresent(writeKey, (flushKey, v) -> newValue);
-                    lookupBiConsumer.accept(writeKey, newValue); // Update the read cache
                     keyLongBlobs.writeLong(writeKey.getPosition(), newValue); // Update the value on disk
 
                     // No need to add this to the write cache
@@ -275,7 +263,7 @@ public class LookupData implements Flushable {
         Long[] ref = new Long[1];
         writeCache.compute(key, (writeKey, val) -> {
             if (val == null) {
-                Long existingValue = getCached(writeKey);
+                Long existingValue = findValueFor(writeKey);
                 if (existingValue == null) {
                     ref[0] = null;
                     flushThreshold();
@@ -285,7 +273,6 @@ public class LookupData implements Flushable {
                     ref[0] = existingValue;
 
                     flushCache.computeIfPresent(writeKey, (flushKey, v) -> value);
-                    lookupBiConsumer.accept(writeKey, value); // Update the read cache
                     keyLongBlobs.writeLong(writeKey.getPosition(), value); // Update the value on disk
 
                     // No need to add this to the write cache
@@ -301,13 +288,6 @@ public class LookupData implements Flushable {
         return ref[0];
     }
 
-    private Long getCached(LookupKey key) {
-        if (readOnly) {
-            return lookupFunction.apply(key);
-        } else {
-            return flushCache.getOrDefault(key, lookupFunction.apply(key));
-        }
-    }
 
     /**
      * read the LookupKey by index
@@ -355,6 +335,10 @@ public class LookupData implements Flushable {
     public long getFindKeyTimer(){
         return findKeyTimer.sum();
     }
+
+    public long getFlushedKeyCount() { return flushedKeyCounter; }
+
+    public int getFlushCount() { return flushCounter; }
 
     /**
      * Load a key from cached pages
@@ -524,6 +508,10 @@ public class LookupData implements Flushable {
 
         int flushSize = flushCache.size();
 
+        // Increment the stats here
+        flushedKeyCounter += flushSize;
+        flushCounter ++;
+
         // Update the counter and flush again if there are still more entries in the write cache than the threshold
         if (flushThreshold != -1 && writeCacheCounter.addAndGet(-flushSize) > flushThreshold) {
             AutoFlusher.submitWork(this::flush);
@@ -573,8 +561,7 @@ public class LookupData implements Flushable {
     void flushCacheToReadCache() {
         Iterator<Map.Entry<LookupKey, Long>> iterator = flushCache.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<LookupKey, Long> entry = iterator.next();
-            lookupBiConsumer.accept(entry.getKey(), entry.getValue());
+            iterator.next();
             iterator.remove();
         }
     }
@@ -610,12 +597,30 @@ public class LookupData implements Flushable {
 
             generateMetaData(metadata);
 
-            // record stats about flushing
-            lookupCache.addFlushCount(flushCache.size());
+            flushCacheToReadCache();
+
+            log.debug("flushed");
+        }
+        flushing.set(false);
+    }
+
+
+    @Override
+    public void trim() {
+
+        if (!readOnly && writeCache.size() > 0) {
+            flushing.set(true);
+            log.debug("starting flush");
+
+            flushWriteCache(metadata);
+
+            generateMetaData(metadata);
 
             flushCacheToReadCache();
 
             log.debug("flushed");
+        } else {
+            metadata.clearLookupTree();
         }
         flushing.set(false);
     }

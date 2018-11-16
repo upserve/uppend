@@ -29,27 +29,18 @@ public class TestHelper {
                 .withBlobPageSize(64 * 1024)
                 .withBlobsPerBlock(30)
                 .withTargetBufferSize(16*1024*1024)
-                .withInitialLookupKeyCacheSize(64)
-                .withMaximumLookupKeyCacheWeight(100 * 1024)
-                .withLookupKeyCacheExecutorService(testService)
                 .withLongLookupHashSize(16)
                 .withLookupPageSize(16 * 1024)
-                .withMetadataTTL(0)
-                .withCacheMetrics();
-
+                .withMetadataTTL(0);
     }
 
     public static CounterStoreBuilder getDefaultCounterStoreTestBuilder() {
         return new CounterStoreBuilder()
                 .withStoreName("test")
                 .withTargetBufferSize(16*1024*1024)
-                .withInitialLookupKeyCacheSize(64)
-                .withMaximumLookupKeyCacheWeight(100 * 1024)
                 .withMetadataPageSize(1024)
                 .withLongLookupHashSize(16)
-                .withLookupPageSize(16 * 1024)
-                .withCacheMetrics();
-
+                .withLookupPageSize(16 * 1024);
     }
 
 }

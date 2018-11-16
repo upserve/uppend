@@ -131,16 +131,6 @@ public class CounterStoreWithMetrics implements CounterStore {
     }
 
     @Override
-    public FlushStats getFlushStats() {
-        return store.getFlushStats();
-    }
-
-    @Override
-    public CacheStats getLookupKeyCacheStats() {
-        return store.getLookupKeyCacheStats();
-    }
-
-    @Override
     public long keyCount() {
         return store.keyCount();
     }

@@ -182,7 +182,7 @@ public class AppendOnlyStoreTest {
 
     @Test
     public void fillTheCache() throws Exception {
-        int keys = TestHelper.getDefaultAppendStoreTestBuilder().getInitialLookupKeyCacheSize() * 2;
+        int keys = 1024 * 256;
 
         Random random = new Random(9876);
         Set<String> uuidSet = new HashSet<>();
