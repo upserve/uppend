@@ -321,15 +321,15 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     public long getMetadataLookupMissCount(){
-        return metadata.getMissCount();
+        return getMetadata().getMissCount();
     }
 
     public long getMetadataLookupHitCount(){
-        return metadata.getHitCount();
+        return getMetadata().getHitCount();
     }
 
     public long getMetadataSize(){
-        return metadata.getNumKeys();
+        return getMetadata().getNumKeys();
     }
 
     public long getFindKeyTimer(){

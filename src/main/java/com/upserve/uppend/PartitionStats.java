@@ -17,7 +17,10 @@ public class PartitionStats {
     private final long flushedKeyCount;
     private final long flushCount;
 
-    public PartitionStats(int metadataPageCount, int keyPageCount, int blobPageCount, long metadataLookupMissCount, long metadataLookupHitCount, long metadataSize, long findKeyTimer, long flushedKeyCount, long flushCount) {
+    private final long lookups;
+    private final long maxLookupSize;
+
+    public PartitionStats(int metadataPageCount, int keyPageCount, int blobPageCount, long metadataLookupMissCount, long metadataLookupHitCount, long metadataSize, long findKeyTimer, long flushedKeyCount, long flushCount, long lookups, long maxLookupSize) {
         this.metadataPageCount = metadataPageCount;
         this.keyPageCount = keyPageCount;
         this.blobPageCount = blobPageCount;
@@ -27,9 +30,11 @@ public class PartitionStats {
         this.findKeyTimer = findKeyTimer;
         this.flushedKeyCount = flushedKeyCount;
         this.flushCount = flushCount;
+        this.lookups = lookups;
+        this.maxLookupSize = maxLookupSize;
     }
 
-    public static PartitionStats ZERO_STATS = new PartitionStats(0,0,0,0,0, 0, 0, 0 ,0);
+    public static PartitionStats ZERO_STATS = new PartitionStats(0,0,0,0,0, 0, 0, 0 ,0, 0, 0);
 
     public int getMetadataPageCount() {
         return metadataPageCount;
@@ -63,6 +68,11 @@ public class PartitionStats {
 
     public long getFlushCount() { return flushCount; }
 
+    public long getLookupCount() { return lookups; }
+
+    public long getMaxLookupSize() { return maxLookupSize; }
+
+
     @Override
     public String toString() {
         return "PartitionStats{" +
@@ -75,10 +85,12 @@ public class PartitionStats {
                 ", findKeyTimer=" + findKeyTimer +
                 ", flushedKeyCount=" + flushedKeyCount +
                 ", flushCount=" + flushCount +
+                ", lookups=" + lookups +
+                ", maxLookupSize=" + maxLookupSize +
                 '}';
     }
 
-    public String present(int partitionCount, int hashCount, PartitionStats previous) {
+    public String present(PartitionStats previous) {
         PartitionStats deltaStats = this.minus(previous);
 
         long lookupCount = Math.max(1, deltaStats.metadataLookupHitCount + deltaStats.metadataLookupMissCount);
@@ -92,8 +104,8 @@ public class PartitionStats {
                 ", flushedKeys=" + deltaStats.flushedKeyCount +
                 ", flushCount=" + deltaStats.flushCount +
                 "; Totals:" +
-                "MeanLookupSize=" + metadataSize / (partitionCount * hashCount) +
-
+                "MeanLookupSize=" + metadataSize / Math.max(lookups, 1) +
+                ", MaxLookupSize=" + maxLookupSize +
                 "}";
     }
 
@@ -109,7 +121,9 @@ public class PartitionStats {
                 metadataSize - other.metadataSize,
                 findKeyTimer - other.findKeyTimer,
                 flushedKeyCount - other.flushedKeyCount,
-                flushCount - other.flushCount
+                flushCount - other.flushCount,
+                lookups - other.lookups,
+                maxLookupSize - other.maxLookupSize
         );
     }
 
@@ -124,7 +138,9 @@ public class PartitionStats {
                 metadataSize + other.metadataSize,
                 findKeyTimer + other.findKeyTimer,
                 flushedKeyCount + other.flushedKeyCount,
-                flushCount + other.flushCount
+                flushCount + other.flushCount,
+                lookups + other.lookups,
+                 Math.max(maxLookupSize, other.maxLookupSize)
         );
     }
 }
