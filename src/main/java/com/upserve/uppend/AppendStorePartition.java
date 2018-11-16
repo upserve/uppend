@@ -10,7 +10,7 @@ import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.*;
-import java.util.function.BiConsumer;
+import java.util.function.*;
 import java.util.stream.*;
 
 import static java.lang.Math.min;
@@ -66,15 +66,22 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     PartitionStats getPartitionStats(){
+        LongSummaryStatistics metadataStats = Arrays.stream(lookups)
+                .mapToLong(LookupData::getMetadataSize)
+                //.filter(val -> val > 0)
+                .summaryStatistics();
+
         return new PartitionStats(metadataBlobFile.getAllocatedPageCount(),
                 longKeyFile.getAllocatedPageCount(),
                 blobFile.getAllocatedPageCount(),
                 Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupMissCount).sum(),
                 Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupHitCount).sum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getMetadataSize).sum(),
+                metadataStats.getSum(),
                 Arrays.stream(lookups).mapToLong(LookupData::getFindKeyTimer).sum(),
                 Arrays.stream(lookups).mapToLong(LookupData::getFlushedKeyCount).sum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getFlushCount).sum()
+                Arrays.stream(lookups).mapToLong(LookupData::getFlushCount).sum(),
+                metadataStats.getCount(),
+                metadataStats.getMax()
                 );
     }
 

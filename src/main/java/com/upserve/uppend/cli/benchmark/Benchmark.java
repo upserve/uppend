@@ -195,7 +195,7 @@ public class Benchmark {
                     log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
 
                     PartitionStats pStats = testInstance.getPartitionStats();
-                    log.info(pStats.present(partitionSize, lookupHashSize, partitionStats.getAndSet(pStats)));
+                    log.info(pStats.present(partitionStats.getAndSet(pStats)));
 
                     BlockStats bStats = testInstance.getBlockLongStats();
                     log.info("Block Stats: {}", bStats.minus(blockStats.getAndSet(bStats)));
