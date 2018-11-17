@@ -79,29 +79,6 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    public void clear() {
-        log.trace("clearing");
-        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + dir);
-
-        log.trace("clearing");
-
-        partitionMap.values().stream().forEach(counterStorePartition -> {
-            try {
-                counterStorePartition.clear();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to clear counter store partition", e);
-            }
-        });
-
-        try {
-            SafeDeleting.removeDirectory(partitionsDir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to clear partitions directory", e);
-        }
-        partitionMap.clear();
-    }
-
-    @Override
     Function<String, CounterStorePartition> getOpenPartitionFunction() {
         return openPartitionFunction;
     }
