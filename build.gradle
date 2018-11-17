@@ -42,6 +42,10 @@ apply plugin: 'maven'
 apply plugin: 'jacoco'
 apply plugin: 'com.bmuschko.nexus'
 
+jacoco {
+    toolVersion = "0.8.2" // Fixed to resolve issue with JDK 11 in Gradle 4.X.Y
+}
+
 sourceCompatibility = 1.9
 targetCompatibility = 1.9
 // Requires 1.9 or greater due to unsafe memory access in MappebByteBuffer - Oracle Incident Report 9119653

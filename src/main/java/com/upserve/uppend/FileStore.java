@@ -187,7 +187,7 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + name);
         log.trace("clearing");
 
-        close();
+        closePartitions();
 
         try {
             SafeDeleting.removeDirectory(partitionsDir);
@@ -205,10 +205,25 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
 
         if (!readOnly && flushDelaySeconds > 0) AutoFlusher.deregister(this);
 
+        closePartitions();
+
+        try {
+            lock.release();
+        } catch (IOException e) {
+            log.error("unable to release lock file: " + lockPath, e);
+        }
+        try {
+            lockChan.close();
+        } catch (IOException e) {
+            log.error("unable to close lock file: " + lockPath, e);
+        }
+    }
+
+    private void closePartitions(){
         ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
-                partitionMap.values().parallelStream().forEach(counterStorePartition -> {
+                partitionMap.values().parallelStream().forEach(partition -> {
                     try {
-                        counterStorePartition.close();
+                        partition.close();
                     } catch (IOException e) {
                         throw new UncheckedIOException("Error closing store " + name, e);
                     }
@@ -223,18 +238,6 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         } catch (ExecutionException e) {
             log.error("Flush execution exception", e);
         }
-
         partitionMap.clear();
-
-        try {
-            lock.release();
-        } catch (IOException e) {
-            log.error("unable to release lock file: " + lockPath, e);
-        }
-        try {
-            lockChan.close();
-        } catch (IOException e) {
-            log.error("unable to close lock file: " + lockPath, e);
-        }
     }
 }
