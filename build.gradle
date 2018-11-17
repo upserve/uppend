@@ -30,10 +30,6 @@ group 'com.upserve'
 
 description = """Uppend: fast, append-only key-multivalue store"""
 
-task wrapper(type: Wrapper) {
-    gradleVersion = '4.10.2'
-}
-
 // TODO unused-dependency is broken - claims all dependencies are unused!
 //gradleLint.rules += 'unused-dependency'
 
@@ -69,8 +65,8 @@ dependencies {
 
     gradleLint.ignore {
         // gradle-lint doesn't like log4j because it's not used directly
-        compile 'org.apache.logging.log4j:log4j-core:2.8'
-        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+        annotationProcessor 'org.apache.logging.log4j:log4j-core:2.8'
+        annotationProcessor 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
     }
 }
 
