@@ -204,7 +204,62 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
-    public LongStream values(Long pos) {
+    public LongStream values(Long pos){
+        log.trace("streaming values from {} at {}", file, pos);
+
+        valuesReadCounter.increment();
+
+        if (pos == null) {
+            // pos will be null for missing keys
+            return LongStream.empty();
+        }
+
+        return Arrays.stream(valuesArray(pos));
+    }
+
+    public long[] valuesArray(Long pos) {
+
+        if (pos < 0 || pos > size()) {
+            log.error("Bad position value {} in file {} of size {}", pos, file, size());
+            return new long[]{};
+        }
+
+        // size | -next
+        // prev | -last
+        final long size = readLong(pos);
+
+        if (size < 0) {
+            long nextPos = -size;
+            long[] values = new long[valuesPerBlock];
+            for (int i = 0; i < valuesPerBlock; i++) {
+                values[i] = readLong(pos + 16 + i * 8);
+            }
+
+            long[] additionalValues = valuesArray(nextPos);
+
+            if (additionalValues.length == 0){
+                return values;
+            } else {
+                long[] result = new long[valuesPerBlock + additionalValues.length];
+                System.arraycopy(values,0,result,0, valuesPerBlock);
+                System.arraycopy(additionalValues,0,result,valuesPerBlock, additionalValues.length);
+                return result;
+            }
+        } else if (size > valuesPerBlock) {
+            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
+        } else if (size == 0) {
+            return new long[]{};
+        } else {
+            int numValues = (int) size;
+            long[] values = new long[numValues];
+            for (int i = 0; i < numValues; i++) {
+                values[i] = readLong(pos + 16 + i * 8);
+            }
+            return values;
+        }
+    }
+
+    public LongStream lazyValues(Long pos) {
         log.trace("streaming values from {} at {}", file, pos);
 
         valuesReadCounter.increment();

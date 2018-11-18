@@ -109,8 +109,11 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         LookupKey lookupKey = new LookupKey(key);
         final int hash = keyHash(lookupKey);
 
-        return blocks.values(lookups[hash].getValue(lookupKey)).mapToObj(blobs[hash]::read);
-        // Consider sorting by blob pos or even grouping by the page of the blob pos and then flat-mapping the reads by page.
+        // Values stream can now be parallel, but it breaks everything...
+        LongStream longStream = blocks.values(lookups[hash].getValue(lookupKey));
+        return longStream.mapToObj(blobs[hash]::read);
+
+        //return blocks.lazyValues(lookups[hash].getValue(lookupKey)).parallel().mapToObj(blobs[hash]::read);
     }
 
     Stream<byte[]> readSequential(String key) {
