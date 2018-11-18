@@ -205,7 +205,7 @@ public class LookupDataTest {
 
         scanTestHelper(data, new LookupKey[]{firstKey, secondKey}, new Long[]{1L, 2L});
 
-        data.flushCacheToReadCache();
+        data.flushCache.clear();
 
         assertEquals(0, data.flushCache.size());
         assertEquals(0, data.writeCache.size());
