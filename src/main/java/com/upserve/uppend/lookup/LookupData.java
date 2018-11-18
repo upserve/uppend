@@ -29,11 +29,11 @@ public class LookupData implements Flushable, Trimmable {
 
     // The container for stuff we need to write - Only new keys can be in the write cache
     final ConcurrentHashMap<LookupKey, Long> writeCache;
-    // keys written but not yet written to the metadata live here
+    // keys written but not yet in the metadata live here
     final ConcurrentHashMap<LookupKey, Long> flushCache;
 
     // Direct reference for writers
-    private LookupMetadata metadata;
+    private AtomicReference<LookupMetadata> atomicMetadataRef;
 
     // Timestamped references for readers
     private final AtomicStampedReference<LookupMetadata> timeStampedMetadata;
@@ -84,15 +84,16 @@ public class LookupData implements Flushable, Trimmable {
         metaDataGeneration = new AtomicInteger();
         findKeyTimer = new LongAdder();
 
+        atomicMetadataRef = new AtomicReference<>();
+
         if (readOnly) {
             writeCache = null;
             flushCache = null;
-            metadata = null;
 
             timeStampedMetadata = new AtomicStampedReference<>(loadMetadata(), reloadInterval);
             reloadStamp = new AtomicInteger(reloadInterval);
         } else {
-            metadata = loadMetadata();
+            atomicMetadataRef.set(loadMetadata());
 
             timeStampedMetadata = null;
             reloadStamp = null;
@@ -353,6 +354,12 @@ public class LookupData implements Flushable, Trimmable {
      * @return Long value or null if not present
      */
     private Long findValueFor(LookupKey key) {
+        if (!readOnly) {
+            Long result = flushCache.get(key);
+            if (result != null ){
+                return result;
+            }
+        }
         LookupMetadata md = getMetadata();
         long tic = -System.nanoTime();
         Long val = md.findKey(keyLongBlobs, key);
@@ -414,19 +421,11 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     private LongAdder getMetaHitCount() {
-        if (metadata != null) {
-            return metadata.hitCount;
-        } else {
-            return new LongAdder();
-        }
+        return Optional.ofNullable(atomicMetadataRef.get()).map(md -> md.hitCount).orElse(new LongAdder());
     }
 
     private LongAdder getMetaMissCount() {
-        if (metadata != null) {
-            return metadata.missCount;
-        } else {
-            return new LongAdder();
-        }
+        return Optional.ofNullable(atomicMetadataRef.get()).map(md -> md.missCount).orElse(new LongAdder());
     }
 
     /**
@@ -558,17 +557,19 @@ public class LookupData implements Flushable, Trimmable {
         log.debug("Finished creating sortOrder");
 
         try {
-            metadata = LookupMetadata.generateMetadata(minKey, maxKey, newKeySortOrder, metadataBlobs, metaDataGeneration.incrementAndGet(), getMetaMissCount(), getMetaHitCount());
+            atomicMetadataRef.set(
+                    LookupMetadata
+                            .generateMetadata(
+                                    minKey,
+                                    maxKey,
+                                    newKeySortOrder,
+                                    metadataBlobs,
+                                    metaDataGeneration.incrementAndGet(),
+                                    getMetaMissCount(),
+                                    getMetaHitCount())
+            );
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to write new metadata!", e);
-        }
-    }
-
-    void flushCacheToReadCache() {
-        Iterator<Map.Entry<LookupKey, Long>> iterator = flushCache.entrySet().iterator();
-        while (iterator.hasNext()) {
-            iterator.next();
-            iterator.remove();
         }
     }
 
@@ -587,7 +588,8 @@ public class LookupData implements Flushable, Trimmable {
             }
             return result;
         } else {
-            return metadata;
+
+            return atomicMetadataRef.get();
         }
     }
 
@@ -599,11 +601,12 @@ public class LookupData implements Flushable, Trimmable {
             flushing.set(true);
             log.debug("starting flush");
 
-            flushWriteCache(metadata);
+            LookupMetadata md = atomicMetadataRef.get();
+            flushWriteCache(md);
 
-            generateMetaData(metadata);
+            generateMetaData(md);
 
-            flushCacheToReadCache();
+            flushCache.clear();
 
             log.debug("flushed");
         }
@@ -613,20 +616,10 @@ public class LookupData implements Flushable, Trimmable {
 
     @Override
     public void trim() {
-
         if (!readOnly && writeCache.size() > 0) {
-            flushing.set(true);
-            log.debug("starting flush");
-
-            flushWriteCache(metadata);
-
-            generateMetaData(metadata);
-
-            flushCacheToReadCache();
-
-            log.debug("flushed");
+            flush();
         } else {
-            metadata.clearLookupTree();
+            atomicMetadataRef.get().clearLookupTree();
         }
         flushing.set(false);
     }
