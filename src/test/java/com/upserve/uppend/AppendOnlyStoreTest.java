@@ -99,7 +99,7 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testPurge() throws Exception {
+    public void testTrim() throws Exception {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
@@ -117,7 +117,7 @@ public class AppendOnlyStoreTest {
         ExecutorService executor = new ForkJoinPool();
         Future future = executor.submit(() -> {
             new Random(314159)
-                    .longs(100_000, 0, 5_000)
+                    .longs(500_000, 0, 5_000)
                     .parallel()
                     .forEach(val -> {
                         String key = String.valueOf(val);
