@@ -66,7 +66,7 @@ public class VirtualPageFile implements Closeable {
     private final Path filePath;
     private final FileChannel channel;
 
-    private final MappedByteBuffer headerBlockLocations;
+    private final LongBuffer headerBlockLocations;
     private final MappedByteBuffer headerBuffer;
 
     private final AtomicLong nextPagePosition;
@@ -293,7 +293,7 @@ public class VirtualPageFile implements Closeable {
         final long initialSize;
         try {
             initialSize = channel.size();
-            headerBlockLocations = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE);
+            headerBlockLocations = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE).asLongBuffer();
 
             ByteBuffer intBuffer = LOCAL_INT_BUFFER.get();
             if (!readOnly && initialSize == 0) {
@@ -303,7 +303,7 @@ public class VirtualPageFile implements Closeable {
                 intBuffer.flip().putInt(pageSize);
                 channel.write(intBuffer.flip(), 4);
 
-                headerBlockLocations.putLong(0, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize);
+                headerBlockLocations.put(0, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize);
             } else {
                 channel.read(intBuffer, 0);
                 int val = intBuffer.flip().getInt();
@@ -315,7 +315,7 @@ public class VirtualPageFile implements Closeable {
                 if (val != virtualFiles)
                     throw new IllegalArgumentException("The specfied page size " + pageSize + " does not match the value in the datastore " + val + " in file " + getFilePath());
 
-                long longVal = headerBlockLocations.getLong(0);
+                long longVal = headerBlockLocations.get(0);
                 if (longVal != SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize)
                     throw new IllegalArgumentException("The header sizes " + (SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize) + " does not match the value in the datastore " + longVal + " in file " + getFilePath());
             }
@@ -356,6 +356,17 @@ public class VirtualPageFile implements Closeable {
             throw new UncheckedIOException("unable to map page locations for path: " + filePath, e);
         }
 
+        long lastTableStart = 0;
+        for(int i=0; i< MAX_PAGE_TABLE_BLOCKS; i++) {
+            long position = headerBlockLocations.get(i);
+            if (position > 0){
+                lastTableStart = position;
+            }
+        }
+
+        if (lastTableStart + tableSize > Math.max(initialSize, totalHeaderSize)) {
+            throw new IllegalStateException("Bad value for last table start in header");
+        }
 
         long lastStartPosition = IntStream
                 .range(0, virtualFiles)
@@ -371,8 +382,8 @@ public class VirtualPageFile implements Closeable {
         } else if (lastStartPosition < totalHeaderSize) {
             throw new IllegalStateException("file position " + lastStartPosition + " is less than header size: " + headerSize + " in file " + filePath);
         } else {
-            nextPagePosition = new AtomicLong(lastStartPosition + pageSize);
-            preloadBuffers(lastStartPosition + pageSize);
+            nextPagePosition = new AtomicLong(Math.max(lastStartPosition + pageSize,  lastTableStart + tableSize));
+            preloadBuffers(nextPagePosition.get());
         }
     }
 
@@ -384,13 +395,9 @@ public class VirtualPageFile implements Closeable {
     }
 
     private long getValidPageStart(int virtualFileNumber, int pageNumber) {
-        if (pageNumber == -1) return -1L;
         long result = getRawPageStart(virtualFileNumber, pageNumber);
         if (result < totalHeaderSize) {
             throw new IllegalStateException("Invalid page position " + result + " is in the file header; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
-        }
-        if ((result - (totalHeaderSize)) % (pageSize) != 0 ) {
-            throw new IllegalStateException("Invalid page position " + result + " is not aligned with pageSize " + pageSize + "; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
         }
         return result;
     }
@@ -453,7 +460,6 @@ public class VirtualPageFile implements Closeable {
         pageAllocationCount.add(pagesToAllocate);
     }
 
-
     private MappedByteBuffer ensureBuffered(int bufferIndex) {
         MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
         if (buffer == null) {
@@ -480,12 +486,22 @@ public class VirtualPageFile implements Closeable {
                 buffer = pageTables[pageNumber];
                 if (buffer == null) {
 
-                    long bufferStart = headerBlockLocations.getLong(pageNumber);
+                    long bufferStart = headerBlockLocations.get(pageNumber);
+
+                    // All allocated space must be in multiples of pageSize to guarantee a buffer will not end in the middle of a page
+                    final int apparentSize;
+                    if (pageSize > tableSize) {
+                        apparentSize = pageSize;
+                    } else {
+                        apparentSize = (tableSize / pageSize + 1) * pageSize;
+                    }
+
                     if (!readOnly && bufferStart == 0) {
-                      bufferStart = nextPagePosition.getAndAdd(tableSize);
+                      bufferStart = nextPagePosition.getAndAdd(apparentSize);
+                      headerBlockLocations.put(pageNumber, bufferStart);
                     }
                     try {
-                        buffer = channel.map(mapMode, bufferStart, bufferSize).asLongBuffer();
+                        buffer = channel.map(mapMode, bufferStart, tableSize).asLongBuffer();
                     } catch (IOException e) {
                         throw new UncheckedIOException("Unable to map buffer for page table " + pageNumber + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
@@ -495,7 +511,6 @@ public class VirtualPageFile implements Closeable {
         }
         return buffer;
     }
-
 
     // Called during initialize only - no need to synchronize
     private void preloadBuffers(long nextPagePosition){

@@ -162,7 +162,7 @@ public class VirtualLongBlobStoreTest {
 
     @Test
     public void testConcurrent() {
-        setup(1280);
+        setup(657);
         IntStream.range(0, NUMBER_OF_STORES)
                 .parallel()
                 .forEach(this::concurrentHelper);
@@ -174,7 +174,7 @@ public class VirtualLongBlobStoreTest {
 
         ConcurrentMap<Long, byte[]> testData = new ConcurrentHashMap<>();
 
-        LongStream.range(0, 10_000)
+        LongStream.range(0, 200_000)
                 .parallel()
                 .forEach(val -> {
                     byte[] bytes = Longs.toByteArray(val);
