@@ -116,7 +116,13 @@ public class LookupData implements Flushable, Trimmable {
         if (readOnly) {
             return findValueFor(key);
         } else {
-            return writeCache.getOrDefault(key, findValueFor(key));
+            Long result = writeCache.get(key);
+
+            if (result == null) {
+                return findValueFor(key);
+            } else {
+                return result;
+            }
         }
     }
 
