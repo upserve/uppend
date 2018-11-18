@@ -115,7 +115,7 @@ public class VirtualAppendOnlyBlobStoreTest {
 
         ConcurrentMap<Long, byte[]> testData = new ConcurrentHashMap<>();
 
-        LongStream.range(0, 10_000)
+        LongStream.range(0, 200_000)
                 .parallel()
                 .forEach(val -> {
                     byte[] bytes = Longs.toByteArray(val);

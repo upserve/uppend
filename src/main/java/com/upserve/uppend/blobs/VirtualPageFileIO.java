@@ -125,7 +125,6 @@ public class VirtualPageFileIO {
         bytesRead = page.get(virtualPageFile.pagePosition(pos), buf, offset);
 
         if (bytesRead < (buf.length - offset)) {
-            // TODO see if it is faster to use the head pointer to the next page start rather than recursion here?
             bytesRead += readPagedOffset(pos + bytesRead, buf, offset + bytesRead);
         }
         return bytesRead;
