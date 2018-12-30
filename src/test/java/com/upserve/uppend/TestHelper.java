@@ -3,9 +3,11 @@ package com.upserve.uppend;
 import org.slf4j.*;
 
 import java.lang.reflect.*;
+import java.util.Random;
 import java.util.concurrent.*;
 
 public class TestHelper {
+
     public static void resetLogger(Class clazz, String fieldName) throws Exception {
         setLogger(clazz, fieldName, LoggerFactory.getLogger(clazz));
     }
@@ -41,6 +43,32 @@ public class TestHelper {
                 .withMetadataPageSize(1024)
                 .withLongLookupHashSize(16)
                 .withLookupPageSize(16 * 1024);
+    }
+
+    public static int compareByteArrays(byte[] o1, byte[] o2) {
+        if (o1 == null) {
+            if (o2 == null) {
+                return 0;
+            }
+            return -1;
+        }
+        if (o2 == null) {
+            return 1;
+        }
+        for (int i = 0; i < o1.length && i < o2.length; i++) {
+            int v1 = 0xff & o1[i];
+            int v2 = 0xff & o2[i];
+            if (v1 != v2) {
+                return v1 < v2 ? -1 : 1;
+            }
+        }
+        return Integer.compare(o1.length, o2.length);
+    }
+
+    public static byte[] genBytes(int len) {
+        byte[] bytes = new byte[len];
+        ThreadLocalRandom.current().nextBytes(bytes);
+        return bytes;
     }
 
 }
