@@ -5,7 +5,9 @@ import java.nio.*;
 import static java.lang.Integer.min;
 
 /**
- * Mapped Byte Buffer backed implementation of Page
+ * {@link ByteBuffer} backed implementation of {@link Page}
+ * The buffer used in the constructor must be thread local
+ * Buffer are not thread safe!
  */
 public class MappedPage implements Page {
     private final ByteBuffer buffer;
@@ -15,7 +17,7 @@ public class MappedPage implements Page {
     /**
      * Constructor for a MappedPage
      *
-     * @param buffer the mapped byte buffer representing a page of a file
+     * @param buffer a {@link ThreadLocal} {@link ByteBuffer} (mapped from a file) containing a {@link Page} of a {@link VirtualPageFile}
      * @param startingPosition the starting offset in a larger buffer
      * @param pageSize the size of the page to create
      */
