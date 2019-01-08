@@ -62,7 +62,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize), readOnly);
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize), readOnly);
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, hashSize, flushThreshold, reloadInterval, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, hashSize, flushThreshold, reloadInterval, readOnly);
     }
 
     PartitionStats getPartitionStats(){

@@ -90,6 +90,7 @@ public class LookupData implements Flushable, Trimmable {
             writeCache = null;
             flushCache = null;
 
+            // Reload interval is specified in seconds
             timeStampedMetadata = new AtomicStampedReference<>(loadMetadata(), reloadInterval);
             reloadStamp = new AtomicInteger(reloadInterval);
         } else {
@@ -578,7 +579,8 @@ public class LookupData implements Flushable, Trimmable {
             int[] stamp = new int[1];
             LookupMetadata result = timeStampedMetadata.get(stamp);
 
-            if ((System.currentTimeMillis() - startTime) > stamp[0]){
+            // Convert millis to seconds
+            if (((System.currentTimeMillis() - startTime) / 1000) > stamp[0]){
                 boolean luckyMe = reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
 
                 if (luckyMe) {
@@ -616,12 +618,15 @@ public class LookupData implements Flushable, Trimmable {
 
     @Override
     public void trim() {
-        if (!readOnly && writeCache.size() > 0) {
+        if (!readOnly) {
             flush();
         } else {
-            atomicMetadataRef.get().clearLookupTree();
+            LookupMetadata result = timeStampedMetadata.get(new int[1]);
+            int stamp = (int) ((System.currentTimeMillis() - startTime) / 1000) - 1;
+            // set to elapsed time minus one - it will reload next time it is used.
+            timeStampedMetadata.set(result, stamp);
+            reloadStamp.set(stamp);
         }
-        flushing.set(false);
     }
 
     private int[] getKeyPosition() {
