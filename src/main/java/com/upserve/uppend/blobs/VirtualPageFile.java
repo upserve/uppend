@@ -60,7 +60,7 @@ public class VirtualPageFile implements Closeable {
     private static final int PAGE_TABLE_SIZE = 1000;
 
     private static final int MAX_BUFFERS = 1024 * 64; // 128 TB per partition for 2Gb Bufffers
-    private final MappedByteBuffer[] mappedByteBuffers;
+    private final ThreadLocal[] localMappedByteBuffers;
     private final int bufferSize;
 
     private final Path filePath;
@@ -96,8 +96,7 @@ public class VirtualPageFile implements Closeable {
     @Override
     public void close() throws IOException {
         if (!channel.isOpen()) return;
-        Arrays.fill(mappedByteBuffers, null);
-
+        Arrays.fill(localMappedByteBuffers, null);
         if (!readOnly) {
             channel.truncate(nextPagePosition.get());
         }
@@ -239,7 +238,7 @@ public class VirtualPageFile implements Closeable {
         final int mapIndex = (int) (postHeaderPosition / bufferSize);
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
 
-        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex);
+        ByteBuffer bigbuffer = ensureBuffered(mapIndex);
 
         return new MappedPage(bigbuffer, mapPosition, pageSize);
     }
@@ -262,7 +261,7 @@ public class VirtualPageFile implements Closeable {
         this.virtualFiles = virtualFiles;
         this.pageSize = pageSize;
 
-        this.mappedByteBuffers = new MappedByteBuffer[MAX_BUFFERS];
+        this.localMappedByteBuffers = new ThreadLocal[MAX_BUFFERS];
 
         if (targetBufferSize < (pageSize)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize);
 
@@ -460,22 +459,28 @@ public class VirtualPageFile implements Closeable {
         pageAllocationCount.add(pagesToAllocate);
     }
 
-    private MappedByteBuffer ensureBuffered(int bufferIndex) {
-        MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
-        if (buffer == null) {
-            synchronized (mappedByteBuffers) {
-                buffer = mappedByteBuffers[bufferIndex];
-                if (buffer == null) {
+    @SuppressWarnings("unchecked")
+    private ByteBuffer ensureBuffered(int bufferIndex) {
+        ThreadLocal local = localMappedByteBuffers[bufferIndex];
+        if (local == null) {
+            synchronized (localMappedByteBuffers) {
+                local = localMappedByteBuffers[bufferIndex];
+                if (local == null) {
                     long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
                     try {
-                        buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
+                        ByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
+                        local = ThreadLocal.withInitial(buffer::duplicate);
+                        local.set(buffer);
+                        localMappedByteBuffers[bufferIndex] = local;
                     } catch (IOException e) {
                         throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
-                    mappedByteBuffers[bufferIndex] = buffer;
                 }
             }
         }
+
+        ByteBuffer buffer = (ByteBuffer) local.get();
+
         return buffer;
     }
 
@@ -513,6 +518,7 @@ public class VirtualPageFile implements Closeable {
     }
 
     // Called during initialize only - no need to synchronize
+    @SuppressWarnings("unchecked")
     private void preloadBuffers(long nextPagePosition){
         for (int bufferIndex=0; bufferIndex<MAX_BUFFERS; bufferIndex++){
             long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
@@ -521,7 +527,9 @@ public class VirtualPageFile implements Closeable {
 
             try {
                 MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
-                mappedByteBuffers[bufferIndex] = buffer;
+                ThreadLocal local = ThreadLocal.withInitial(buffer::duplicate);
+                local.set(buffer);
+                localMappedByteBuffers[bufferIndex] = local;
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " start position) in file "  + filePath, e);
             }
