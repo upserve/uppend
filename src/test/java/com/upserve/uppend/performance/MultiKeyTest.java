@@ -18,15 +18,11 @@ public class MultiKeyTest {
     private static final int hashSize = 32;
     private static final int values = 1_000;
     private static final int blobsPerBlock = 64;
-
     private static final int keyCount = 1_000;
 
     private final Path path = Paths.get("build/test/tmp/performance");
-
     private AppendOnlyStore appendOnlyStore;
-
     private final String[] keys = new String[keyCount]; // Just use a single key - it will be hashed appropriately for partition and hashsize
-
     private final int repeats = 5;
 
     private final Supplier<LongStream> parallelStream = () -> Arrays.stream(keys).flatMapToLong(key -> appendOnlyStore.read(key, key).mapToLong(bytes -> bytes.length).parallel()).parallel();
@@ -51,7 +47,6 @@ public class MultiKeyTest {
                     .mapToObj(TestHelper::genBytes)
                     .forEach(bytes -> appendOnlyStore.append(key, key, bytes));
         }
-
     }
 
     @After
@@ -90,5 +85,4 @@ public class MultiKeyTest {
             sequentialTime(groupByCounting(sequentialStream, true));
         }
     }
-    
 }

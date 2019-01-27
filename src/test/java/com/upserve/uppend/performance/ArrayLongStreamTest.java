@@ -8,15 +8,11 @@ import java.util.stream.*;
 
 import static com.upserve.uppend.performance.StreamTimerMethods.*;
 
-// Parallel is slower - usually about 2X, but variable!
 public class ArrayLongStreamTest {
 
     private static final int values = 10_000_000;
-
     private final long[] longs = new long[values];
-
     private final int repeats = 5;
-
     private final Supplier<LongStream> parallelStream = () -> Arrays.stream(longs).parallel();
     private final Supplier<LongStream> sequentialStream = () -> Arrays.stream(longs).sequential();
 
@@ -57,8 +53,6 @@ public class ArrayLongStreamTest {
             sequentialTime(groupByCounting(sequentialStream, true));
         }
     }
-
-
 
     @Test
     public void flatMapTest(){

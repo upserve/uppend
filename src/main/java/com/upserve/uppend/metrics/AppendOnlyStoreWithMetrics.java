@@ -1,10 +1,8 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.*;
-import com.upserve.uppend.lookup.FlushStats;
 
 import java.util.Map;
 import java.util.function.BiConsumer;

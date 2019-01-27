@@ -105,5 +105,4 @@ public class StreamTimerMethods {
 
         return (toc - tic)/1_000_000.0D;
     }
-
 }

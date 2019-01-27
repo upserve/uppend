@@ -19,20 +19,14 @@ public class SingleKeyTest {
     private static final int hashSize = 4;
     private static final int values = 1_000_000;
     private static final int blobsPerBlock = 4096;
-
-
     private final Path path = Paths.get("build/test/tmp/performance");
-
     private AppendOnlyStore appendOnlyStore;
-
     private String partition = "foo";
     private String key = "bar";
-
     private final int repeats = 5;
 
     private final Supplier<LongStream> parallelStream = () -> appendOnlyStore.read(partition, key).mapToLong(bytes -> bytes.length).parallel();
     private final Supplier<LongStream> sequentialStream = () -> appendOnlyStore.read(partition, key).mapToLong(bytes -> bytes.length).sequential();
-
 
     @Before
     public void loadStore() throws IOException {
@@ -59,7 +53,7 @@ public class SingleKeyTest {
     @Test
     public void sumTest() {
         for (int i=0; i<repeats; i++) {
-//            parallelTime(sum(parallelStream));
+            parallelTime(sum(parallelStream));
             sequentialTime(sum(sequentialStream));
         }
     }
