@@ -12,7 +12,6 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.Lock;
-import java.util.function.Supplier;
 import java.util.stream.*;
 
 public class BlockedLongs implements AutoCloseable, Flushable {
@@ -214,7 +213,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return LongStream.empty();
         }
 
-        return Arrays.stream(valuesArray(pos));
+        long[] longs = valuesArray(pos);
+        return Arrays.stream(longs);
     }
 
     public long[] valuesArray(Long pos) {
@@ -259,6 +259,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
+    // Lazy values is much slower in Performance tests with a large number of blocks.
+    // Might be workable with a custom spliterator that was block aware for parallelization
     public LongStream lazyValues(Long pos) {
         log.trace("streaming values from {} at {}", file, pos);
 
