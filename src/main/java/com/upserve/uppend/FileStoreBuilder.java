@@ -1,11 +1,7 @@
 package com.upserve.uppend;
 
 import com.codahale.metrics.MetricRegistry;
-import com.github.benmanes.caffeine.cache.stats.*;
-import com.upserve.uppend.metrics.MetricsStatsCounter;
-
 import java.nio.file.Path;
-import java.util.function.Supplier;
 
 public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
@@ -128,20 +124,6 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         return (T) this;
     }
 
-    /**
-     * Return a StatsCounterSupplier for use in the Caffeine builder or null if cacheMetrics is false
-     *
-     * @param elements the string elements to use in registering metrics for this cache
-     * @return the Supplier or null
-     */
-    public Supplier<StatsCounter> metricsSupplier(String... elements) {
-        if (!cacheMetrics) return null;
-        if (cacheMetricsRegistry != null) {
-            return () -> new MetricsStatsCounter(cacheMetricsRegistry, String.join(".", elements));
-        } else {
-            return ConcurrentStatsCounter::new;
-        }
-    }
     public int getLookupHashSize() {
         return lookupHashSize;
     }

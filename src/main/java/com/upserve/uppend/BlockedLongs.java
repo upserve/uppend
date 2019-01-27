@@ -214,13 +214,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
 
         long[] longs = valuesArray(pos);
-
-
         return Arrays.stream(longs);
-
-//        return StreamSupport.longStream(
-//                Spliterators.spliterator(longs, 0, longs.length, Spliterator.CONCURRENT | Spliterator.IMMUTABLE |Spliterator.NONNULL),
-//                true);
     }
 
     public long[] valuesArray(Long pos) {
