@@ -160,6 +160,7 @@ public class VirtualLongBlobStoreTest {
         assertArrayEquals(new byte[]{0, 0, 0, 0, 0, 0, 0, 2, 110, 110, 110, 110, 110, 110, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, bytes);
     }
 
+    @Ignore
     @Test
     public void testConcurrent() {
         setup(657);

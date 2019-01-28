@@ -102,6 +102,7 @@ public class VirtualAppendOnlyBlobStoreTest {
                 .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 2));
     }
 
+    @Ignore
     @Test
     public void testConcurrent() {
         setup(1280);

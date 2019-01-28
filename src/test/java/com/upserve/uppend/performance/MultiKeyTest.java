@@ -20,7 +20,7 @@ public class MultiKeyTest {
     private static final int blobsPerBlock = 64;
     private static final int keyCount = 1_000;
 
-    private final Path path = Paths.get("build/test/tmp/performance");
+    private final Path path = Paths.get("build/test/tmp/performance/multi_key");
     private AppendOnlyStore appendOnlyStore;
     private final String[] keys = new String[keyCount]; // Just use a single key - it will be hashed appropriately for partition and hashsize
     private final int repeats = 5;
