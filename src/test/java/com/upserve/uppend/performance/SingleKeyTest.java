@@ -19,7 +19,7 @@ public class SingleKeyTest {
     private static final int hashSize = 4;
     private static final int values = 1_000_000;
     private static final int blobsPerBlock = 4096;
-    private final Path path = Paths.get("build/test/tmp/performance");
+    private final Path path = Paths.get("build/test/tmp/performance/single_key");
     private AppendOnlyStore appendOnlyStore;
     private String partition = "foo";
     private String key = "bar";
