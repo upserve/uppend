@@ -73,6 +73,7 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
         long toc = System.currentTimeMillis();
 
         log.info("[done!] {} ms", toc - tic);
+        System.out.println("[done!]"); // used in CliTest
 
         return null;
     }

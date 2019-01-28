@@ -1,9 +1,5 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.lookup.FlushStats;
-
-import java.io.Flushable;
-
 /**
  * Keep counters for partitioned keys.
  */

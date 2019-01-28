@@ -2,19 +2,15 @@ package com.upserve.uppend.cli.benchmark;
 
 import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
-import com.upserve.uppend.lookup.FlushStats;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
-import java.util.stream.LongStream;
 
 import static com.upserve.uppend.AutoFlusher.forkJoinPoolFunction;
 import static com.upserve.uppend.cli.CommandBenchmark.ROOT_NAME;
@@ -40,20 +36,18 @@ public class Benchmark {
 
     private final ForkJoinPool writerPool;
     private final ForkJoinPool readerPool;
-
-    private volatile boolean isDone = false;
     private final String ioStatArgs;
 
 
-    AtomicReference<CacheStats> lookupKeyCacheStats;
-    AtomicReference<FlushStats> flushStats;
     AtomicReference<PartitionStats> partitionStats;
     AtomicReference<BlockStats> blockStats;
 
-    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, long maxKeys, long count, String ioStatArgs) {
+    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, long range, long count, String ioStatArgs) {
         this.mode = mode;
 
         this.count = count;
+        this.range = range;
+
         partitionSize = builder.getPartitionSize();
         lookupHashSize = builder.getLookupHashSize();
 
@@ -65,8 +59,6 @@ public class Benchmark {
         metrics = builder.getStoreMetricsRegistry();
 
         log.info(builder.toString());
-
-        range = (long) maxKeys;
 
         switch (mode) {
             case readwrite:
@@ -172,7 +164,6 @@ public class Benchmark {
             @Override
             public void run() {
                 long val;
-                CacheStats stats;
                 try {
                     val = System.currentTimeMillis();
                     double elapsed = (val - tic.getAndSet(val)) / 1000D;
@@ -248,7 +239,6 @@ public class Benchmark {
 
         log.info("Benchmark is All Done!");
         System.out.println("[benchmark is done]"); // used in CliTest
-        isDone = true;
     }
 }
 
