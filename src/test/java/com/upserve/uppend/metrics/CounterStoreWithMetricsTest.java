@@ -1,9 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.MetricRegistry;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
-import com.upserve.uppend.lookup.FlushStats;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;

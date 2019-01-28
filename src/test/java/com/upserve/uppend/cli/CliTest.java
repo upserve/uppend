@@ -23,6 +23,10 @@ public class CliTest {
     @Before
     public void setUp() throws IOException {
         SafeDeleting.removeDirectory(Paths.get("build/test/cli"));
+        syncStreams();
+        err = "";
+        out = "";
+
         System.setErr(newErr);
         System.setOut(newOut);
     }
@@ -50,7 +54,6 @@ public class CliTest {
         assertEquals("", err);
     }
 
-    @Ignore
     @Test
     public void testBenchmark() throws Exception {
         Cli.main("benchmark", "-s", "small", "-b", "small", "build/test/cli/bench");
@@ -59,16 +62,14 @@ public class CliTest {
         assertEquals("", err);
     }
 
-    @Ignore
     @Test
     public void testFileStoreBenchmark() throws Exception {
         Cli.main("filestore", "-s", "small", "build/test/cli/filestore");
         syncStreams();
-        assertTrue("expected benchmark output to contain '[done!]', but got: " + out, out.contains("[done!]"));
         assertEquals("", err);
+        assertTrue("expected benchmark output to contain '[done!]', but got: " + out, out.contains("[done!]"));
     }
 
-    @Ignore
     @Test
     public void testBenchmarkWide() throws Exception {
         Cli.main("benchmark", "-s", "nano", "-c", "wide", "-b", "small", "build/test/cli/bench");
@@ -77,7 +78,6 @@ public class CliTest {
         assertEquals("", err);
     }
 
-    @Ignore
     @Test
     public void testBenchmarkReadWrite() throws Exception {
         Cli.main("benchmark", "-s", "nano", "-m", "readwrite", "-b", "small", "build/test/cli/bench");
@@ -86,7 +86,6 @@ public class CliTest {
         assertEquals("", err);
     }
 
-    @Ignore
     @Test
     public void testBenchmarkWriteThenRead() throws Exception {
         Cli.main("benchmark", "-s", "nano", "-m", "write", "-b", "small", "build/test/cli/bench");

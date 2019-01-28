@@ -1,6 +1,5 @@
 package com.upserve.uppend.lookup;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.primitives.Ints;
 import com.upserve.uppend.*;
 import com.upserve.uppend.blobs.*;
@@ -12,7 +11,6 @@ import java.io.IOException;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.*;
 
