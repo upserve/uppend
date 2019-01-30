@@ -15,7 +15,7 @@ import static org.junit.Assert.assertEquals;
 public class VirtualAppendOnlyBlobStoreTest {
 
     private String name = "blobs_test";
-    private Path rootPath = Paths.get("build/test/blobStore");
+    private Path rootPath = Paths.get("build/test/blobs/blob_store");
     private Path blobsPath = rootPath.resolve(name);
 
     private VirtualPageFile virtualPageFile;
@@ -102,12 +102,10 @@ public class VirtualAppendOnlyBlobStoreTest {
                 .forEach(storeNumber -> testVirtualBlobStore(storeNumber, 2));
     }
 
-    @Ignore
     @Test
     public void testConcurrent() {
         setup(1280);
         IntStream.range(0, NUMBER_OF_STORES)
-                .parallel()
                 .forEach(this::concurrentHelper);
     }
 

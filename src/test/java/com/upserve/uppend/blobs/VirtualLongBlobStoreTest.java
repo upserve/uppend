@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 public class VirtualLongBlobStoreTest {
 
     private String name = "long_blobs_test";
-    private Path rootPath = Paths.get("build/test/blobStore");
+    private Path rootPath = Paths.get("build/test/blobs/long_blob_store");
     private Path blobsPath = rootPath.resolve(name);
 
     private VirtualPageFile virtualPageFile;
@@ -131,7 +131,6 @@ public class VirtualLongBlobStoreTest {
         assertArrayEquals(new byte[]{0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 1, 109, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 48, 0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 2, 110, 95, 48}, bytes);
         page1.get(0, bytes, 0);
         assertArrayEquals(new byte[]{48, 48, 48, 49, 95, 48, 48, 48, 48, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, bytes);
-
     }
 
     @Test
@@ -160,12 +159,10 @@ public class VirtualLongBlobStoreTest {
         assertArrayEquals(new byte[]{0, 0, 0, 0, 0, 0, 0, 2, 110, 110, 110, 110, 110, 110, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, bytes);
     }
 
-    @Ignore
     @Test
     public void testConcurrent() {
         setup(657);
         IntStream.range(0, NUMBER_OF_STORES)
-                .parallel()
                 .forEach(this::concurrentHelper);
     }
 
