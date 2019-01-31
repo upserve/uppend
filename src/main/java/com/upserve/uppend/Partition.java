@@ -21,7 +21,7 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
     final VirtualPageFile metadataBlobFile;
 
     private final HashFunction hashFunction;
-
+    protected final boolean readOnly;
     final int hashSize;
 
     final LookupData[] lookups;
@@ -31,6 +31,7 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
         this.metadataBlobFile = metadataBlobFile;
 
         this.hashSize = hashSize;
+        this.readOnly = readOnly;
 
         if (hashSize < 1) {
             throw new IllegalArgumentException("hashSize must be >= 1");
@@ -128,7 +129,7 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
 
     @Override
     public void close() throws IOException {
-        flush();
+        if (!readOnly) flush();
 
         longKeyFile.close();
         metadataBlobFile.close();

@@ -173,10 +173,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
     @Override
     public void close() throws IOException {
-        flush();
+        super.close();
 
-        longKeyFile.close();
-        metadataBlobFile.close();
         blobFile.close();
         blocks.close();
     }

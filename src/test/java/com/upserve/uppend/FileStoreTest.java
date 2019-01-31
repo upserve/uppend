@@ -100,6 +100,23 @@ public class FileStoreTest {
     }
 
     @Test
+    public void testCreateCloseOpenReadOnlyClose() {
+        MyFileStore store = new MyFileStore(path.resolve("create-close-open-close"), 0);
+        store.getOrCreate("p1").append("k1", "v1".getBytes());
+        store.close();
+
+        store = new MyFileStore(path.resolve("create-close-open-close"), 0, true);
+        byte[][] result = store.getIfPresent("p1")
+                .map(partition -> partition.read("k1"))
+                .map(byteStream -> byteStream.toArray(byte[][]::new))
+                .orElse(new byte[][]{});
+        byte[][] expected = new byte[][]{"v1".getBytes()};
+        assertArrayEquals(expected, result);
+
+        store.close();
+    }
+
+    @Test
     public void testGetIfPresent() {
         MyFileStore v = new MyFileStore(path.resolve("get-if-present"), 0);
         Optional<AppendStorePartition> optPartition = v.getIfPresent("my-partition");
