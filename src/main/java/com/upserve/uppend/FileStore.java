@@ -148,7 +148,7 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
             log.error("Flush interrupted", e);
 
         } catch (ExecutionException e) {
-            log.error("Flush execution exception", e);
+            throw new RuntimeException("Partition map flush failed with", e);
         }
 
         log.debug("Flushed!");
@@ -164,10 +164,10 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         try {
             task.get();
         } catch (InterruptedException e) {
-            log.error("Flush interrupted", e);
+            log.error("Trim interrupted", e);
 
         } catch (ExecutionException e) {
-            log.error("Flush execution exception", e);
+            throw new RuntimeException("Partition map trim failed with", e);
         }
 
         log.debug("Trimmed!");
@@ -233,10 +233,10 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         try {
             task.get();
         } catch (InterruptedException e) {
-            log.error("Flush interrupted", e);
+            log.error("Close interrupted", e);
 
         } catch (ExecutionException e) {
-            log.error("Flush execution exception", e);
+            throw new RuntimeException("Partition map close failed with", e);
         }
         partitionMap.clear();
     }
