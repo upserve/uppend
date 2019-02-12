@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
 import com.google.common.util.concurrent.Striped;
-import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -21,19 +20,21 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int LOCK_SIZE = 10007;
     private final Striped<Lock> stripedLocks;
 
-    private static final int PAGE_SIZE = 128 * 1024 * 1024; // allocate 128 MB chunks
+    static final int HEADER_SIZE = 128; // Reserve 128 bytes of header.
+    // Currently uses 8 for position, 4 for values per block
+    private static final int IDEAL_PAGE_SIZE = 128 * 1024 * 1024; // allocate 128 MB chunks
     private static final int MAX_PAGES = 32 * 1024; // max 4 TB
 
     private final Path file;
 
     private final int valuesPerBlock;
     private final int blockSize;
+    private final int page_size;
 
     private final FileChannel blocks;
     private final MappedByteBuffer[] pages;
 
-    private final FileChannel blocksPos;
-    private final MappedByteBuffer posBuf;
+    private final MappedByteBuffer headerBuffer;
     private final AtomicLong posMem;
 
     private final AtomicInteger currentPage;
@@ -59,8 +60,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
 
-        Path posFile = dir.resolve(file.getFileName() + ".pos");
-
         if (valuesPerBlock < 1) {
             throw new IllegalArgumentException("bad (< 1) values per block: " + valuesPerBlock);
         }
@@ -70,7 +69,9 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         valuesReadCounter = new LongAdder();
 
         this.valuesPerBlock = valuesPerBlock;
+
         blockSize = 16 + valuesPerBlock * 8;
+        page_size = (IDEAL_PAGE_SIZE / blockSize) * blockSize;
 
         StandardOpenOption[] openOptions;
         if (readOnly){
@@ -93,32 +94,40 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         pages = new MappedByteBuffer[MAX_PAGES];
 
-        ensurePage(0);
         currentPage = new AtomicInteger(0);
+        ensurePage(0);
 
         try {
-            blocksPos = FileChannel.open(posFile, openOptions);
-            if (blocksPos.size() > 8) {
-                throw new IllegalStateException("bad (!= 8) size for block pos file: " + posFile);
-            }
-            try {
-                posBuf = blocksPos.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, 0, 8);
-            } catch (IOException e) {
-                throw new UncheckedIOException("unable to map pos buffer at in " + posFile, e);
-            }
-            long pos = posBuf.getLong(0);
-            if (pos < 0) {
-                throw new IllegalStateException("negative pos (" + pos + "): " + posFile);
-            }
-            if (pos > blocks.size()) {
-                throw new IllegalStateException("pos (" + pos + ") > size of " + file + " (" + blocks.size() + "): " + posFile);
-            }
-            posMem = new AtomicLong(pos);
-
-
+            headerBuffer = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, 0, HEADER_SIZE);
         } catch (IOException e) {
-            throw new UncheckedIOException("unable to init blocks pos file: " + posFile, e);
+            throw new UncheckedIOException("unable to map pos buffer in " + file, e);
         }
+
+        long pos = headerBuffer.getLong(0);
+        int header_vals_per_block = headerBuffer.getInt(8);
+        if (pos < 0) {
+            throw new IllegalStateException("negative pos (" + pos + "): " + file);
+        }
+
+        try {
+            if (pos > blocks.size()) {
+                throw new IllegalStateException("pos (" + pos + ") > size of " + file + " is > than (" + blocks.size() + ")");
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException("Unable to get block file size: " + file, e);
+        }
+
+        if (pos == 0 && !readOnly) {
+            pos = HEADER_SIZE;
+            headerBuffer.putLong(0, pos);
+            headerBuffer.putInt(8, valuesPerBlock);
+        } else if (valuesPerBlock != header_vals_per_block){
+            throw new IllegalStateException(
+                    "Values per block header " + header_vals_per_block + " does not match configured value " +
+                            valuesPerBlock + " in file " + file
+            );
+        }
+        posMem = new AtomicLong(pos);
     }
 
     /**
@@ -130,7 +139,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.trace("allocating block of {} bytes in {}", blockSize, file);
         allocCounter.increment();
         long pos = posMem.getAndAdd(blockSize);
-        posBuf.putLong(0, posMem.get());
+        headerBuffer.putLong(0, posMem.get());
         return pos;
     }
 
@@ -149,7 +158,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      */
     public long size() {
         if (readOnly) {
-            return posBuf.getLong(0);
+            return headerBuffer.getLong(0);
         } else {
             return posMem.get();
         }
@@ -203,7 +212,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
-    public LongStream values(Long pos){
+    public LongStream values(Long pos) {
         log.trace("streaming values from {} at {}", file, pos);
 
         valuesReadCounter.increment();
@@ -213,15 +222,116 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return LongStream.empty();
         }
 
-        long[] longs = valuesArray(pos);
-        return Arrays.stream(longs);
+        if (pos < HEADER_SIZE) {
+            throw new IllegalArgumentException("The position " + pos + " is less than the header size");
+        }
+
+        long[] firstBlock = readLongs(pos);
+
+        // size | -next [pos]
+        // prev | -last [pos + 8]
+        final long sizeOrNext = firstBlock[0];
+
+        if (sizeOrNext > 0) {
+            if (sizeOrNext > valuesPerBlock) {
+                throw new IllegalStateException("Invalid block size " + sizeOrNext + " at pos " + pos + " in file " + file);
+            }
+            return Arrays.stream(firstBlock, 2, (int) sizeOrNext + 2);
+
+        } else if (sizeOrNext < 0) {
+            // it is next, size of this block is valuesPerBlock
+            long nextPos = -sizeOrNext;
+            final long lastPos = -firstBlock[1];
+
+            long[] lastBlock = readLongs(lastPos);
+            int lastBlockSize = lastBlock[0] > 0 ? (int) lastBlock[0] : valuesPerBlock;
+
+            if (nextPos == lastPos) {
+                // Just read the last block and concat
+                return LongStream.concat(
+                    Arrays.stream(firstBlock, 2, valuesPerBlock + 2),
+                    Arrays.stream(lastBlock, 2, lastBlockSize + 2)
+                );
+
+            } else {
+                // Make two iterators one forward one backward.
+                // Iterator should stop when the values cross - block positions are sorted by definition
+
+                AtomicLong forwardPosition = new AtomicLong(nextPos);
+                AtomicLong backwardPosition = new AtomicLong(lastPos)
+
+                ForwardBlockReader forwardBlockReader = new ForwardBlockReader(this, nextPos, At)
+
+
+
+            }
+
+        } else {
+            throw new IllegalStateException("Size should never be zero");
+        }
+    }
+
+
+    class ForwardBlockReader implements Runnable {
+        private final BlockedLongs blockedLongs;
+        AtomicLong forwardPosition;
+        long lastRead;
+        long nextRead;
+        private final AtomicLong backwardPosition;
+        final List<long[]> blocks;
+
+        public ForwardBlockReader(BlockedLongs blockedLongs, AtomicLong forwardPosition, AtomicLong backwardPosition) {
+            this.blockedLongs = blockedLongs;
+            this.forwardPosition = forwardPosition;
+            this.backwardPosition = backwardPosition;
+            this.blocks = new ArrayList<>();
+            this.nextRead = forwardPosition.get();
+        }
+
+        @Override
+        public void run() {
+            while(nextRead < backwardPosition.get()) {
+                long[] block = blockedLongs.readLongs(nextRead);
+                blocks.add(block);
+                lastRead = nextRead;
+                nextRead = -block[0];
+                forwardPosition.set(nextRead);
+            }
+        }
+    }
+
+    class BackwardBlockReader implements Runnable {
+        private final BlockedLongs blockedLongs;
+        private final AtomicLong forwardPosition;
+        AtomicLong backwardPosition;
+        long lastRead;
+        long nextRead;
+        final List<long[]> blocks;
+
+        public BackwardBlockReader(BlockedLongs blockedLongs, AtomicLong forwardPosition, AtomicLong backwardPosition) {
+            this.blockedLongs = blockedLongs;
+            this.forwardPosition = forwardPosition;
+            this.backwardPosition = backwardPosition;
+            this.blocks = new ArrayList<>();
+            nextRead = backwardPosition.get();
+        }
+
+        @Override
+        public void run() {
+            while(forwardPosition.get() < nextRead) {
+                long[] block = blockedLongs.readLongs(nextRead);
+                blocks.add(block);
+                lastRead = nextRead;
+                nextRead = -block[1];
+                backwardPosition.set(nextRead);
+            }
+        }
     }
 
     public long[] valuesArray(Long pos) {
 
-        if (pos < 0 || pos > size()) {
-            log.error("Bad position value {} in file {} of size {}", pos, file, size());
-            return new long[]{};
+        if (pos < 0 || pos >= size()) {
+            throw new IllegalArgumentException("valuesArray requested with position " + pos +" greater than the file size " + size() + " in file " + file);
         }
 
         // size | -next
@@ -259,58 +369,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
-    // Lazy values is much slower in Performance tests with a large number of blocks.
-    // Might be workable with a custom spliterator that was block aware for parallelization
-    public LongStream lazyValues(Long pos) {
-        log.trace("streaming values from {} at {}", file, pos);
-
-        valuesReadCounter.increment();
-
-        if (pos == null) {
-            // pos will be null for missing keys
-            return LongStream.empty();
-        }
-
-        if (pos < 0 || pos > size()) {
-            log.error("Bad position value {} in file {} of size {}", pos, file, size());
-            return LongStream.empty();
-        }
-
-        // size | -next
-        // prev | -last
-        final long size = readLong(pos);
-
-        if (size < 0) {
-            long nextPos = -size;
-            long[] values = new long[valuesPerBlock];
-            for (int i = 0; i < valuesPerBlock; i++) {
-                values[i] = readLong(pos + 16 + i * 8);
-            }
-            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
-        } else if (size > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
-        } else if (size == 0) {
-            return LongStream.empty();
-        } else {
-
-            int numValues = (int) size;
-            long[] values = new long[numValues];
-            for (int i = 0; i < numValues; i++) {
-                values[i] = readLong(pos + 16 + i * 8);
-            }
-            if (log.isTraceEnabled()) {
-                String valuesStr = Arrays.toString(values);
-                log.trace("got values from {} at {}: {}", file, pos, valuesStr);
-            }
-            return Arrays.stream(values);
-        }
-    }
-
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);
 
-        if (pos >= posMem.get()) {
-            return -1;
+        if (pos < 0 || pos >= size()) {
+            throw new IllegalArgumentException("valuesArray requested with position " + pos +" greater than the file size " + size() + " in file " + file);
         }
 
         // size | -next
@@ -345,11 +408,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.debug("clearing {}", file);
         IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
         try {
-            blocks.truncate(0);
-            posBuf.putLong(0, 0);
-            posMem.set(0);
+            blocks.truncate(HEADER_SIZE);
+            headerBuffer.putLong(0, HEADER_SIZE);
+            posMem.set(HEADER_SIZE);
             Arrays.fill(pages, null);
-            currentPage.set(0);
             ensurePage(0);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to clear", e);
@@ -364,7 +426,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         if (readOnly) {
             blocks.close();
-            blocksPos.close();
             return;
         }
 
@@ -372,7 +433,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         try {
             flush();
             blocks.close();
-            blocksPos.close();
         } finally {
             IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
         }
@@ -382,7 +442,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void flush() {
         if (readOnly) return;
         log.debug("flushing {}", file);
-        posBuf.force();
+        headerBuffer.force();
 
         Arrays.stream(pages)
                 .parallel()
@@ -404,36 +464,40 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
-    private long readLong(long pos) {
-        int pagePos = (int) (pos % (long) PAGE_SIZE);
-        return page(pos).getLong(pagePos);
+    private long[] readLongs(long pos) {
+        return readLongs(pos, valuesPerBlock + 2);
     }
 
-    protected void writeLong(long pos, long val) {
-        int pagePos = (int) (pos % (long) PAGE_SIZE);
-        page(pos).putLong(pagePos, val);
+    private long[] readLongs(long pos, int size) {
+        LongBuffer buffer = page(pos).duplicate().asLongBuffer();
+        buffer.position(pagePos(pos) / 8);
+
+        long[] dst = new long[size];
+        buffer.get(dst);
+        return dst;
+    }
+
+    private long readLong(long pos) {
+        int ppos = pagePos(pos);
+        return page(pos).getLong(ppos);
+    }
+
+    void writeLong(long pos, long val) {
+        page(pos).putLong(pagePos(pos), val);
+    }
+
+    private int pagePos(long pos) {
+        return (int) ((pos - HEADER_SIZE) % (long) page_size);
     }
 
     private MappedByteBuffer page(long pos) {
-        long pageIndexLong = pos / PAGE_SIZE;
+        long pageIndexLong = (pos - HEADER_SIZE) / page_size;
         if (pageIndexLong > Integer.MAX_VALUE) {
             throw new RuntimeException("page index exceeded max int: " + pageIndexLong);
         }
         int pageIndex = (int) pageIndexLong;
 
-        MappedByteBuffer page = ensurePage(pageIndex);
-        preloadPage(pageIndex + 1);
-        return page;
-    }
-
-    private void preloadPage(int pageIndex) {
-        if (pageIndex < MAX_PAGES && pages[pageIndex] == null) {
-            // preload page
-            int prev = currentPage.getAndUpdate(current -> current < pageIndex ? pageIndex : current);
-            if (prev < pageIndex) {
-                ensurePage(pageIndex);
-            }
-        }
+        return ensurePage(pageIndex);
     }
 
     private MappedByteBuffer ensurePage(int pageIndex) {
@@ -442,12 +506,16 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             synchronized (pages) {
                 page = pages[pageIndex];
                 if (page == null) {
-                    long pageStart = (long) pageIndex * PAGE_SIZE;
+
+                    currentPage.getAndUpdate(last -> pageIndex > last ? pageIndex : last);
+
+                    long pageStart = (long) pageIndex * page_size + HEADER_SIZE;
                     try {
                         FileChannel.MapMode mapMode = readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE;
-                        page = blocks.map(mapMode, pageStart, PAGE_SIZE);
+                        page = blocks.map(mapMode, pageStart, page_size);
+
                     } catch (IOException e) {
-                        throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
+                        throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + page_size + ") in " + file, e);
                     }
                     pages[pageIndex] = page;
                 }

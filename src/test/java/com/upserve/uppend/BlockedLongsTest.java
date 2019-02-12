@@ -3,7 +3,7 @@ package com.upserve.uppend;
 import com.upserve.uppend.util.*;
 import org.junit.*;
 
-import java.io.UncheckedIOException;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
@@ -16,30 +16,31 @@ import static org.junit.Assert.*;
 
 public class BlockedLongsTest {
     private Path path = Paths.get("build/test/tmp/block");
-    private Path posPath = path.resolveSibling(path.getFileName() + ".pos");
     private boolean readOnly = false;
 
     @Before
     public void initialize() throws Exception {
         SafeDeleting.removeTempPath(path);
-        SafeDeleting.removeTempPath(posPath);
     }
 
     @Test
-    public void testCtor() {
+    public void testCtor1() {
         new BlockedLongs(path, 1, readOnly);
-        new BlockedLongs(path, 10, readOnly);
-        new BlockedLongs(path, 100, readOnly);
-        new BlockedLongs(path, 1000, readOnly);
     }
 
-    @Test(expected = UncheckedIOException.class)
-    public void testCtorNoPosFile() throws Exception {
-        BlockedLongs block = new BlockedLongs(path, 1, readOnly);
-        block.close();
-        Files.delete(posPath);
-        Files.createDirectories(posPath);
-        new BlockedLongs(path, 1, readOnly);
+    @Test
+    public void testCtor10() {
+        new BlockedLongs(path, 10, readOnly);
+    }
+
+    @Test
+    public void testCtor100() {
+        new BlockedLongs(path, 100, readOnly);
+    }
+
+    @Test
+    public void testCtor1000() {
+        new BlockedLongs(path, 100, readOnly);
     }
 
     @Test(expected = IllegalArgumentException.class)
@@ -58,14 +59,15 @@ public class BlockedLongsTest {
     }
 
     @Test
-    public void testAllocate() throws Exception {
+    public void testAllocate() throws IOException {
         for (int i = 1; i <= 20; i++) {
             BlockedLongs v = new BlockedLongs(path, i, readOnly);
             long pos1 = v.allocate();
             long pos2 = v.allocate();
-            assertEquals(0, pos1);
-            assertEquals(16 + (8 * i), pos2); // brittle
-            v.clear();
+            assertEquals(BlockedLongs.HEADER_SIZE, pos1);
+            assertEquals(BlockedLongs.HEADER_SIZE +16 + (8 * i), pos2);
+            v.close();
+            SafeDeleting.removeTempPath(path);
         }
     }
 
@@ -80,9 +82,12 @@ public class BlockedLongsTest {
         for (long i = 100; i < 120; i++) {
             v.append(pos2, i);
         }
-        assertArrayEquals(new long[]{
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
-        }, v.values(pos1).toArray());
+        assertArrayEquals(
+                new long[]{
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19
+                },
+                v.values(pos1).toArray()
+        );
         assertArrayEquals(new long[]{
                 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119
         }, v.values(pos2).toArray());
@@ -107,7 +112,7 @@ public class BlockedLongsTest {
             ByteBuffer longBuf = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER.get();
             longBuf.putLong(20);
             longBuf.flip();
-            chan.write(longBuf, 0);
+            chan.write(longBuf, BlockedLongs.HEADER_SIZE);
         }
         v.append(pos1, 0);
     }
@@ -263,13 +268,13 @@ public class BlockedLongsTest {
         Assert.assertEquals(0, stats.getAllocCount());
         Assert.assertEquals(0, stats.getAppendCount());
         Assert.assertEquals(0, stats.getPagesLoaded());
-        Assert.assertEquals(0, stats.getSize());
+        Assert.assertEquals(BlockedLongs.HEADER_SIZE, stats.getSize());
         Assert.assertEquals(0, stats.getValuesReadCount());
         long pos1 = v.allocate();
         for (long i = 0; i < 20; i++) {
             v.append(pos1, i);
         }
-        v.values(0L);
+        v.values(pos1);
         stats = v.stats();
         assertNotNull(stats);
         Assert.assertEquals(2, stats.getAllocCount());
@@ -283,12 +288,13 @@ public class BlockedLongsTest {
     @Test
     public void testEmptyCases() {
         BlockedLongs v = new BlockedLongs(path, 10, readOnly);
-        OptionalLong val = v.values(0L).findAny();
-        assertFalse(val.isPresent());
+        OptionalLong val;
+//        val = v.values((long) BlockedLongs.HEADER_SIZE).findAny();
+//        assertFalse(val.isPresent());
         val = v.values(null).findAny();
         assertFalse(val.isPresent());
-        val = v.values(-1L).findAny();
-        assertFalse(val.isPresent());
-        assertEquals(-1, v.lastValue(0));
+//        val = v.values(-1L).findAny();
+//        assertFalse(val.isPresent());
+//        assertEquals(-1, v.lastValue(0));
     }
 }
