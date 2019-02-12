@@ -72,7 +72,7 @@ public class VirtualPageFileIO {
 
     void write(long pos, byte[] bytes) {
         if (bytes.length == 0) {
-            throw new IllegalArgumentException("Can not write empty bytes!");
+            throw new IllegalStateException("Can not write empty bytes to pos " + pos + " in file " + virtualFileNumber + " of " + virtualPageFile.filePath);
         }
         final int result = writePagedOffset(pos, bytes, 0);
         if (result != bytes.length) {
@@ -109,6 +109,7 @@ public class VirtualPageFileIO {
     }
 
     void read(long pos, byte[] buf) {
+        // Short circuit read of empty value here
         if (buf.length == 0) return;
         final int result = readPagedOffset(pos, buf, 0);
         if (result != buf.length) {
