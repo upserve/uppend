@@ -63,7 +63,7 @@ public class VirtualPageFile implements Closeable {
     private final MappedByteBuffer[] mappedByteBuffers;
     private final int bufferSize;
 
-    private final Path filePath;
+    final Path filePath;
     private final FileChannel channel;
 
     private final LongBuffer headerBlockLocations;
@@ -397,7 +397,11 @@ public class VirtualPageFile implements Closeable {
     private long getValidPageStart(int virtualFileNumber, int pageNumber) {
         long result = getRawPageStart(virtualFileNumber, pageNumber);
         if (result < totalHeaderSize) {
-            throw new IllegalStateException("Invalid page position " + result + " is in the file header; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
+            if (result == 0) {
+                throw new IllegalStateException("The page start position is zero for page " + pageNumber + " in file " + virtualFileNumber + ": this typically means it has not yet been allocated");
+            } else {
+                throw new IllegalStateException("Invalid page start position " + result + " is in the file header; bad value in page table for virtual file " + virtualFileNumber + " in page " + pageNumber + " in file " + getFilePath());
+            }
         }
         return result;
     }

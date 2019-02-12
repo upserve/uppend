@@ -57,12 +57,10 @@ dependencies {
     compile 'it.unimi.dsi:fastutil:7.0.13'
 //    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
     compile 'org.slf4j:slf4j-api:1.7.22'
+    compile 'org.slf4j:slf4j-simple:1.7.25'
 
     testCompile 'junit:junit:4.12'
     testCompile 'org.apache.logging.log4j:log4j-api:2.8'
-    testCompile 'org.apache.logging.log4j:log4j-core:2.8'
-    testCompile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
-
     testCompile 'org.mockito:mockito-core:2.18.3'
 
     gradleLint.ignore {
