@@ -61,14 +61,6 @@ dependencies {
     testCompile 'junit:junit:4.12'
     testCompile 'org.apache.logging.log4j:log4j-api:2.8'
     testCompile 'org.mockito:mockito-core:2.18.3'
-
-    gradleLint.ignore {
-        // gradle-lint doesn't like log4j because it's not used directly
-        compile 'org.apache.logging.log4j:log4j-core:2.8'
-        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
-        annotationProcessor 'org.apache.logging.log4j:log4j-core:2.8'
-        annotationProcessor 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
-    }
 }
 
 tasks.withType(JavaCompile) {
@@ -94,6 +86,10 @@ processResources {
 }
 
 task fatJar(type: Jar) {
+    dependencies {
+        compile 'org.apache.logging.log4j:log4j-core:2.8'
+        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+    }
     manifest {
         attributes 'Main-Class': 'com.upserve.uppend.Uppend'
     }
