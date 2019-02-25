@@ -54,7 +54,6 @@ public class FilePageTest {
         when(channel.write(any(ByteBuffer.class), anyLong())).thenReturn(127);
         thrown.expect(IllegalStateException.class);
         filePage.put(0,new byte[130], 7);
-
     }
     @Test
     public void getTest() throws IOException{

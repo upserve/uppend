@@ -7,7 +7,7 @@ import java.nio.channels.FileChannel;
 import static java.lang.Integer.min;
 
 /**
- * Mapped Byte Buffer backed implementation of Page
+ * File backed implementation of Page
  */
 public class FilePage implements Page {
 

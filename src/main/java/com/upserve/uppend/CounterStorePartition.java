@@ -13,8 +13,6 @@ import java.util.*;
 import java.util.function.ObjLongConsumer;
 import java.util.stream.*;
 
-import static java.lang.Math.min;
-
 public class CounterStorePartition extends Partition {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 

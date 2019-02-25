@@ -17,7 +17,6 @@ import java.util.stream.*;
 import static org.junit.Assert.*;
 
 public class LookupDataTest {
-
     private static final int RELOAD_INTERVAL = -1;
     private static final int FLUSH_THRESHOLD = -1;
 
@@ -43,7 +42,6 @@ public class LookupDataTest {
         Files.createDirectories(lookupDir);
         setup(false);
     }
-
 
     public void setup(boolean readOnly) {
         metadataPageFile = new VirtualPageFile(lookupDir.resolve("metadata"), NUMBER_OF_STORES, 1024, 16384, readOnly);
@@ -124,8 +122,6 @@ public class LookupDataTest {
         assertEquals(Long.valueOf(12), data.getValue(key));
     }
 
-
-
     @Test
     public void testFlushAndClose() throws IOException {
         LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
@@ -153,7 +149,6 @@ public class LookupDataTest {
                     data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
                 });
 
-
         assertEquals(100_000, data.writeCache.size());
 
         data.flush();
@@ -169,10 +164,7 @@ public class LookupDataTest {
                 .forEach(val -> {
                     data.putIfNotExists(new LookupKey(String.valueOf(val)), val);
                 });
-
         assertEquals(10, data.writeCache.size());
-
-
     }
 
     @Test
@@ -280,7 +272,6 @@ public class LookupDataTest {
 
         LookupMetadata expected = data.getMetadata();
 
-
         mutableBlobStore.write(0, Ints.toByteArray(50));
         mutableBlobStore.write(4, Ints.toByteArray(284482732)); // Invalid Check checksum
 
@@ -298,8 +289,6 @@ public class LookupDataTest {
 
     @Test
     public void testFlushWithAppendLoad() throws ExecutionException, InterruptedException {
-
-
         LookupData data = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, 100);
 
         int n = 500;

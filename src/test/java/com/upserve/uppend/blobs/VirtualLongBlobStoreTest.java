@@ -167,7 +167,6 @@ public class VirtualLongBlobStoreTest {
     }
 
     private void concurrentHelper(int virtualBlobStoreNumber) {
-
         VirtualLongBlobStore blobStore = new VirtualLongBlobStore(virtualBlobStoreNumber, virtualPageFile);
 
         ConcurrentMap<Long, byte[]> testData = new ConcurrentHashMap<>();

@@ -56,7 +56,6 @@ public class VirtualAppendOnlyBlobStoreTest {
         assertEquals(7, store.getPosition());
     }
 
-
     @Test
     public void testAppendReadEmpty() {
         setup(12);

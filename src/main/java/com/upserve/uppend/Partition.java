@@ -121,7 +121,6 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
         Arrays.stream(lookups).forEach(LookupData::flush);
     }
 
-
     @Override
     public void trim() {
         Arrays.stream(lookups).forEach(LookupData::trim);

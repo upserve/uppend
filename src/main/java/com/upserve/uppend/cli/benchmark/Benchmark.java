@@ -38,7 +38,6 @@ public class Benchmark {
     private final ForkJoinPool readerPool;
     private final String ioStatArgs;
 
-
     AtomicReference<PartitionStats> partitionStats;
     AtomicReference<BlockStats> blockStats;
 
@@ -158,7 +157,6 @@ public class Benchmark {
         AtomicLong writeCount = new AtomicLong(writeTimer.getCount());
         AtomicLong read = new AtomicLong(readBytesMeter.getCount());
         AtomicLong readCount = new AtomicLong(readCounter.get());
-
 
         return new TimerTask() {
             @Override

@@ -7,7 +7,6 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.util.Arrays;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 /**
  * The bisect tree is linearized as follows
@@ -64,7 +63,6 @@ public class LookupMetadata {
     LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
         this(minKey, maxKey, keyStorageOrder, metadataGeneration, new LongAdder(), new LongAdder());
     }
-
 
     private LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
         this.numKeys = keyStorageOrder.length;
@@ -129,7 +127,6 @@ public class LookupMetadata {
      * @param key the key to find and mark
      * @return the position of the key
      */
-
     public Long findKey(VirtualLongBlobStore longBlobStore, LookupKey key) {
 
         key.setMetaDataGeneration(metadataGeneration);

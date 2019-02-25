@@ -1,6 +1,5 @@
 package com.upserve.uppend.blobs;
 
-
 import com.google.common.collect.Maps;
 import org.slf4j.Logger;
 

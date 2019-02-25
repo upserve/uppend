@@ -94,7 +94,6 @@ public class CounterStoreTest {
         assertEquals(Long.valueOf(3), store.get("partition", "foo"));
     }
 
-
     @Test
     public void testWriteCloseReadRepeat() throws Exception {
         store.set("partition", "foo", 5);

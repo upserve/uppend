@@ -43,7 +43,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final LongAdder allocCounter;
     private final LongAdder valuesReadCounter;
 
-
     public BlockedLongs(Path file, int valuesPerBlock, boolean readOnly) {
         if (file == null) {
             throw new IllegalArgumentException("null file");

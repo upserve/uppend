@@ -44,7 +44,6 @@ public class CounterStoreWithMetricsTest {
         assertEquals("testStore", instance.getName());
     }
 
-
     @Test
     public void testIncrement() {
         assertEquals(0, metrics.timer(MetricRegistry.name("MetricsRoot", UPPEND_COUNTER_STORE, store.getName(), INCREMENT_TIMER_METRIC_NAME)).getCount());

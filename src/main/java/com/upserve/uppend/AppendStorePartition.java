@@ -13,8 +13,6 @@ import java.util.*;
 import java.util.function.*;
 import java.util.stream.*;
 
-import static java.lang.Math.min;
-
 public class AppendStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 

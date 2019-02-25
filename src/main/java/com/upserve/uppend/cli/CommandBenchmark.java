@@ -27,7 +27,6 @@ public class CommandBenchmark implements Callable<Void> {
     public static final String ROOT_NAME = "Root";
     public static final String STORE_NAME = "Benchmark";
 
-
     @Parameters(index = "0", description = "Store path")
     Path path;
 
@@ -61,7 +60,6 @@ public class CommandBenchmark implements Callable<Void> {
         benchmark.run();
         return null;
     }
-
 
     private Benchmark createBenchmark() {
         long keys;

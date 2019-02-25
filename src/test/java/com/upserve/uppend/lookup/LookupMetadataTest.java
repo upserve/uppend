@@ -21,7 +21,6 @@ import static org.mockito.Mockito.*;
 
 @RunWith(MockitoJUnitRunner.class)
 public class LookupMetadataTest {
-
     private final String name = "lookupMetadata-test";
     private final Path rootPath = Paths.get("build/test/lookup/lookupMetadata");
     private final Path path = rootPath.resolve(name);
@@ -85,7 +84,6 @@ public class LookupMetadataTest {
         LookupMetadata.open(metadataBlobs, 0);
     }
 
-
     @Test
     public void testCorrectReadWrite() throws Exception {
         buildSimpleTestData(metadataBlobs);
@@ -121,7 +119,6 @@ public class LookupMetadataTest {
         assertEquals(2, initialMetadata.getMetadataGeneration());
     }
 
-
     @Test
     public void testEmptyLookup() {
         LookupMetadata initialMetadata = new LookupMetadata(null, null, new int[0], 1);
@@ -135,7 +132,6 @@ public class LookupMetadataTest {
         assertEquals(-1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
         assertEquals(-1, searchKey.getPosition());
-
     }
 
     @Test
@@ -152,7 +148,6 @@ public class LookupMetadataTest {
         assertEquals(-1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
         assertEquals(-1, searchKey.getPosition());
-
     }
 
     @Test
@@ -169,7 +164,6 @@ public class LookupMetadataTest {
         assertEquals(0, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
         assertEquals(-1, searchKey.getPosition());
-
     }
 
     @Test
@@ -206,7 +200,6 @@ public class LookupMetadataTest {
         assertEquals(-1, searchKey.getInsertAfterSortIndex());
         assertEquals(1, searchKey.getMetaDataGeneration());
         assertEquals(-1, searchKey.getPosition());
-
     }
 
     @Test
@@ -389,7 +382,6 @@ public class LookupMetadataTest {
         LookupKey yKey = new LookupKey("y");
         LookupMetadata metadata = new LookupMetadata(bKey, yKey, new int[]{12, 7, 8, 1, 11, 6, 3, 5, 10, 2, 0, 4, 9}, 1);
 
-
         when(mockLongBlobStore.readBlob(3L)).thenReturn("m".getBytes()); // First midpoint is the 6th sort value => 3
         when(mockLongBlobStore.readBlob(2L)).thenReturn("u".getBytes()); // Second midpoint is the 9th sort value => 2
         when(mockLongBlobStore.readBlob(5L)).thenReturn("o".getBytes()); // Second midpoint is the 7th sort value => 5
@@ -428,7 +420,6 @@ public class LookupMetadataTest {
 
         verifyNoMoreInteractions(mockLongBlobStore);
     }
-
 
     @Test
     public void testMetadataLookup() {

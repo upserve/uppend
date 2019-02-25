@@ -2,8 +2,6 @@ package com.upserve.uppend;
 
 import com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics;
 
-import java.util.concurrent.*;
-
 public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuilder> {
     // Blocked Longs Config Options
     public static final int DEFAULT_BLOBS_PER_BLOCK = 127;

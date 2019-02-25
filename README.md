@@ -53,5 +53,5 @@ To benchmark Uppend:
 
 ```sh
 ./gradlew clean fatJar
-java -jar build/libs/uppend-all-*.jar benchmark --help
+java -jar build/libs/uppend-all-*.jar --help
 ```

@@ -72,7 +72,6 @@ public class PartitionStats {
 
     public long getMaxLookupSize() { return maxLookupSize; }
 
-
     @Override
     public String toString() {
         return "PartitionStats{" +
@@ -108,7 +107,6 @@ public class PartitionStats {
                 ", MaxLookupSize=" + maxLookupSize +
                 "}";
     }
-
 
     public PartitionStats minus(PartitionStats other) {
         if (Objects.isNull(other)) throw new NullPointerException("PartitionStats minus method argument is null");

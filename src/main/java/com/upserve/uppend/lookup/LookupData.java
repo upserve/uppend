@@ -296,7 +296,6 @@ public class LookupData implements Flushable, Trimmable {
         return ref[0];
     }
 
-
     /**
      * read the LookupKey by index
      *
@@ -316,7 +315,6 @@ public class LookupData implements Flushable, Trimmable {
     public Map.Entry<LookupKey, Long> readEntry(long keyPosition) {
         return Maps.immutableEntry(readKey(keyPosition), readValue(keyPosition));
     }
-
 
     /**
      * Read the long value associated with a particular key number
@@ -614,7 +612,6 @@ public class LookupData implements Flushable, Trimmable {
         }
         flushing.set(false);
     }
-
 
     @Override
     public void trim() {

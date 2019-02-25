@@ -12,7 +12,6 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
 
 public class VirtualPageFileTest {
-
     private String name = "virtual_page_file_test";
     private Path rootPath = Paths.get("build/test/blobs/virtual_page_file");
     private Path path = rootPath.resolve(name);
@@ -81,7 +80,6 @@ public class VirtualPageFileTest {
         Page page = instance.getOrCreatePage(5,0);
         page.put(12, "abc".getBytes(), 0);
 
-
         page = instance.getExistingPage(5,0);
 
         assertEquals(313016, instance.getFileSize());
@@ -118,7 +116,6 @@ public class VirtualPageFileTest {
         page.get(900, bytes, 0);
         assertArrayEquals("ghi".getBytes(), bytes);
     }
-
 
     @Test
     public void testTableExtension() throws IOException {

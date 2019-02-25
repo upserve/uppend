@@ -3,11 +3,9 @@ package com.upserve.uppend;
 import org.slf4j.*;
 
 import java.lang.reflect.*;
-import java.util.Random;
 import java.util.concurrent.*;
 
 public class TestHelper {
-
     public static void resetLogger(Class clazz, String fieldName) throws Exception {
         setLogger(clazz, fieldName, LoggerFactory.getLogger(clazz));
     }
@@ -70,5 +68,4 @@ public class TestHelper {
         ThreadLocalRandom.current().nextBytes(bytes);
         return bytes;
     }
-
 }
