@@ -17,7 +17,7 @@ public class SafeDeleting {
             return;
         }
         AtomicReference<IOException> errorRef = new AtomicReference<>();
-        Files.walk(path, FileVisitOption.FOLLOW_LINKS)
+        Files.walk(path)
                 .sorted(Comparator.reverseOrder())
                 .forEach(p -> {
                     if (errorRef.get() != null) {
