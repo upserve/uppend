@@ -81,6 +81,7 @@ public class LookupMetadata {
     }
 
     public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
+        // TODO can we preserve bisectKeys if the content is not changed? (Currently periodic reload clears this cache)
         if (metadataBlobs.isPageAllocated(0L)) {
             byte[] bytes = metadataBlobs.read(0L);
             return new LookupMetadata(bytes, metadataGeneration, missCount, hitCount);
@@ -200,21 +201,22 @@ public class LookupMetadata {
             }
 
             comparison = key.compareTo(midpointKey);
-            if (comparison < 0) {
-                upperKey = midpointKey;
-                keyIndexUpper = midpointKeyIndex;
 
-                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2;
-
-            } else if (comparison > 0) {
-                keyIndexLower = midpointKeyIndex;
-                lowerKey = midpointKey;
-
-                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2 + 1;
-            } else {
+            if (comparison == 0) {
                 key.setPosition(keyPosition);
                 hitCount.increment();
                 return longBlobStore.readLong(keyPosition);
+            }
+
+            if (comparison < 0) {
+                upperKey = midpointKey;
+                keyIndexUpper = midpointKeyIndex;
+                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2;
+
+            } else {
+                lowerKey = midpointKey;
+                keyIndexLower = midpointKeyIndex;
+                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2 + 1;
             }
 
             bisectCount++;

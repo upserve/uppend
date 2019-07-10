@@ -72,7 +72,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         blockSize = 16 + valuesPerBlock * 8;
 
         StandardOpenOption[] openOptions;
-        if (readOnly){
+        if (readOnly) {
             openOptions = new StandardOpenOption[]{StandardOpenOption.READ};
         } else {
             openOptions = new StandardOpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
@@ -202,7 +202,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         log.trace("appended value {} to {} at {}", val, file, pos);
     }
 
-    public LongStream values(Long pos){
+    public LongStream values(Long pos) {
         log.trace("streaming values from {} at {}", file, pos);
 
         valuesReadCounter.increment();
@@ -216,7 +216,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         return Arrays.stream(longs);
     }
 
+
     public long[] valuesArray(Long pos) {
+        /*
+        This method is deprecated. It will be replaced with a Spliterator that is block aware to allow parallel reads
+         */
 
         if (pos < 0 || pos > size()) {
             log.error("Bad position value {} in file {} of size {}", pos, file, size());
@@ -258,52 +262,54 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
-    // Lazy values is much slower in Performance tests with a large number of blocks.
-    // Might be workable with a custom spliterator that was block aware for parallelization
-    public LongStream lazyValues(Long pos) {
-        log.trace("streaming values from {} at {}", file, pos);
-
-        valuesReadCounter.increment();
-
-        if (pos == null) {
-            // pos will be null for missing keys
-            return LongStream.empty();
-        }
-
-        if (pos < 0 || pos > size()) {
-            log.error("Bad position value {} in file {} of size {}", pos, file, size());
-            return LongStream.empty();
-        }
-
-        // size | -next
-        // prev | -last
-        final long size = readLong(pos);
-
-        if (size < 0) {
-            long nextPos = -size;
-            long[] values = new long[valuesPerBlock];
-            for (int i = 0; i < valuesPerBlock; i++) {
-                values[i] = readLong(pos + 16 + i * 8);
-            }
-            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
-        } else if (size > valuesPerBlock) {
-            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
-        } else if (size == 0) {
-            return LongStream.empty();
-        } else {
-
-            int numValues = (int) size;
-            long[] values = new long[numValues];
-            for (int i = 0; i < numValues; i++) {
-                values[i] = readLong(pos + 16 + i * 8);
-            }
-            if (log.isTraceEnabled()) {
-                String valuesStr = Arrays.toString(values);
-                log.trace("got values from {} at {}: {}", file, pos, valuesStr);
-            }
-            return Arrays.stream(values);
-        }
-    }
+//    public LongStream lazyValues(Long pos) {
+//        /*
+//        Lazy values is much slower in Performance tests with a large number of blocks.
+//        This method is retained for reference purposes only till the Spliterator is impelemnted.
+//         */
+//        log.trace("streaming values from {} at {}", file, pos);
+//
+//        valuesReadCounter.increment();
+//
+//        if (pos == null) {
+//            // pos will be null for missing keys
+//            return LongStream.empty();
+//        }
+//
+//        if (pos < 0 || pos > size()) {
+//            log.error("Bad position value {} in file {} of size {}", pos, file, size());
+//            return LongStream.empty();
+//        }
+//
+//        // size | -next
+//        // prev | -last
+//        final long size = readLong(pos);
+//
+//        if (size < 0) {
+//            long nextPos = -size;
+//            long[] values = new long[valuesPerBlock];
+//            for (int i = 0; i < valuesPerBlock; i++) {
+//                values[i] = readLong(pos + 16 + i * 8);
+//            }
+//            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
+//        } else if (size > valuesPerBlock) {
+//            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
+//        } else if (size == 0) {
+//            return LongStream.empty();
+//        } else {
+//
+//            int numValues = (int) size;
+//            long[] values = new long[numValues];
+//            for (int i = 0; i < numValues; i++) {
+//                values[i] = readLong(pos + 16 + i * 8);
+//            }
+//            if (log.isTraceEnabled()) {
+//                String valuesStr = Arrays.toString(values);
+//                log.trace("got values from {} at {}: {}", file, pos, valuesStr);
+//            }
+//            return Arrays.stream(values);
+//        }
+//    }
 
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);

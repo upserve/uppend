@@ -45,10 +45,7 @@ public class TestHelper {
 
     public static int compareByteArrays(byte[] o1, byte[] o2) {
         if (o1 == null) {
-            if (o2 == null) {
-                return 0;
-            }
-            return -1;
+            return o2 == null ? 0 : -1;
         }
         if (o2 == null) {
             return 1;
