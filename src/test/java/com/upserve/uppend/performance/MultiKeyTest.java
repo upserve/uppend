@@ -15,7 +15,7 @@ import static com.upserve.uppend.performance.StreamTimerMethods.*;
 public class MultiKeyTest {
 
     private static final int numPartitions = 12;
-    private static final int hashSize = 32;
+    private static final int hashCount = 32;
     private static final int values = 1_000;
     private static final int blobsPerBlock = 64;
     private static final int keyCount = 1_000;
@@ -33,8 +33,8 @@ public class MultiKeyTest {
         SafeDeleting.removeTempPath(path);
 
         appendOnlyStore = new AppendOnlyStoreBuilder()
-                .withPartitionSize(numPartitions)
-                .withLongLookupHashSize(hashSize)
+                .withPartitionCount(numPartitions)
+                .withLongLookupHashCount(hashCount)
                 .withBlobsPerBlock(blobsPerBlock)
                 .withDir(path).build();
 

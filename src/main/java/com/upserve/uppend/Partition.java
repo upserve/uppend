@@ -13,7 +13,7 @@ import java.util.stream.*;
 import static java.lang.Math.min;
 
 public abstract class Partition implements Flushable, Closeable, Trimmable {
-    private static final int MAX_HASH_SIZE = 1 << 14; /* 16,384 */
+    private static final int MAX_HASH_COUNT = 1 << 14; /* 16,384 */
 
     private static final int HASH_SEED = 219370429;
 
@@ -22,25 +22,25 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
 
     private final HashFunction hashFunction;
     protected final boolean readOnly;
-    final int hashSize;
+    final int hashCount;
 
     final LookupData[] lookups;
 
-    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
+    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, int hashCount, int flushThreshold, int reloadInterval, boolean readOnly) {
         this.longKeyFile = longKeyFile;
         this.metadataBlobFile = metadataBlobFile;
 
-        this.hashSize = hashSize;
+        this.hashCount = hashCount;
         this.readOnly = readOnly;
 
-        if (hashSize < 1) {
-            throw new IllegalArgumentException("hashSize must be >= 1");
+        if (hashCount < 1) {
+            throw new IllegalArgumentException("hashCount must be >= 1");
         }
-        if (hashSize > MAX_HASH_SIZE) {
-            throw new IllegalArgumentException("hashSize must be <= " + MAX_HASH_SIZE);
+        if (hashCount > MAX_HASH_COUNT) {
+            throw new IllegalArgumentException("hashCount must be <= " + MAX_HASH_COUNT);
         }
 
-        if (hashSize == 1) {
+        if (hashCount == 1) {
             hashFunction = null;
         } else {
             hashFunction = Hashing.murmur3_32(HASH_SEED);
@@ -48,7 +48,7 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
 
         IntFunction<LookupData> constructorFuntion = lookupDataFunction(readOnly, flushThreshold, reloadInterval);
 
-        lookups = IntStream.range(0, hashSize)
+        lookups = IntStream.range(0, hashCount)
                 .mapToObj(constructorFuntion)
                 .toArray(LookupData[]::new);
     }
@@ -73,19 +73,19 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
      * A function for estimating an efficient buffer size for key and metadata files
      * Use the smaller of 2 pages for every hash or the target buffer size
      * @param pageSize the size of the page in bytes
-     * @param hashSize the hash size of the partition
+     * @param hashCount the hash count of the partition
      * @param targetBufferSize The configured maximum target size for buffers
      * @return the adjusted buffer size to use for metadata or key data
      */
-    static int adjustedTargetBufferSize(int pageSize, int hashSize, int targetBufferSize) {
-        return (int) min((long) (pageSize + 16) * hashSize * 2, (long) targetBufferSize);
+    static int adjustedTargetBufferSize(int pageSize, int hashCount, int targetBufferSize) {
+        return (int) min((long) (pageSize + 16) * hashCount * 2, (long) targetBufferSize);
     }
 
     int keyHash(LookupKey key) {
         if (hashFunction == null){
             return 0;
         } else {
-            return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashSize;
+            return Math.abs(hashFunction.hashBytes(key.bytes()).asInt()) % hashCount;
         }
     }
 

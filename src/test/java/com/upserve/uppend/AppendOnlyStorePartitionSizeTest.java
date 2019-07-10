@@ -13,7 +13,7 @@ public class AppendOnlyStorePartitionSizeTest {
     private final Path path = Paths.get("build/test/file-append-only-partition-size");
 
     private AppendOnlyStore newStore() {
-        return TestHelper.getDefaultAppendStoreTestBuilder().withDir(path.resolve("store-path")).withPartitionSize(2).build(false);
+        return TestHelper.getDefaultAppendStoreTestBuilder().withDir(path.resolve("store-path")).withPartitionCount(2).build(false);
     }
     private AppendOnlyStore store;
 

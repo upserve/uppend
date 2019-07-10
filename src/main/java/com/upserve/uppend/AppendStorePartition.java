@@ -28,7 +28,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return partitiondDir.resolve("blockedLongs");
     }
 
-    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashSize, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize) {
+    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize) {
         validatePartition(partition);
         Path partitionDir = parentDir.resolve(partition);
         try {
@@ -39,15 +39,15 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitionDir), blockSize, false);
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashSize, blobPageSize, targetBufferSize,false);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize),false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize),false);
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashCount, blobPageSize, targetBufferSize,false);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize),false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize),false);
 
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, hashSize, flushThreshold, reloadInterval, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, hashCount, flushThreshold, reloadInterval, false);
     }
 
-    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashSize, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, boolean readOnly) {
+    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, boolean readOnly) {
         validatePartition(partition);
         Path partitionDir = parentDir.resolve(partition);
 
@@ -56,11 +56,11 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitionDir), blockSize, readOnly);
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashSize, blobPageSize, targetBufferSize, readOnly);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashSize, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashSize, targetBufferSize), readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashSize, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashSize, targetBufferSize), readOnly);
+        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashCount, blobPageSize, targetBufferSize, readOnly);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), readOnly);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize), readOnly);
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, hashSize, flushThreshold, reloadInterval, readOnly);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, hashCount, flushThreshold, reloadInterval, readOnly);
     }
 
     PartitionStats getPartitionStats(){
@@ -83,12 +83,12 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 );
     }
 
-    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, int hashSize, int flushThreshold, int reloadInterval, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, hashSize, flushThreshold, reloadInterval, readOnly);
+    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, int hashCount, int flushThreshold, int reloadInterval, boolean readOnly) {
+        super(longKeyFile, metadataBlobFile, hashCount, flushThreshold, reloadInterval, readOnly);
 
         this.blocks = blocks;
         this.blobFile = blobsFile;
-        blobs = IntStream.range(0, hashSize)
+        blobs = IntStream.range(0, hashCount)
                 .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(virtualFileNumber, blobsFile))
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
     }
@@ -129,7 +129,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     Stream<Map.Entry<String, Stream<byte[]>>> scan() {
-        return IntStream.range(0, hashSize)
+        return IntStream.range(0, hashCount)
                 .parallel()
                 .boxed()
                 .flatMap(virtualFileNumber ->
@@ -141,7 +141,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     void scan(BiConsumer<String, Stream<byte[]>> callback) {
-        IntStream.range(0, hashSize)
+        IntStream.range(0, hashCount)
                 .parallel()
                 .boxed()
                 .forEach(virtualFileNumber ->
@@ -150,7 +150,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     Stream<String> keys() {
-        return IntStream.range(0, hashSize)
+        return IntStream.range(0, hashCount)
                 .parallel()
                 .boxed()
                 .flatMap(virtualFileNumber -> lookups[virtualFileNumber].keys().map(LookupKey::string));

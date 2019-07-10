@@ -29,8 +29,8 @@ public class Benchmark {
     private long range;
     private long count;
     private int sleep = 0;
-    private int partitionSize;
-    private int lookupHashSize;
+    private int partitionCount;
+    private int hashCount;
 
     private final AppendOnlyStore testInstance;
 
@@ -47,8 +47,8 @@ public class Benchmark {
         this.count = count;
         this.range = range;
 
-        partitionSize = builder.getPartitionSize();
-        lookupHashSize = builder.getLookupHashSize();
+        partitionCount = builder.getPartitionCount();
+        hashCount = builder.getLookupHashCount();
 
         this.ioStatArgs = ioStatArgs;
 
@@ -198,7 +198,7 @@ public class Benchmark {
     }
 
     public void run() throws InterruptedException, ExecutionException, IOException {
-        log.info("Running Performance test with {} partitions {} hashSize, {} keys and {} count", partitionSize, lookupHashSize, range, count);
+        log.info("Running Performance test with {} partitions {} hashCount, {} keys and {} count", partitionCount, hashCount, range, count);
 
         ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
         log.info("Running IOSTAT: '{}'", processBuilder.command());

@@ -31,7 +31,7 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
-    private final int partitionSize;
+    private final int partitionCount;
     private final boolean doHashPartitionValues;
 
     final AtomicBoolean isClosed;
@@ -39,7 +39,7 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
     private static final int PARTITION_HASH_SEED = 626433832;
     private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
 
-    FileStore(Path dir, int flushDelaySeconds, int partitionSize, boolean readOnly, String name) {
+    FileStore(Path dir, int flushDelaySeconds, int partitionCount, boolean readOnly, String name) {
         if (dir == null) {
             throw new NullPointerException("null dir");
         }
@@ -50,18 +50,18 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
         partitionsDir = dir.resolve("partitions");
-        if (partitionSize > MAX_NUM_PARTITIONS) {
-            throw new IllegalArgumentException("bad partition size: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionSize);
+        if (partitionCount > MAX_NUM_PARTITIONS) {
+            throw new IllegalArgumentException("bad partition count: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionCount);
         }
-        if (partitionSize < 0) {
-            throw new IllegalArgumentException("bad partition size: negative: " + partitionSize);
+        if (partitionCount < 0) {
+            throw new IllegalArgumentException("bad partition count: negative: " + partitionCount);
         }
-        this.partitionSize = partitionSize;
-        if (partitionSize == 0) {
+        this.partitionCount = partitionCount;
+        if (partitionCount == 0) {
             partitionMap = new ConcurrentHashMap<>();
             doHashPartitionValues = false;
         } else {
-            partitionMap = new ConcurrentHashMap<>(partitionSize);
+            partitionMap = new ConcurrentHashMap<>(partitionCount);
             doHashPartitionValues = true;
         }
         this.name = name;
@@ -87,7 +87,7 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
     String partitionHash(String partition) {
         if (doHashPartitionValues) {
             HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
-            return String.format("%04d", Math.abs(hcode.asInt()) % partitionSize);
+            return String.format("%04d", Math.abs(hcode.asInt()) % partitionCount);
         } else {
             return partition;
         }

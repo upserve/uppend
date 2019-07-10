@@ -66,8 +66,8 @@ public class CommandBenchmark implements Callable<Void> {
         long count;
 
         final int blockSize;
-        int partitions;
-        int hashSize;
+        int partitionCount;
+        int hashCount;
 
         int blobCacheSize;
         int blobPageSize;
@@ -88,8 +88,8 @@ public class CommandBenchmark implements Callable<Void> {
                 keys = (long) Math.pow(Math.log10(count), 2.0) * 100;
 
                 blockSize = 16_384;
-                partitions = 64;
-                hashSize = 64;
+                partitionCount = 64;
+                hashCount = 64;
 
                 blobPageSize = 16 * 1024 * 1024;
                 keyPageSize = 1024 * 1024;
@@ -105,8 +105,8 @@ public class CommandBenchmark implements Callable<Void> {
                 count = keys * 2;
 
                 blockSize = 4;
-                hashSize = 256;
-                partitions = 128;
+                hashCount = 256;
+                partitionCount = 128;
 
                 blobPageSize = 64 * 1024; // Pages will roll over at 135M keys
                 keyPageSize = 4 * 1024; // Key pages will roll over at about 2.9B keys
@@ -127,8 +127,8 @@ public class CommandBenchmark implements Callable<Void> {
                 .withStoreName(STORE_NAME)
                 .withMetricsRootName(ROOT_NAME)
                 .withBlobsPerBlock(blockSize)
-                .withLongLookupHashSize(hashSize)
-                .withPartitionSize(partitions) // Use direct partition
+                .withLongLookupHashCount(hashCount)
+                .withPartitionCount(partitionCount) // Use direct partition
                 .withTargetBufferSize(bufferSize.getSize())
                 .withBlobPageSize(blobPageSize)
                 .withLookupPageSize(keyPageSize)

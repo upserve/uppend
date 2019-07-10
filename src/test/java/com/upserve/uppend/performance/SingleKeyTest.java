@@ -15,8 +15,8 @@ import static com.upserve.uppend.performance.StreamTimerMethods.flatMapSum;
 
 public class SingleKeyTest {
 
-    private static final int numPartitions = 4;
-    private static final int hashSize = 4;
+    private static final int partitionCount = 4;
+    private static final int hashCount = 4;
     private static final int values = 1_000_000;
     private static final int blobsPerBlock = 4096;
     private final Path path = Paths.get("build/test/tmp/performance/single_key");
@@ -33,8 +33,8 @@ public class SingleKeyTest {
         SafeDeleting.removeTempPath(path);
 
         appendOnlyStore = new AppendOnlyStoreBuilder()
-                .withPartitionSize(numPartitions)
-                .withLongLookupHashSize(hashSize)
+                .withPartitionCount(partitionCount)
+                .withLongLookupHashCount(hashCount)
                 .withBlobsPerBlock(blobsPerBlock)
                 .withDir(path).build();
 

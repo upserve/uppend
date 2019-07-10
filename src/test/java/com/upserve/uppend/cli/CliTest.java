@@ -9,6 +9,7 @@ import java.nio.file.Paths;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+@Ignore
 public class CliTest {
     private static final PrintStream origErr = System.err;
     private final ByteArrayOutputStream newErrBytes = new ByteArrayOutputStream();

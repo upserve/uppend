@@ -246,7 +246,7 @@ public class FileStoreTest {
         MyFileStore(Path dir, int numPartitions, boolean readOnly) {
             super(readOnly, new AppendOnlyStoreBuilder()
                     .withDir(dir)
-                    .withPartitionSize(numPartitions)
+                    .withPartitionCount(numPartitions)
                     .withMetadataTTL(30)
             );
         }

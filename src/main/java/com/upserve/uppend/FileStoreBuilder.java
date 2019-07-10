@@ -6,8 +6,8 @@ import java.nio.file.Path;
 public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     // Long lookup Cache Options
-    public static final int DEFAULT_PARTITION_SIZE = 0;
-    public static final int DEFAULT_LOOKUP_HASH_SIZE = 256;
+    public static final int DEFAULT_PARTITION_COUNT = 0;
+    public static final int DEFAULT_LOOKUP_HASH_COUNT = 256;
     public static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 * 1024;
 
     public static final int TARGET_PRODUCTION_BUFFER_SIZE = Integer.MAX_VALUE;
@@ -16,8 +16,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public static final int DEFAULT_METADATA_TTL = 0; // Off by default!
 
     private String storeName = "";
-    private int partitionSize = DEFAULT_PARTITION_SIZE;
-    private int lookupHashSize = DEFAULT_LOOKUP_HASH_SIZE;
+    private int partitionCount = DEFAULT_PARTITION_COUNT;
+    private int lookupHashCount = DEFAULT_LOOKUP_HASH_COUNT;
 
     private int lookupPageSize = DEFAULT_LOOKUP_PAGE_SIZE;
 
@@ -40,8 +40,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     // Long lookup Cache Options
     @SuppressWarnings("unchecked")
-    public T withLongLookupHashSize(int longLookupHashSize) {
-        this.lookupHashSize = longLookupHashSize;
+    public T withLongLookupHashCount(int longLookupHashCount) {
+        this.lookupHashCount = longLookupHashCount;
         return (T) this;
     }
 
@@ -77,8 +77,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     }
 
     @SuppressWarnings("unchecked")
-    public T withPartitionSize(int partitionSize) {
-        this.partitionSize = partitionSize;
+    public T withPartitionCount(int partitionCount) {
+        this.partitionCount = partitionCount;
         return (T) this;
     }
 
@@ -124,8 +124,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         return (T) this;
     }
 
-    public int getLookupHashSize() {
-        return lookupHashSize;
+    public int getLookupHashCount() {
+        return lookupHashCount;
     }
 
     public int getLookupPageSize() {
@@ -168,7 +168,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         return storeName.isEmpty() ? getDir().getFileName().toString() : storeName;
     }
 
-    public int getPartitionSize(){ return partitionSize; }
+    public int getPartitionCount(){ return partitionCount; }
 
     public String getMetricsRootName(){ return metricsRootName; }
 
@@ -176,8 +176,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public String toString() {
         return "FileStoreBuilder{" +
                 "storeName='" + storeName + '\'' +
-                ", partitionSize=" + partitionSize +
-                ", lookupHashSize=" + lookupHashSize +
+                ", partitionCount=" + partitionCount +
+                ", lookupHashCount=" + lookupHashCount +
                 ", lookupPageSize=" + lookupPageSize +
                 ", metadataTTL=" + metadataTTL +
                 ", metadataPageSize=" + metadataPageSize +
