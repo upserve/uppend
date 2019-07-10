@@ -1,5 +1,8 @@
 package com.upserve.uppend.performance;
 
+import org.slf4j.Logger;
+
+import java.lang.invoke.MethodHandles;
 import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.*;
@@ -8,15 +11,16 @@ import java.util.stream.*;
 import static junit.framework.TestCase.assertTrue;
 
 public class StreamTimerMethods {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final int repeats = 5;
 
     public static void parallelTime(double time) {
-        System.out.println(String.format("Parallel execution time  : %.2f ms", time));
+        log.info("Parallel execution time   : {}ms", String.format("%8.2f", time));
     }
 
     public static void sequentialTime(double time) {
-        System.out.println(String.format("Sequential execution time: %.2f ms", time));
+        log.info("Sequential execution time : {}ms", String.format("%8.2f", time));
     }
 
     public static double sum(Supplier<LongStream> supplier) {

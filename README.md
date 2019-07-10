@@ -55,3 +55,13 @@ To benchmark Uppend:
 ./gradlew clean fatJar
 java -jar build/libs/uppend-all-*.jar --help
 ```
+
+To run tests without verbose output
+```sh
+ ./gradlew test -i
+```
+
+To run tests in a specific path
+```sh
+ ./gradlew test --tests com.upserve.uppend.blobs*
+```

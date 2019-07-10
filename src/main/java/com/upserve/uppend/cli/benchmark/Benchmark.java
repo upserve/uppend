@@ -205,6 +205,7 @@ public class Benchmark {
         processBuilder.redirectErrorStream(true);
         processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
         Process process = processBuilder.start();
+        // TODO consider capturing process output and logging it rather than piping it
 
         Future writerFuture = writerPool.submit(writer);
 
@@ -241,4 +242,3 @@ public class Benchmark {
         System.out.println("[benchmark is done]"); // used in CliTest
     }
 }
-

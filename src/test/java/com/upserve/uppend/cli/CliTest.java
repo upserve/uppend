@@ -9,8 +9,8 @@ import java.nio.file.Paths;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-@Ignore
 public class CliTest {
+    // TODO Fix these tests to avoid hacking System.err and System.out
     private static final PrintStream origErr = System.err;
     private final ByteArrayOutputStream newErrBytes = new ByteArrayOutputStream();
     private final PrintStream newErr = new PrintStream(newErrBytes);
