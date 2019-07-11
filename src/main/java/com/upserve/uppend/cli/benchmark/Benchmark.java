@@ -200,11 +200,11 @@ public class Benchmark {
     public void run() throws InterruptedException, ExecutionException, IOException {
         log.info("Running Performance test with {} partitions {} hashCount, {} keys and {} count", partitionCount, hashCount, range, count);
 
-        ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
-        log.info("Running IOSTAT: '{}'", processBuilder.command());
-        processBuilder.redirectErrorStream(true);
-        processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        Process process = processBuilder.start();
+        //ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
+        //log.info("Running IOSTAT: '{}'", processBuilder.command());
+        //processBuilder.redirectErrorStream(true);
+        //processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+        //Process process = processBuilder.start();
         // TODO consider capturing process output and logging it rather than piping it
 
         Future writerFuture = writerPool.submit(writer);
@@ -234,9 +234,9 @@ public class Benchmark {
             throw new RuntimeException("error closing test uppend store", e);
         }
 
-        process.destroy();
+        //process.destroy();
 
-        process.waitFor();
+        //process.waitFor();
 
         log.info("Benchmark is All Done!");
         System.out.println("[benchmark is done]"); // used in CliTest
