@@ -2,6 +2,6 @@ language: java
 sudo: false
 jdk:
   - oraclejdk11
-script: ./gradlew clean build
+script: ./gradlew clean build -i
 after_success:
   - bash <(curl -s https://codecov.io/bash)
