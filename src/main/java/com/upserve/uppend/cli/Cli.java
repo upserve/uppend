@@ -1,8 +1,10 @@
 package com.upserve.uppend.cli;
 
+import org.slf4j.Logger;
 import picocli.CommandLine;
 import picocli.CommandLine.*;
 
+import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
 import java.util.concurrent.Callable;
 
@@ -23,6 +25,9 @@ import java.util.concurrent.Callable;
         }
 )
 public class Cli implements Callable<Void> {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
+
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
     boolean help;
@@ -37,6 +42,11 @@ public class Cli implements Callable<Void> {
         CommandLine cmd = new CommandLine(new Cli());
         cmd.registerConverter(Path.class, (p) -> Paths.get(p));
         // TODO how to redirect to errStream?
-        cmd.parseWithHandler(new RunLast(), args);
+        try {
+            cmd.parseWithHandler(new RunLast(), args);
+        } catch (ExecutionException e) {
+            log.error("Command failed!", e);
+            throw e;
+        }
     }
 }
