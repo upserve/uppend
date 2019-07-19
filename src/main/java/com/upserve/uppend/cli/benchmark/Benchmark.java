@@ -239,6 +239,6 @@ public class Benchmark {
         //process.waitFor();
 
         log.info("Benchmark is All Done!");
-        System.out.println("[benchmark is done]"); // used in CliTest
+        //System.out.println("[benchmark is done]"); // used in CliTest
     }
 }
