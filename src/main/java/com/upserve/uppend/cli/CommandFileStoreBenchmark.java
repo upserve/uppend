@@ -7,8 +7,8 @@ import picocli.CommandLine;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.*;
-import java.util.Random;
-import java.util.concurrent.Callable;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.IntStream;
 
 @SuppressWarnings({"WeakerAccess", "unused"})
@@ -25,6 +25,7 @@ import java.util.stream.IntStream;
 )
 public class CommandFileStoreBenchmark implements Callable<Void> {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+    private IntSummaryStatistics result;
 
     @CommandLine.Parameters(index = "0", description = "Store path")
     Path path;
@@ -41,6 +42,14 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
     @CommandLine.Option(names = {"-p", "--page-size"}, description = "Page Size (small|medium|large)")
     PageSize pageSize = PageSize.medium.medium;
 
+    @SuppressWarnings("unused")
+    @CommandLine.Option(names = "--help", usageHelp = true, description = "Print usage")
+    boolean help;
+
+    public IntSummaryStatistics getStats() {
+        return result;
+    }
+
     @Override
     public Void call() throws Exception {
 
@@ -55,26 +64,24 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
                 .mapToObj(val -> new VirtualAppendOnlyBlobStore(val, file))
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
 
-        Random randomSize = new Random();
 
         long tic = System.currentTimeMillis();
 
-        random
+        result = ThreadLocalRandom.current()
                 .ints(size.getSize(), 0, nfiles)
                 .parallel()
-                .forEach(val -> {
+                .map(val -> {
 
-                    byte[] bytes = new byte[randomSize.nextInt(1024)];
+                    byte[] bytes = new byte[ThreadLocalRandom.current().nextInt(1024)];
                     random.nextBytes(bytes);
 
                     stores[val].append(bytes);
-                });
+                    return bytes.length;
+                }).summaryStatistics();
 
         long toc = System.currentTimeMillis();
 
-        log.info("[done!] {} ms", toc - tic);
-        System.out.println("[done!]"); // used in CliTest
-
+        log.info("[All Done!] {} ms", toc - tic);
         return null;
     }
 }

@@ -54,7 +54,7 @@ repositories {
 
 dependencies {
     compile 'com.google.guava:guava:21.0'
-    compile 'info.picocli:picocli:3.0.0'
+    compile 'info.picocli:picocli:4.0.1'
     compile 'io.dropwizard.metrics:metrics-core:3.2.3'
     compile 'it.unimi.dsi:fastutil:7.0.13'
 //    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'

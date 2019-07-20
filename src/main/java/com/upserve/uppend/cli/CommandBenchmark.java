@@ -27,6 +27,8 @@ public class CommandBenchmark implements Callable<Void> {
     public static final String ROOT_NAME = "Root";
     public static final String STORE_NAME = "Benchmark";
 
+    Benchmark benchmark;
+
     @Parameters(index = "0", description = "Store path")
     Path path;
 
@@ -56,7 +58,7 @@ public class CommandBenchmark implements Callable<Void> {
             log.warn("Location already exists: appending to {}", path);
         }
 
-        Benchmark benchmark = createBenchmark();
+        benchmark = createBenchmark();
         benchmark.run();
         return null;
     }

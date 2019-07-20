@@ -1,11 +1,71 @@
 package com.upserve.uppend;
 
+import org.junit.*;
 import org.slf4j.*;
 
+import java.io.*;
 import java.lang.reflect.*;
 import java.util.concurrent.*;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+
 public class TestHelper {
+
+    public static class IoStreamHelper {
+        private static final PrintStream stdout = System.out;
+        private static final PrintStream stderr = System.err;
+
+        private final ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        private final ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+
+        String getOutString() {
+            System.out.flush();
+            return outStream.toString();
+        }
+
+        String getErrString() {
+            System.err.flush();
+            return errStream.toString();
+        }
+
+        protected void assertStdErrContains(String expected) {
+            String errStr = getErrString();
+            assertTrue("didn't find expected '" + expected + "' in main stderr output: \n" + errStr, errStr.contains(expected));
+        }
+
+        protected void assertStdOutContains(String expected) {
+            String outString = getOutString();
+            assertTrue("didn't find expected '" + expected + "' in main stdout output: \n" + outString, outString.contains(expected));
+        }
+
+        protected void assertStdOut(String expected) {
+            assertEquals("Captured standard output string not equal", expected, getOutString());
+        }
+
+        protected void assertStdErr(String expected) {
+            assertEquals("Captured standard error string not equal", expected, getErrString());
+        }
+
+        protected void resetStreams() {
+            outStream.reset();
+            errStream.reset();
+        }
+
+        @Before
+        public void setUpStreams() {
+            System.setOut(new PrintStream(outStream));
+            System.setErr(new PrintStream(errStream));
+        }
+
+        @After
+        public void cleanUpStreams() {
+            System.setOut(stdout);
+            System.setErr(stderr);
+        }
+    }
+
+
     public static void resetLogger(Class clazz, String fieldName) throws Exception {
         setLogger(clazz, fieldName, LoggerFactory.getLogger(clazz));
     }
