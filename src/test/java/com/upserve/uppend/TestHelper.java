@@ -1,8 +1,7 @@
 package com.upserve.uppend;
 
 import org.junit.*;
-import org.slf4j.*;
-
+import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.lang.reflect.*;
 import java.util.concurrent.*;
@@ -31,12 +30,12 @@ public class TestHelper {
 
         protected void assertStdErrContains(String expected) {
             String errStr = getErrString();
-            assertTrue("didn't find expected '" + expected + "' in main stderr output: \n" + errStr, errStr.contains(expected));
+            assertTrue("didn't find expected '" + expected + "' in captured stderr: \n" + errStr, errStr.contains(expected));
         }
 
         protected void assertStdOutContains(String expected) {
             String outString = getOutString();
-            assertTrue("didn't find expected '" + expected + "' in main stdout output: \n" + outString, outString.contains(expected));
+            assertTrue("didn't find expected '" + expected + "' in captured stdout: \n" + outString, outString.contains(expected));
         }
 
         protected void assertStdOut(String expected) {
@@ -48,13 +47,17 @@ public class TestHelper {
         }
 
         protected void resetStreams() {
+            System.out.flush();
             outStream.reset();
+            System.err.flush();
             errStream.reset();
         }
 
         @Before
         public void setUpStreams() {
+            outStream.reset();
             System.setOut(new PrintStream(outStream));
+            errStream.reset();
             System.setErr(new PrintStream(errStream));
         }
 
@@ -65,12 +68,11 @@ public class TestHelper {
         }
     }
 
-
     public static void resetLogger(Class clazz, String fieldName) throws Exception {
         setLogger(clazz, fieldName, LoggerFactory.getLogger(clazz));
     }
 
-    public static void setLogger(Class clazz, String fieldName, Logger log) throws Exception {
+    public static void setLogger(Class clazz, String fieldName, org.slf4j.Logger log) throws Exception {
         Field field = clazz.getDeclaredField(fieldName);
         field.setAccessible(true);
         Field modifiersField = Field.class.getDeclaredField("modifiers");

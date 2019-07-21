@@ -9,13 +9,11 @@ import java.io.IOException;
 import java.nio.file.*;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
 public class BenchmarkTest extends TestHelper.IoStreamHelper {
 
     CommandBenchmark commandBenchmark;
     CommandLine commandLine;
-
 
     @Before
     public void setUpDir() throws IOException {
@@ -33,7 +31,7 @@ public class BenchmarkTest extends TestHelper.IoStreamHelper {
     public void tesUsage() {
         commandLine.execute("--help");
         assertStdOutContains("Usage: uppend benchmark [--help] [-b=<bufferSize>] [-c=<benchmarkCase>]");
-        assertStdOutContains("[-i=<ioStatArgs>] [-m=<mode>] [-s=<size>] <path>");
+        assertStdOutContains("[-m=<mode>] [-s=<size>] <path>");
     }
 
     @Test
@@ -51,25 +49,18 @@ public class BenchmarkTest extends TestHelper.IoStreamHelper {
     @Test
     public void testBenchmark() {
         commandLine.execute("-s", "small", "-b", "small", "build/test/cli/bench");
-        assertStdErr("");
-        assertStdOutContains("Benchmark is All Done!");
         assertEquals(1000000L, commandBenchmark.benchmark.writerStats().getCount());
     }
 
     @Test
     public void testBenchmarkWide() {
         commandLine.execute("-s", "nano", "-c", "wide", "-b", "small", "build/test/cli/bench");
-        assertStdErr("");
-        assertStdOutContains("Benchmark is All Done!");
-        assertEquals(10000L, commandBenchmark.benchmark.writerStats().getCount());
+        assertEquals(20000L, commandBenchmark.benchmark.writerStats().getCount());
     }
 
     @Test
     public void testBenchmarkReadWrite() {
         commandLine.execute("-s", "nano", "-m", "readwrite", "-b", "small", "build/test/cli/bench");
-        assertStdErr("");
-        assertStdOutContains("Benchmark is All Done!");
-
         assertEquals(10000L, commandBenchmark.benchmark.writerStats().getCount());
         assertEquals(10000L, commandBenchmark.benchmark.readerStats().getCount());
     }
@@ -77,17 +68,9 @@ public class BenchmarkTest extends TestHelper.IoStreamHelper {
     @Test
     public void testBenchmarkWriteThenRead() {
         commandLine.execute("-s", "nano", "-m", "write", "-b", "small", "build/test/cli/bench");
-        assertStdErr("");
-        assertStdOutContains("Benchmark is All Done!");
-
         assertEquals(10000L, commandBenchmark.benchmark.writerStats().getCount());
 
-        resetStreams();
-
         commandLine.execute("-s", "nano", "-m", "read", "-b", "small", "build/test/cli/bench");
-        assertStdErr("");
-        assertStdOutContains("Benchmark is All Done!");
-
         assertEquals(10000L, commandBenchmark.benchmark.readerStats().getCount());
     }
 }

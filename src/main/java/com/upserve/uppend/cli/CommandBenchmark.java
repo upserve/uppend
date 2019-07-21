@@ -44,9 +44,6 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-b", "--buffer-size"}, description = "Buffer Size (small|medium|large)")
     BufferSize bufferSize = BufferSize.medium;
 
-    @Option(names= {"-i", "--iostat"}, description = "arguments for iostat process")
-    String ioStatArgs = "5";
-
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
     boolean help;
@@ -139,6 +136,6 @@ public class CommandBenchmark implements Callable<Void> {
                 .withFlushDelaySeconds(flushDelay)
                 .withStoreMetrics(metrics);
 
-        return new Benchmark(mode, builder, keys, count, ioStatArgs);
+        return new Benchmark(mode, builder, keys, count);
     }
 }

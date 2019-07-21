@@ -65,3 +65,14 @@ To run tests in a specific path
 ```sh
  ./gradlew test --tests com.upserve.uppend.blobs*
 ```
+
+Example script to fork the benchmark with a system resource monitor like IOSTAT
+```sh
+trap "kill 0" EXIT
+
+java -jar build/libs/uppend-all-0.0.2-91-g6abbf45.dirty.jar benchmark ../foo/test & BENCHMARK_PID=$!
+iostat -d 2 & IOSTAT_PID=$!
+
+wait $BENCHMARK_PID
+kill $IOSTAT_PID
+```

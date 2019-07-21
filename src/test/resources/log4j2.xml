@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration status="WARN" packages="org.apache.logging.log4j.core">
     <appenders>
-        <console name="stdout">
+        <console name="stdout" target="SYSTEM_OUT">
             <patternlayout pattern="%d %p [%t:%X] %c %m%ex%n"/>
         </console>
     </appenders>

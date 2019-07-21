@@ -11,10 +11,9 @@ import java.nio.file.*;
 import static org.junit.Assert.assertEquals;
 
 public class FileStoreBenchmarkTest extends TestHelper.IoStreamHelper {
-
     CommandFileStoreBenchmark commandBenchmark;
     CommandLine commandLine;
-    
+
     @Before
     public void setUpDir() throws IOException {
         commandBenchmark = new CommandFileStoreBenchmark();
@@ -49,8 +48,6 @@ public class FileStoreBenchmarkTest extends TestHelper.IoStreamHelper {
     @Test
     public void testSmall() {
         commandLine.execute("-b", "small", "-n", "4", "-s", "small", "build/test/cli");
-        assertStdOutContains("[All Done!]");
-
         assertEquals(1000000, commandBenchmark.getStats().getCount());
     }
 }

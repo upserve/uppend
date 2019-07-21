@@ -36,7 +36,6 @@ public class Benchmark {
 
     private final ForkJoinPool writerPool;
     private final ForkJoinPool readerPool;
-    private final String ioStatArgs;
 
     AtomicReference<PartitionStats> partitionStats;
     AtomicReference<BlockStats> blockStats;
@@ -49,7 +48,7 @@ public class Benchmark {
         return reader.getStats();
     }
 
-    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, long range, long count, String ioStatArgs) {
+    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, long range, long count) {
         this.mode = mode;
 
         this.count = count;
@@ -57,8 +56,6 @@ public class Benchmark {
 
         partitionCount = builder.getPartitionCount();
         hashCount = builder.getLookupHashCount();
-
-        this.ioStatArgs = ioStatArgs;
 
         writerPool = forkJoinPoolFunction.apply("benchmark-writer");
         readerPool = forkJoinPoolFunction.apply("benchmark-reader");
@@ -222,13 +219,6 @@ public class Benchmark {
     public void run() throws InterruptedException, ExecutionException, IOException {
         log.info("Running Performance test with {} partitions {} hashCount, {} keys and {} count", partitionCount, hashCount, range, count);
 
-        ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
-        log.info("Running IOSTAT: '{}'", processBuilder.command());
-        processBuilder.redirectErrorStream(true);
-        processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        Process process = processBuilder.start();
-        // TODO consider capturing process output and logging it rather than piping it
-
         Future writerFuture = writerPool.submit(writer);
 
         Thread.sleep(sleep * 1000); // give the writer a head start...
@@ -255,10 +245,6 @@ public class Benchmark {
         } catch (Exception e) {
             throw new RuntimeException("error closing test uppend store", e);
         }
-
-        process.destroy();
-
-        process.waitFor();
 
         log.info("Benchmark is All Done!");
     }
