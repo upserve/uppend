@@ -18,7 +18,7 @@ public class MultiKeyTest {
     private static final int hashCount = 32;
     private static final int values = 100;
     private static final int blobsPerBlock = 64;
-    private static final int keyCount = 100;
+    private static final int keyCount = 1_000;
 
     private final Path path = Paths.get("build/test/tmp/performance/multi_key");
     private AppendOnlyStore appendOnlyStore;

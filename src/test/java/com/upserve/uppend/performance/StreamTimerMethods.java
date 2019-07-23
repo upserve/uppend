@@ -66,7 +66,7 @@ public class StreamTimerMethods {
 
         long toc = System.nanoTime();
         for (Map<Long,Long> group: groups){
-            assertTrue("Should be large", group.values().stream().mapToLong(Long::longValue).sum() >= 1_000_000L);
+            assertTrue("Should be large", group.values().stream().mapToLong(Long::longValue).sum() >= 100_000L);
         }
         return (toc - tic)/1_000_000.0D;
     }
