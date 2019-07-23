@@ -29,7 +29,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     public static AppendStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize) {
-        Path partitionDir = vaidatePartition(parentDir, partition);
+        Path partitionDir = validatePartition(parentDir, partition);
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitionDir), blockSize, false);
         VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashCount, blobPageSize, targetBufferSize,false);

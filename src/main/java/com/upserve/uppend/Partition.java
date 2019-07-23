@@ -53,15 +53,15 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
                 .toArray(LookupData[]::new);
     }
 
-    static Path vaidatePartition(Path partentDir, String partition) {
+    static Path validatePartition(Path parentDir, String partition) {
         validatePartition(partition);
-        Path partitiondDir = partentDir.resolve(partition);
+        Path partitionDir = parentDir.resolve(partition);
         try {
-            Files.createDirectories(partitiondDir);
+            Files.createDirectories(partitionDir);
         } catch (IOException e) {
-            throw new UncheckedIOException("Unable to make partition directory: " + partitiondDir, e);
+            throw new UncheckedIOException("Unable to make partition directory: " + partitionDir, e);
         }
-        return partentDir;
+        return partitionDir;
     }
 
     private IntFunction<LookupData> lookupDataFunction(boolean readOnly, int flushThreshold, int relaodInterval) {
