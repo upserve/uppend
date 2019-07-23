@@ -76,11 +76,11 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
         };
     }
 
-    public static int recordSize(byte[] inputBytes) {
+    private static int recordSize(byte[] inputBytes) {
         return inputBytes.length + 12;
     }
 
-    public static byte[] byteRecord(long val, byte[] inputBytes) {
+    private static byte[] byteRecord(long val, byte[] inputBytes) {
         byte[] result = new byte[recordSize(inputBytes)];
         System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
         System.arraycopy(long2bytes(val), 0, result, 4, 8);

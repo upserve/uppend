@@ -180,7 +180,6 @@ public class LookupMetadata {
             return null;
         }
 
-
         // bisect till we find the key or return null
         do {
             midpointKeyIndex = keyIndexLower + ((keyIndexUpper - keyIndexLower) / 2);

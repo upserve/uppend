@@ -41,7 +41,6 @@ import java.util.stream.IntStream;
  * Pages - a collection of bytes of size pageSize
  * <p>
  * Pages are interspersed with additional Page Tables as needed
-
  */
 public class VirtualPageFile implements Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -77,7 +76,7 @@ public class VirtualPageFile implements Closeable {
 
     private final LongAdder pageAllocationCount;
 
-    private final LongBuffer pageTables[]; // Array of Index-able list of page start locations for each virtual file
+    private final LongBuffer[] pageTables; // Array of Index-able list of page start locations for each virtual file
 
     private final int virtualFiles;
     private final int pageSize;
@@ -234,7 +233,7 @@ public class VirtualPageFile implements Closeable {
         return mappedPage(startPosition);
     }
 
-    MappedPage mappedPage(long startPosition) {
+    private MappedPage mappedPage(long startPosition) {
         final long postHeaderPosition = startPosition - (totalHeaderSize);
         final int mapIndex = (int) (postHeaderPosition / bufferSize);
         final int mapPosition = (int) (postHeaderPosition % bufferSize);
@@ -244,7 +243,7 @@ public class VirtualPageFile implements Closeable {
         return new MappedPage(bigbuffer, mapPosition, pageSize);
     }
 
-    FilePage filePage(long startPosition) {
+    private FilePage filePage(long startPosition) {
         return new FilePage(channel, startPosition, pageSize);
     }
 
@@ -453,7 +452,6 @@ public class VirtualPageFile implements Closeable {
         for (int i=0; i < pagesToAllocate; i++) {
             // Update the persistent table of pages
             putPageStart(virtualFileNumber, currentPageCount + i, firstPageStart + i * pageSize);
-
             // Now that the page is allocated and persistent - update the counter which is the lock controlling access
         }
 

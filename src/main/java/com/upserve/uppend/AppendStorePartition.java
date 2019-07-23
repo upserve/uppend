@@ -29,20 +29,12 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     public static AppendStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize) {
-        validatePartition(partition);
-        Path partitionDir = parentDir.resolve(partition);
-        try {
-            Files.createDirectories(partitionDir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to make partition directory: " + partitionDir, e);
-        }
+        Path partitionDir = vaidatePartition(parentDir, partition);
 
         BlockedLongs blocks = new BlockedLongs(blocksFile(partitionDir), blockSize, false);
-
         VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashCount, blobPageSize, targetBufferSize,false);
         VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize),false);
         VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize),false);
-
 
         return new AppendStorePartition(keys, metadata, blobs, blocks, hashCount, flushThreshold, reloadInterval, false);
     }
@@ -110,7 +102,6 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         // Values stream can now be parallel, but it breaks everything...
         LongStream longStream = blocks.values(lookups[hash].getValue(lookupKey));
         return longStream.mapToObj(blobs[hash]::read);
-
         //return blocks.lazyValues(lookups[hash].getValue(lookupKey)).parallel().mapToObj(blobs[hash]::read);
     }
 

@@ -73,7 +73,6 @@ public class VirtualPageFileTest {
         assertArrayEquals("ghi".getBytes(), result);
     }
 
-
     @Test
     public void testReadOnlyTruncation() throws IOException {
         instance = new VirtualPageFile(path, 36, 1024, 16384, false);

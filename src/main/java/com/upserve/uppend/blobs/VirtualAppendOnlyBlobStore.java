@@ -40,11 +40,11 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
         return buf;
     }
 
-    public static int recordSize(byte[] inputBytes) {
+    private static int recordSize(byte[] inputBytes) {
         return inputBytes.length + 4;
     }
 
-    public static byte[] byteRecord(byte[] inputBytes) {
+    private static byte[] byteRecord(byte[] inputBytes) {
         byte[] result = new byte[recordSize(inputBytes)];
         System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
         System.arraycopy(inputBytes, 0, result, 4, inputBytes.length);

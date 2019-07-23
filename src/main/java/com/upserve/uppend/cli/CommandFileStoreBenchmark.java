@@ -40,7 +40,7 @@ public class CommandFileStoreBenchmark implements Callable<Void> {
     BenchmarkSize size = BenchmarkSize.medium;
 
     @CommandLine.Option(names = {"-p", "--page-size"}, description = "Page Size (small|medium|large)")
-    PageSize pageSize = PageSize.medium.medium;
+    PageSize pageSize = PageSize.medium;
 
     @SuppressWarnings("unused")
     @CommandLine.Option(names = "--help", usageHelp = true, description = "Print usage")

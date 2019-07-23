@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
 import com.google.common.util.concurrent.Striped;
-import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -215,7 +214,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         long[] longs = valuesArray(pos);
         return Arrays.stream(longs);
     }
-
 
     public long[] valuesArray(Long pos) {
         /*

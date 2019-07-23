@@ -27,7 +27,7 @@ public class AppendOnlyStorePartitionSizeTest {
     }
 
     @After
-    public void cleanUp() throws IOException {
+    public void cleanUp() {
         try {
             store.close();
         } catch (Exception e) {

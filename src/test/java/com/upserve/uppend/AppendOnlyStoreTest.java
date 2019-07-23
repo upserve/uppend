@@ -85,7 +85,7 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testClear() throws Exception {
+    public void testClear() {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
@@ -100,7 +100,7 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testTrim() throws Exception {
+    public void testTrim() {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);

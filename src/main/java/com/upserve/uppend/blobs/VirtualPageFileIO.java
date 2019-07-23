@@ -11,10 +11,10 @@ import java.util.function.Supplier;
 public class VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
-    static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
+    private static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
+    private static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
 
-    protected final int virtualFileNumber;
+    final int virtualFileNumber;
     private final VirtualPageFile virtualPageFile;
 
     VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile) {

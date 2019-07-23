@@ -10,7 +10,7 @@ import static com.upserve.uppend.performance.StreamTimerMethods.*;
 
 public class ArrayLongStreamTest {
 
-    private static final int values = 10_000_000;
+    private static final int values = 1_000_000;
     private final long[] longs = new long[values];
     private final int repeats = 5;
     private final Supplier<LongStream> parallelStream = () -> Arrays.stream(longs).parallel();

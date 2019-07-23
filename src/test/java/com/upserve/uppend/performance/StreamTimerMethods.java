@@ -36,8 +36,8 @@ public class StreamTimerMethods {
             // This is the thing we are testing - the terminal operator
             sums[i] = longStreams[i].sum();
         }
-        long toc = System.nanoTime();
 
+        long toc = System.nanoTime();
         for (int i=0; i<repeats; i++) {
             assertTrue("Should be large", sums[i] > 1_000_000L);
         }
@@ -47,7 +47,6 @@ public class StreamTimerMethods {
 
     public static double groupByCounting(Supplier<LongStream> supplier, boolean concurrent) {
         LongStream[] longStreams = new LongStream[repeats];
-
         List<Map<Long, Long>> groups = new ArrayList<>(repeats);
 
         for (int i=0; i<repeats; i++) {
@@ -55,7 +54,6 @@ public class StreamTimerMethods {
         }
 
         long tic = System.nanoTime();
-
         if (concurrent) {
             for (LongStream longStream : longStreams) {
                 groups.add(longStream.boxed().collect(Collectors.groupingBy(Function.identity(), Collectors.counting())));
@@ -67,11 +65,9 @@ public class StreamTimerMethods {
         }
 
         long toc = System.nanoTime();
-
         for (Map<Long,Long> group: groups){
             assertTrue("Should be large", group.values().stream().mapToLong(Long::longValue).sum() >= 1_000_000L);
         }
-
         return (toc - tic)/1_000_000.0D;
     }
 
@@ -92,11 +88,9 @@ public class StreamTimerMethods {
         }
         long toc = System.nanoTime();
 
-
         for (int i=0; i<repeats; i++) {
             assertTrue("Should be large", longAdders[i].longValue() > 1_000_000L);
         }
-
         return (toc - tic)/1_000_000.0D;
     }
 

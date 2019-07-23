@@ -16,17 +16,11 @@ import java.util.stream.*;
 public class CounterStorePartition extends Partition {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public static CounterStorePartition createPartition(Path partentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize) {
-        validatePartition(partition);
-        Path partitiondDir = partentDir.resolve(partition);
-        try {
-            Files.createDirectories(partitiondDir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to make partition directory: " + partitiondDir, e);
-        }
+    public static CounterStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize) {
+        Path partitionDir = vaidatePartition(parentDir, partition);
 
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize), false);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize), false);
 
         return new CounterStorePartition(keys, metadata, hashCount, flushThreshold, reloadInterval, false);
     }
