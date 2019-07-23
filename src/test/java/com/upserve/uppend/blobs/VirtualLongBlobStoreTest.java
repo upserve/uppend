@@ -15,7 +15,7 @@ import static org.junit.Assert.*;
 public class VirtualLongBlobStoreTest {
 
     private String name = "long_blobs_test";
-    private Path rootPath = Paths.get("build/test/blobStore");
+    private Path rootPath = Paths.get("build/test/blobs/long_blob_store");
     private Path blobsPath = rootPath.resolve(name);
 
     private VirtualPageFile virtualPageFile;
@@ -32,8 +32,7 @@ public class VirtualLongBlobStoreTest {
     }
 
     private void setup(int pageSize) {
-        PageCache pageCache = new PageCache(pageSize, 1024, 4096, executorService, null);
-        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, false, pageCache);
+        virtualPageFile = new VirtualPageFile(blobsPath, NUMBER_OF_STORES, pageSize,16384,false);
     }
 
     @After
@@ -132,7 +131,6 @@ public class VirtualLongBlobStoreTest {
         assertArrayEquals(new byte[]{0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 1, 109, 95, 48, 48, 48, 48, 49, 95, 48, 48, 48, 48, 48, 0, 0, 0, 13, 0, 0, 0, 0, 0, 0, 0, 2, 110, 95, 48}, bytes);
         page1.get(0, bytes, 0);
         assertArrayEquals(new byte[]{48, 48, 48, 49, 95, 48, 48, 48, 48, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, bytes);
-
     }
 
     @Test
@@ -163,19 +161,17 @@ public class VirtualLongBlobStoreTest {
 
     @Test
     public void testConcurrent() {
-        setup(1280);
+        setup(657);
         IntStream.range(0, NUMBER_OF_STORES)
-                .parallel()
                 .forEach(this::concurrentHelper);
     }
 
     private void concurrentHelper(int virtualBlobStoreNumber) {
-
         VirtualLongBlobStore blobStore = new VirtualLongBlobStore(virtualBlobStoreNumber, virtualPageFile);
 
         ConcurrentMap<Long, byte[]> testData = new ConcurrentHashMap<>();
 
-        LongStream.range(0, 10_000)
+        LongStream.range(0, 200_000)
                 .parallel()
                 .forEach(val -> {
                     byte[] bytes = Longs.toByteArray(val);

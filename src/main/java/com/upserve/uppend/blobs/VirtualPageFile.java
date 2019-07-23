@@ -1,6 +1,6 @@
 package com.upserve.uppend.blobs;
 
-import com.upserve.uppend.util.ThreadLocalByteBuffers;
+import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -8,7 +8,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.nio.channels.FileChannel;
 import java.nio.file.*;
-import java.util.Arrays;
+import java.util.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -20,13 +20,15 @@ import java.util.stream.IntStream;
  * <p>
  * Self Describing Header: virtualFiles (int), pageSize (int)
  * <p>
- * Header:
- * (long, long, long int)
- * VF1  firstPageStart, lastPageStart, currentPosition, pageCount
- * VF2  firstPageStart, lastPageStart, currentPosition, pageCount
- * VF3  firstPageStart, lastPageStart, currentPosition, pageCount
+ * Page Table Locations (tables are interspersed with pages after the first block)
  * <p>
- * PageStart Table (long):
+ * Header:
+ * (long int)
+ * VF1  currentPosition, pageCount
+ * VF2  currentPosition, pageCount
+ * VF3  currentPosition, pageCount
+ * <p>
+ * PageTable (long):
  * VF1, VF2, VF3, VF4,... VIRTUAL_FILES
  * Page1    .......            ..................
  * Page2    .......            ..................
@@ -36,40 +38,45 @@ import java.util.stream.IntStream;
  * ...      .......            ..................
  * PAGES_PER_VIRUAL_FILE
  * <p>
- * Pages:
- * previousPageStart(long), pageSize(bytes), nextPageStart(long)
+ * Pages - a collection of bytes of size pageSize
  * <p>
- * A fixed number of pages per virtual file are allocated at startup - exceeding this number would be... bad
- * TODO - fix this!
+ * Pages are interspersed with additional Page Tables as needed
  */
-public class VirtualPageFile implements Flushable, Closeable {
+public class VirtualPageFile implements Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
     private static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
+
     private static final int SELF_DESCRIBING_HEADER_SIZE = 8;
 
-    private static final int HEADER_RECORD_SIZE = 8 + 8 + 8 + 4;
-    /* firstPageStart, lastPageStart, currentPosition, pageCount */
+    private static final int MAX_PAGE_TABLE_BLOCKS = 1024; // The number of Page Tables
+    private static final int PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE = MAX_PAGE_TABLE_BLOCKS * 8; // Storage for the locations of the page tables
 
-    // Maximum number of pages allowed per virtual file
-    private static final int PAGES_PER_VIRUAL_FILE = 1000;
+    private static final int HEADER_RECORD_SIZE = 8 + 4;
+    /* currentPosition, pageCount */
 
-    private final Path filePath;
+    // Maximum number of pages per record block
+    private static final int PAGE_TABLE_SIZE = 1000;
+
+    private static final int MAX_BUFFERS = 1024 * 64; // 128 TB per partition for 2Gb Bufffers
+    private final MappedByteBuffer[] mappedByteBuffers;
+    private final int bufferSize;
+
+    final Path filePath;
     private final FileChannel channel;
 
+    private final LongBuffer headerBlockLocations;
     private final MappedByteBuffer headerBuffer;
-    private final MappedByteBuffer pageTableBuffer;
 
     private final AtomicLong nextPagePosition;
     private final boolean readOnly;
 
-    private final AtomicLong[] lastPagePositions; // the position in the physical file of the last page for each virtual file
-    private final AtomicLong[] firstPagePositions; // the position in the physical file of first page for each virtual file
     private final AtomicLong[] virtualFilePositions; // the current position in the virtual file for each virtual file
     private final AtomicInteger[] virtualFilePageCounts; // the number of pages currently allocated for each virtual file
 
-    private final LongBuffer pageTable; // Indexable list of page start locations for each virtual file
+    private final LongAdder pageAllocationCount;
+
+    private final LongBuffer[] pageTables; // Array of Index-able list of page start locations for each virtual file
 
     private final int virtualFiles;
     private final int pageSize;
@@ -77,18 +84,9 @@ public class VirtualPageFile implements Flushable, Closeable {
     private final int headerSize;
     private final int tableSize;
 
-    private final PageCache pageCache;
+    private final int totalHeaderSize;
+
     private final FileChannel.MapMode mapMode;
-
-    // Public methods
-    public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, boolean readOnly) {
-        this(filePath, virtualFiles, pageSize, readOnly, null);
-    }
-
-    public VirtualPageFile(Path filePath, int virtualFiles, boolean readOnly, PageCache pageCache) {
-        this(filePath, virtualFiles, pageCache.getPageSize(), readOnly, pageCache);
-    }
-
 
     public Path getFilePath() {
         return filePath;
@@ -96,23 +94,25 @@ public class VirtualPageFile implements Flushable, Closeable {
 
     @Override
     public void close() throws IOException {
-        flush();
+        if (!channel.isOpen()) return;
+        Arrays.fill(mappedByteBuffers, null);
+
+        if (!readOnly) {
+            channel.truncate(nextPagePosition.get());
+        }
         channel.close();
     }
 
-    @Override
-    public void flush() throws IOException {
-        headerBuffer.force();
-        pageTableBuffer.force();
-        channel.force(true);
-    }
-
-    public int getVirtualFiles() {
+    int getVirtualFiles() {
         return virtualFiles;
     }
 
     public boolean isReadOnly() {
         return readOnly;
+    }
+
+    public int getAllocatedPageCount() {
+        return pageAllocationCount.intValue();
     }
 
     // Package private methods
@@ -198,21 +198,19 @@ public class VirtualPageFile implements Flushable, Closeable {
      */
     int pageNumber(long pos) {
         long result = (pos / (long) pageSize);
-        if (result >= PAGES_PER_VIRUAL_FILE)
-            throw new IllegalStateException("The position " + pos + " exceeds the page limit for file" + getFilePath());
+        if (result >= PAGE_TABLE_SIZE * MAX_PAGE_TABLE_BLOCKS)
+            throw new IllegalStateException("The position " + pos + " exceeds the page limit " + PAGE_TABLE_SIZE * MAX_PAGE_TABLE_BLOCKS + ", for file" + getFilePath() + "with page size " + pageSize );
         return (int) result;
     }
 
     /**
      * Get or create (allocate) the page if it does not exist.
-     * Returns a MappedByteBuffer backed Page if there is one in the cache. Otherwise it returns a FilePage
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
-     * @param useMapped indicates whether to use a memory mapped file page or a file channel backed page
      * @return a Page for File IO
      */
-    Page getCachedOrCreatePage(int virtualFileNumber, int pageNumber, boolean useMapped) {
+    Page getOrCreatePage(int virtualFileNumber, int pageNumber) {
         final long startPosition;
         if (isPageAvailable(virtualFileNumber, pageNumber)) {
             startPosition = getValidPageStart(virtualFileNumber, pageNumber);
@@ -220,64 +218,65 @@ public class VirtualPageFile implements Flushable, Closeable {
             startPosition = allocatePosition(virtualFileNumber, pageNumber);
         }
 
-        if (pageCache != null) {
-            return pageCache.get(startPosition, getFilePath(), pageKey -> page(pageKey.getPosition(), useMapped));
-        } else {
-            return page(startPosition, useMapped);
-        }
+       return filePage(startPosition);
     }
 
     /**
-     * Get a MappedByteBuffer backed Page uses a page cache if present - always uses memory mapped pages
+     * Get the existing page
      *
      * @param virtualFileNumber the virtual file number
      * @param pageNumber the page number to getValue
      * @return a Page for File IO
      */
     Page getExistingPage(int virtualFileNumber, int pageNumber) {
-        // TODO we could cache each page start in the writer if reading the long from the mapped byte buffer gets expensive
         long startPosition = getValidPageStart(virtualFileNumber, pageNumber);
-
-        if (pageCache != null) {
-            return pageCache.get(startPosition, getFilePath(), pageKey -> mappedPage(pageKey.getPosition()));
-        } else {
-            return mappedPage(startPosition);
-        }
+        return mappedPage(startPosition);
     }
 
-    Page page(long startPosition, boolean useMapped) {
-        if (useMapped) {
-            return mappedPage(startPosition);
-        } else {
-            return filePage(startPosition);
-        }
+    private MappedPage mappedPage(long startPosition) {
+        final long postHeaderPosition = startPosition - (totalHeaderSize);
+        final int mapIndex = (int) (postHeaderPosition / bufferSize);
+        final int mapPosition = (int) (postHeaderPosition % bufferSize);
+
+        MappedByteBuffer bigbuffer = ensureBuffered(mapIndex);
+
+        return new MappedPage(bigbuffer, mapPosition, pageSize);
     }
 
-    MappedPage mappedPage(long startPosition) {
+    private FilePage filePage(long startPosition) {
+        return new FilePage(channel, startPosition, pageSize);
+    }
+
+    long getFileSize(){
         try {
-            return new MappedPage(channel.map(mapMode, startPosition + 8, pageSize));
+            return channel.size();
         } catch (IOException e) {
-            throw new UncheckedIOException("Unable to map page from file " + filePath, e);
+            throw new UncheckedIOException("Could not get file size for:" + filePath, e);
         }
     }
 
-    FilePage filePage(long startPosition) {
-        return new FilePage(channel, startPosition + 8, pageSize);
-    }
-
-    // Private methods
-    private VirtualPageFile(Path filePath, int virtualFiles, int pageSize, boolean readOnly, PageCache pageCache) {
+    public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, int targetBufferSize, boolean readOnly) {
         this.filePath = filePath;
         this.readOnly = readOnly;
         this.virtualFiles = virtualFiles;
         this.pageSize = pageSize;
-        this.pageCache = pageCache;
+
+        this.mappedByteBuffers = new MappedByteBuffer[MAX_BUFFERS];
+
+        if (targetBufferSize < (pageSize)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize);
+
+        this.bufferSize = (targetBufferSize / (pageSize)) * (pageSize);
+
+        log.debug("Using buffer size " + bufferSize + " with page size " + pageSize);
 
         if (virtualFiles < 1) throw new IllegalArgumentException("virtualFiles must be greater than 0 in file: " + filePath);
 
+        headerSize = virtualFiles * HEADER_RECORD_SIZE;
+        tableSize = virtualFiles * PAGE_TABLE_SIZE * 8;
+
         OpenOption[] openOptions;
         if (readOnly) {
-            openOptions = new OpenOption[]{StandardOpenOption.READ};
+            openOptions = new OpenOption[]{StandardOpenOption.READ, StandardOpenOption.WRITE};
             mapMode = FileChannel.MapMode.READ_ONLY;
         } else {
             openOptions = new OpenOption[]{StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE};
@@ -290,17 +289,20 @@ public class VirtualPageFile implements Flushable, Closeable {
             throw new UncheckedIOException("Unable to open file: " + filePath, e);
         }
 
-
+        final long initialSize;
         try {
-            long initialSize = channel.size();
-            ByteBuffer intBuffer = LOCAL_INT_BUFFER.get();
+            initialSize = channel.size();
+            headerBlockLocations = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE).asLongBuffer();
 
+            ByteBuffer intBuffer = LOCAL_INT_BUFFER.get();
             if (!readOnly && initialSize == 0) {
                 intBuffer.putInt(virtualFiles);
                 channel.write(intBuffer.flip(), 0);
 
                 intBuffer.flip().putInt(pageSize);
                 channel.write(intBuffer.flip(), 4);
+
+                headerBlockLocations.put(0, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize);
             } else {
                 channel.read(intBuffer, 0);
                 int val = intBuffer.flip().getInt();
@@ -311,32 +313,22 @@ public class VirtualPageFile implements Flushable, Closeable {
                 val = intBuffer.flip().getInt();
                 if (val != virtualFiles)
                     throw new IllegalArgumentException("The specfied page size " + pageSize + " does not match the value in the datastore " + val + " in file " + getFilePath());
+
+                long longVal = headerBlockLocations.get(0);
+                if (longVal != SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize)
+                    throw new IllegalArgumentException("The header sizes " + (SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize) + " does not match the value in the datastore " + longVal + " in file " + getFilePath());
             }
         } catch (IOException e) {
-            throw new UncheckedIOException("Unable to get file size" + " in file " + getFilePath(), e);
+            throw new UncheckedIOException("Unable to read, write, map or get the size of " + getFilePath(), e);
         }
 
-
-        headerSize = virtualFiles * HEADER_RECORD_SIZE;
-        tableSize = virtualFiles * PAGES_PER_VIRUAL_FILE * 8;
+        totalHeaderSize = headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE;
 
         try {
-            headerBuffer = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, headerSize);
+            headerBuffer = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, headerSize);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map header for path: " + filePath, e);
         }
-
-        firstPagePositions = IntStream
-                .range(0, virtualFiles)
-                .mapToLong(this::getHeaderFirstPage)
-                .mapToObj(AtomicLong::new)
-                .toArray(AtomicLong[]::new);
-
-        lastPagePositions = IntStream
-                .range(0, virtualFiles)
-                .mapToLong(this::getHeaderLastPage)
-                .mapToObj(AtomicLong::new)
-                .toArray(AtomicLong[]::new);
 
         virtualFilePositions = IntStream
                 .range(0, virtualFiles)
@@ -350,112 +342,82 @@ public class VirtualPageFile implements Flushable, Closeable {
                 .mapToObj(AtomicInteger::new)
                 .toArray(AtomicInteger[]::new);
 
-        long lastStartPosition = Arrays.stream(lastPagePositions).mapToLong(AtomicLong::get).max().orElse(0L);
+        // For statistics...
+        pageAllocationCount = new LongAdder();
+        pageAllocationCount.add(Arrays.stream(virtualFilePageCounts).mapToLong(AtomicInteger::get).sum());
 
+        pageTables = new LongBuffer[MAX_PAGE_TABLE_BLOCKS];
         try {
-            pageTableBuffer = channel.map(mapMode, headerSize + SELF_DESCRIBING_HEADER_SIZE, tableSize);
-            pageTable = pageTableBuffer.asLongBuffer();
+            pageTables[0] = channel
+                    .map(mapMode, headerSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, tableSize)
+                    .asLongBuffer();
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map page locations for path: " + filePath, e);
         }
 
-        if (lastStartPosition == 0) {
-            nextPagePosition = new AtomicLong(headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE);
+        long lastTableStart = 0;
+        for(int i=0; i< MAX_PAGE_TABLE_BLOCKS; i++) {
+            long position = headerBlockLocations.get(i);
+            if (position > 0){
+                lastTableStart = position;
+            }
+        }
 
-        } else if (lastStartPosition < headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE) {
+        if (lastTableStart + tableSize > Math.max(initialSize, totalHeaderSize)) {
+            throw new IllegalStateException("Bad value for last table start in header");
+        }
+
+        long lastStartPosition = IntStream
+                .range(0, virtualFiles)
+                .mapToLong(index -> {
+                    int pageCount = virtualFilePageCounts[index].get();
+                    int pageIndex = pageCount > 0 ? pageCount - 1 : 0;
+                    return getRawPageStart(index,  pageIndex);
+                })
+                .max().orElse(0L);
+
+        if (lastStartPosition == 0) {
+            nextPagePosition = new AtomicLong(totalHeaderSize);
+        } else if (lastStartPosition < totalHeaderSize) {
             throw new IllegalStateException("file position " + lastStartPosition + " is less than header size: " + headerSize + " in file " + filePath);
         } else {
-            nextPagePosition = new AtomicLong(lastStartPosition + pageSize + 16);
+            nextPagePosition = new AtomicLong(Math.max(lastStartPosition + pageSize,  lastTableStart + tableSize));
+            preloadBuffers(nextPagePosition.get());
         }
-
-        IntStream.range(0, virtualFiles).parallel().forEach(this::detectCorruption);
-
-        // TODO Can we fix corruption instead of just bailing?
-    }
-
-    private void detectCorruption(int virtualFileNumber) {
-
-        long virtualFilePosition = virtualFilePositions[virtualFileNumber].get();
-        int pageCount = virtualFilePageCounts[virtualFileNumber].get();
-        long firstPageStart = firstPagePositions[virtualFileNumber].get();
-        long finalPageStart = lastPagePositions[virtualFileNumber].get();
-
-        long[] pageStarts = IntStream.range(0, PAGES_PER_VIRUAL_FILE).mapToLong(page -> getRawPageStart(virtualFileNumber, page)).toArray();
-
-        if (pageCount == 0) {
-            if (virtualFilePosition != 0 || firstPageStart != 0 || finalPageStart != 0 || Arrays.stream(pageStarts).anyMatch(val -> val != 0)) {
-                throw new IllegalStateException("None zero positions for file with no pages in file " + getFilePath());
-            }
-            return;
-        }
-
-        if (virtualFilePosition / pageSize > pageCount)
-            throw new IllegalStateException("The current virtual file position is outside the last page in file " + getFilePath());
-
-        if (firstPageStart != pageStarts[0])
-            throw new IllegalStateException("Header first pageStart does not match table page 0 start in file " + getFilePath());
-        if (finalPageStart != pageStarts[pageCount - 1])
-            throw new IllegalStateException("Header last pageStart does not match table page last start in file " + getFilePath());
-
-        long nextPageStart = firstPageStart;
-        long lastPageStart = -1L;
-        for (int page = 0; page < pageCount; page++) {
-            if (nextPageStart != pageStarts[page])
-                throw new IllegalStateException("Head pointer does not match table page start in file " + getFilePath());
-            if (readTailPointer(nextPageStart) != lastPageStart)
-                throw new IllegalStateException("Corrupt tail pointer in first page in file " + getFilePath());
-
-            lastPageStart = nextPageStart;
-
-            nextPageStart = readHeadPointer(nextPageStart);
-        }
-
-        if (nextPageStart != -1) throw new IllegalStateException("Last head pointer not equal -1 in file " + getFilePath());
     }
 
     private long getRawPageStart(int virtualFileNumber, int pageNumber) {
-        return pageTable.get(PAGES_PER_VIRUAL_FILE * virtualFileNumber + pageNumber);
+        int pageTableNumber = pageNumber / PAGE_TABLE_SIZE;
+        int pageInTable = pageNumber % PAGE_TABLE_SIZE;
+
+        return ensurePageTable(pageTableNumber).get(PAGE_TABLE_SIZE * virtualFileNumber + pageInTable);
     }
 
     private long getValidPageStart(int virtualFileNumber, int pageNumber) {
-        if (pageNumber == -1) return -1L;
         long result = getRawPageStart(virtualFileNumber, pageNumber);
-        if (result < headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE) {
-            throw new IllegalStateException("Invalid page position " + result + " is in the file header; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
-        }
-        if ((result - (headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE)) % (pageSize + 16) != 0 ) {
-            throw new IllegalStateException("Invalid page position " + result + " is not aligned with pageSize " + pageSize + " + 16 ; in page table for file " + virtualFileNumber + " page " + pageNumber + " in file " + getFilePath());
+        if (result < totalHeaderSize) {
+            if (result == 0) {
+                throw new IllegalStateException("The page start position is zero for page " + pageNumber + " in file " + virtualFileNumber + ": this typically means it has not yet been allocated");
+            } else {
+                throw new IllegalStateException("Invalid page start position " + result + " is in the file header; bad value in page table for virtual file " + virtualFileNumber + " in page " + pageNumber + " in file " + getFilePath());
+            }
         }
         return result;
     }
 
     private void putPageStart(int virtualFileNumber, int pageNumber, long position) {
-        int index = PAGES_PER_VIRUAL_FILE * virtualFileNumber + pageNumber;
-        pageTable.put(index, position);
-    }
+        int pageTableNumber = pageNumber / PAGE_TABLE_SIZE;
+        int pageInTable = pageNumber % PAGE_TABLE_SIZE;
 
-    private long getHeaderFirstPage(int virtualFileNumber) {
-        return headerBuffer.getLong(virtualFileNumber * HEADER_RECORD_SIZE);
-    }
-
-    private void putHeaderFirstPage(int virtualFileNumber, long position) {
-        headerBuffer.putLong(virtualFileNumber * HEADER_RECORD_SIZE, position);
-    }
-
-    private long getHeaderLastPage(int virtualFileNumber) {
-        return headerBuffer.getLong(virtualFileNumber * HEADER_RECORD_SIZE + 8);
-    }
-
-    private void putHeaderLastPage(int virtualFileNumber, long position) {
-        headerBuffer.putLong(virtualFileNumber * HEADER_RECORD_SIZE + 8, position);
+        ensurePageTable(pageTableNumber).put(PAGE_TABLE_SIZE * virtualFileNumber + pageInTable, position);
     }
 
     private long getHeaderVirtualFilePosition(int virtualFileNumber) {
-        return headerBuffer.getLong(virtualFileNumber * HEADER_RECORD_SIZE + 16);
+        return headerBuffer.getLong(virtualFileNumber * HEADER_RECORD_SIZE);
     }
 
     private void putHeaderVirtualFilePosition(int virtualFileNumber, long position) {
-        headerBuffer.putLong(virtualFileNumber * HEADER_RECORD_SIZE + 16, position);
+        headerBuffer.putLong(virtualFileNumber * HEADER_RECORD_SIZE, position);
     }
 
     private AtomicLong getAtomicVirtualFilePosition(int virtualFileNumber) {
@@ -463,88 +425,108 @@ public class VirtualPageFile implements Flushable, Closeable {
     }
 
     private int getHeaderVirtualFilePageCount(int virtualFileNumber) {
-        return headerBuffer.getInt(virtualFileNumber * HEADER_RECORD_SIZE + 24);
+        return headerBuffer.getInt(virtualFileNumber * HEADER_RECORD_SIZE + 8);
     }
 
     private void putHeaderVirtualFilePageCount(int virtualFileNumber, int count) {
-        headerBuffer.putInt(virtualFileNumber * HEADER_RECORD_SIZE + 24, count);
+        headerBuffer.putInt(virtualFileNumber * HEADER_RECORD_SIZE + 8, count);
     }
 
     private long allocatePosition(int virtualFileNumber, int pageNumber) {
         synchronized (virtualFilePageCounts[virtualFileNumber]) {
             // If another thread has already done it - just return the start position
-            while (pageNumber >= virtualFilePageCounts[virtualFileNumber].get()) {
-                allocatePage(virtualFileNumber);
+            final int currentPageCount = virtualFilePageCounts[virtualFileNumber].get();
+            if (pageNumber >= currentPageCount) {
+                allocatePage(virtualFileNumber, currentPageCount, pageNumber);
             }
         }
         return getValidPageStart(virtualFileNumber, pageNumber);
     }
 
-    private void allocatePage(int virtualFileNumber) {
+    private void allocatePage(int virtualFileNumber, int currentPageCount, int pageNumber) {
 
+        int pagesToAllocate = pageNumber - currentPageCount + 1;
         // Do the atomic stuff
-        long newPageStart = nextPagePosition.getAndAdd(pageSize + 16);
-        int newPageNumber = virtualFilePageCounts[virtualFileNumber].get(); // the result is the index, the value incremented at the end of the method is the new count!
-        boolean firstPage = firstPagePositions[virtualFileNumber].compareAndSet(0L, newPageStart);
-        lastPagePositions[virtualFileNumber].set(newPageStart);
+        long firstPageStart = nextPagePosition.getAndAdd(pageSize * pagesToAllocate);
 
-        long lastPageStart = getValidPageStart(virtualFileNumber, newPageNumber - 1);
+        for (int i=0; i < pagesToAllocate; i++) {
+            // Update the persistent table of pages
+            putPageStart(virtualFileNumber, currentPageCount + i, firstPageStart + i * pageSize);
+            // Now that the page is allocated and persistent - update the counter which is the lock controlling access
+        }
 
-        if (lastPageStart > 0) writeHeadPointer(lastPageStart, newPageStart);
-        writeTailPointer(newPageStart, lastPageStart);
-        writeHeadPointer(newPageStart, -1); // Extends the file to the end of the page
+        putHeaderVirtualFilePageCount(virtualFileNumber, currentPageCount + pagesToAllocate);
+        virtualFilePageCounts[virtualFileNumber].set(currentPageCount + pagesToAllocate);
 
-        // Update the persistent table of pages
-        putPageStart(virtualFileNumber, newPageNumber, newPageStart);
-
-        // Update the persisted header values
-        if (firstPage) putHeaderFirstPage(virtualFileNumber, newPageStart);
-        putHeaderLastPage(virtualFileNumber, newPageStart);
-        putHeaderVirtualFilePageCount(virtualFileNumber, newPageNumber + 1);
-
-        // Now that the page is allocated and persistent - update the counter which is the lock controlling access
-        virtualFilePageCounts[virtualFileNumber].getAndIncrement();
+        // Stats only
+        pageAllocationCount.add(pagesToAllocate);
     }
 
-    private void writeTailPointer(long pageStart, long previousPageStart) {
-        ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
-        longBuffer.asLongBuffer().put(previousPageStart); // will be -1 if this is the first page
-        try {
-            channel.write(longBuffer, pageStart);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to write tail pointer at " + pageStart + " in " + filePath, e);
+    private MappedByteBuffer ensureBuffered(int bufferIndex) {
+        MappedByteBuffer buffer = mappedByteBuffers[bufferIndex];
+        if (buffer == null) {
+            synchronized (mappedByteBuffers) {
+                buffer = mappedByteBuffers[bufferIndex];
+                if (buffer == null) {
+                    long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
+                    try {
+                        buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart +  " start position) in file " + filePath, e);
+                    }
+                    mappedByteBuffers[bufferIndex] = buffer;
+                }
+            }
         }
+        return buffer;
     }
 
-    private long readTailPointer(long pageStart) {
-        ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
+    private LongBuffer ensurePageTable(int pageNumber) {
+        LongBuffer buffer = pageTables[pageNumber];
+        if (buffer == null) {
+            synchronized (pageTables) {
+                buffer = pageTables[pageNumber];
+                if (buffer == null) {
 
-        try {
-            channel.read(longBuffer, pageStart);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to read tail pointer at " + pageStart + " in " + filePath, e);
+                    long bufferStart = headerBlockLocations.get(pageNumber);
+
+                    // All allocated space must be in multiples of pageSize to guarantee a buffer will not end in the middle of a page
+                    final int apparentSize;
+                    if (pageSize > tableSize) {
+                        apparentSize = pageSize;
+                    } else {
+                        apparentSize = (tableSize / pageSize + 1) * pageSize;
+                    }
+
+                    if (!readOnly && bufferStart == 0) {
+                      bufferStart = nextPagePosition.getAndAdd(apparentSize);
+                      headerBlockLocations.put(pageNumber, bufferStart);
+                    }
+                    try {
+                        buffer = channel.map(mapMode, bufferStart, tableSize).asLongBuffer();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Unable to map buffer for page table " + pageNumber + " at (" + bufferStart +  " start position) in file " + filePath, e);
+                    }
+                    pageTables[pageNumber] = buffer;
+                }
+            }
         }
-        return longBuffer.flip().getLong();
+        return buffer;
     }
 
-    private void writeHeadPointer(long pageStart, long nextPageStart) {
-        ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
-        longBuffer.asLongBuffer().put(nextPageStart); // will be -1 if this is the first page
-        try {
-            channel.write(longBuffer, pageStart + pageSize + 8);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to write head pointer at " + pageStart + " in " + filePath, e);
-        }
-    }
+    // Called during initialize only - no need to synchronize
+    private void preloadBuffers(long nextPagePosition){
+        for (int bufferIndex=0; bufferIndex<MAX_BUFFERS; bufferIndex++){
+            long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
 
-    private long readHeadPointer(long pageStart) {
-        ByteBuffer longBuffer = LOCAL_LONG_BUFFER.get();
+            if (bufferStart >= nextPagePosition) break;
 
-        try {
-            channel.read(longBuffer, pageStart + pageSize + 8);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to read head pointer at " + pageStart + " in " + filePath, e);
+            try {
+                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
+                mappedByteBuffers[bufferIndex] = buffer;
+            } catch (IOException e) {
+                throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " start position) in file "  + filePath, e);
+            }
         }
-        return longBuffer.flip().getLong();
     }
 }

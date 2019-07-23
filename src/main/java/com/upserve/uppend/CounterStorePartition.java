@@ -13,40 +13,32 @@ import java.util.*;
 import java.util.function.ObjLongConsumer;
 import java.util.stream.*;
 
-public class CounterStorePartition extends Partition implements Flushable, Closeable {
+public class CounterStorePartition extends Partition {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public static CounterStorePartition createPartition(Path partentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, PageCache keyPageCache, LookupCache lookupCache) {
-        validatePartition(partition);
-        Path partitiondDir = partentDir.resolve(partition);
-        try {
-            Files.createDirectories(partitiondDir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to make partition directory: " + partitiondDir, e);
-        }
+    public static CounterStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize) {
+        Path partitionDir = validatePartition(parentDir, partition);
 
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, false, keyPageCache);
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), false);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize), false);
 
-
-        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
+        return new CounterStorePartition(keys, metadata, hashCount, flushThreshold, reloadInterval, false);
     }
 
-    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashSize, int flushThreshold, int metadataPageSize, PageCache keyPageCache, LookupCache lookupCache, boolean readOnly) {
+    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize, boolean readOnly) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
 
         if (!(Files.exists(metadataPath(partitiondDir)) && Files.exists(keysPath(partitiondDir)))) return null;
 
+        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), readOnly);
+        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashCount, keyPageSize, targetBufferSize, readOnly);
 
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashSize, metadataPageSize, readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashSize, readOnly, keyPageCache);
-
-        return new CounterStorePartition(keys, metadata, PartitionLookupCache.create(partition, lookupCache), hashSize, flushThreshold, false);
+        return new CounterStorePartition(keys, metadata, hashCount, flushThreshold, reloadInterval, false);
     }
 
-    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, PartitionLookupCache lookupCache, int hashSize, int flushThreshold, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, lookupCache, hashSize, flushThreshold, readOnly);
+    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, int hashCount, int flushThreshold, int reloadInterval, boolean readOnly) {
+        super(longKeyFile, metadataBlobFile, hashCount, flushThreshold, reloadInterval, readOnly);
     }
 
     public Long set(String key, long value) {
@@ -71,7 +63,7 @@ public class CounterStorePartition extends Partition implements Flushable, Close
     }
 
     public Stream<Map.Entry<String, Long>> scan() {
-        return IntStream.range(0, hashSize)
+        return IntStream.range(0, hashCount)
                 .parallel()
                 .boxed()
                 .flatMap(virtualFileNumber -> lookups[virtualFileNumber].scan().map(entry -> Maps.immutableEntry(entry.getKey().string(), entry.getValue())));
@@ -79,41 +71,22 @@ public class CounterStorePartition extends Partition implements Flushable, Close
 
     public void scan(ObjLongConsumer<String> callback) {
 
-        IntStream.range(0, hashSize)
+        IntStream.range(0, hashCount)
                 .parallel()
                 .boxed()
                 .forEach(virtualFileNumber -> lookups[virtualFileNumber].scan((keyLookup, value) -> callback.accept(keyLookup.string(), value)));
     }
 
     Stream<String> keys() {
-        return IntStream.range(0, hashSize)
+        return IntStream.range(0, hashCount)
                 .parallel()
                 .boxed()
                 .flatMap(virtualFileNumber -> lookups[virtualFileNumber].keys().map(LookupKey::string));
-    }
-
-    @Override
-    public void flush() throws IOException {
-        log.debug("Starting flush for partition: {}", lookupCache.getPartition());
-
-        Arrays.stream(lookups).parallel().forEach(LookupData::flush);
-
-        longKeyFile.flush();
-        metadataBlobFile.flush();
-        log.debug("Finished flush for partition: {}", lookupCache.getPartition());
     }
 
     void clear() throws IOException {
         longKeyFile.close();
         metadataBlobFile.close();
         SafeDeleting.removeDirectory(longKeyFile.getFilePath().getParent());
-    }
-
-    @Override
-    public void close() throws IOException {
-        flush();
-
-        longKeyFile.close();
-        metadataBlobFile.close();
     }
 }

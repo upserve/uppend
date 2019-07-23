@@ -24,7 +24,7 @@ public class CounterStoreTest {
         return newStore(false);
     }
     private CounterStore newStore(boolean readOnly) {
-        return CounterStoreBuilder.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
+        return TestHelper.getDefaultCounterStoreTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
     }
 
     private CounterStore store;
@@ -93,7 +93,6 @@ public class CounterStoreTest {
         store.increment("partition", "foo", 2);
         assertEquals(Long.valueOf(3), store.get("partition", "foo"));
     }
-
 
     @Test
     public void testWriteCloseReadRepeat() throws Exception {
@@ -208,9 +207,7 @@ public class CounterStoreTest {
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
         store.increment("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb");
-
         store.increment("2017-11-30", "ccccccc-cccccccccc-ccccccc-ccccccc::ccccccc");
-
         store.increment("2017-11-30", "ttt-ttttt-tttt-ttttttt-ttt-tttt::tttttttttt");
 
         assertEquals(Long.valueOf(5), store.get("2017-11-30", "bbbbbbbb-bbbbbbb-bbbb-bbbbbbb-bbbb::bbbbbbb"));

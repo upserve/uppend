@@ -1,7 +1,5 @@
 package com.upserve.uppend;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
-
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
 import java.util.stream.Stream;
@@ -40,12 +38,6 @@ public interface ReadOnlyCounterStore extends Trimmable, AutoCloseable {
      * @param callback function to call for each key and value
      */
     void scan(ObjLongConsumer<String> callback);
-
-    CacheStats getKeyPageCacheStats();
-
-    CacheStats getLookupKeyCacheStats();
-
-    CacheStats getMetadataCacheStats();
 
     long keyCount();
 }

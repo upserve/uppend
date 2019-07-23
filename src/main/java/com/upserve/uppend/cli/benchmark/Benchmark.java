@@ -2,19 +2,15 @@ package com.upserve.uppend.cli.benchmark;
 
 import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
-import com.upserve.uppend.lookup.FlushStats;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
-import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import java.util.function.Supplier;
-import java.util.stream.LongStream;
 
 import static com.upserve.uppend.AutoFlusher.forkJoinPoolFunction;
 import static com.upserve.uppend.cli.CommandBenchmark.ROOT_NAME;
@@ -24,54 +20,49 @@ import static com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics.*;
 public class Benchmark {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private Runnable writer;
-    private Runnable reader;
-
-    private final Random random = new Random();
+    private BenchmarkRunnable writer;
+    private BenchmarkRunnable reader;
 
     private BenchmarkMode mode;
 
     private final MetricRegistry metrics;
     private long range;
     private long count;
-    private int maxPartitions;
-    private long maxKeys;
     private int sleep = 0;
+    private int partitionCount;
+    private int hashCount;
 
     private final AppendOnlyStore testInstance;
 
     private final ForkJoinPool writerPool;
     private final ForkJoinPool readerPool;
 
-    private final ForkJoinPool cachePool;
+    AtomicReference<PartitionStats> partitionStats;
+    AtomicReference<BlockStats> blockStats;
 
-    private volatile boolean isDone = false;
-    private final String ioStatArgs;
+    public LongSummaryStatistics writerStats() {
+        return writer.getStats();
+    }
 
-    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, int maxPartitions, long maxKeys, long count, String ioStatArgs) {
+    public LongSummaryStatistics readerStats() {
+        return reader.getStats();
+    }
+
+    public Benchmark(BenchmarkMode mode, AppendOnlyStoreBuilder builder, long range, long count) {
         this.mode = mode;
 
         this.count = count;
-        this.maxPartitions = maxPartitions; // max ~ 2000
-        this.maxKeys = maxKeys; // max ~ 100,000,000
+        this.range = range;
 
-        this.ioStatArgs = ioStatArgs;
+        partitionCount = builder.getPartitionCount();
+        hashCount = builder.getLookupHashCount();
 
         writerPool = forkJoinPoolFunction.apply("benchmark-writer");
         readerPool = forkJoinPoolFunction.apply("benchmark-reader");
 
-        cachePool = forkJoinPoolFunction.apply("cache");
-
-        builder.withLookupPageCacheExecutorService(cachePool)
-                .withLookupMetaDataCacheExecutorService(cachePool)
-                .withBlobCacheExecutorService(cachePool)
-                .withLookupKeyCacheExecutorService(cachePool);
-
         metrics = builder.getStoreMetricsRegistry();
 
         log.info(builder.toString());
-
-        range = (long) maxKeys;
 
         switch (mode) {
             case readwrite:
@@ -96,16 +87,19 @@ public class Benchmark {
             case scan:
                 testInstance = builder.build(true);
                 writer = BenchmarkWriter.noop();
-                reader = scanReader(testInstance);
+                reader = new ScanReader(testInstance);
                 break;
             default:
                 throw new RuntimeException("Unknown mode: " + mode);
         }
+
+        partitionStats = new AtomicReference<>(testInstance.getPartitionStats());
+        blockStats = new AtomicReference<>(testInstance.getBlockLongStats());
     }
 
     private BenchmarkWriter simpleWriter() {
         return new BenchmarkWriter(
-                random.longs(count, 0, range).parallel(),
+                ThreadLocalRandom.current().longs(count, 0, range).parallel(),
                 longInt -> {
                     byte[] myBytes = bytes(longInt);
                     String formatted = format(longInt);
@@ -117,7 +111,7 @@ public class Benchmark {
 
     private BenchmarkReader simpleReader() {
         return new BenchmarkReader(
-                random.longs(count, 0, range).parallel(),
+                ThreadLocalRandom.current().longs(count, 0, range).parallel(),
                 longInt -> {
                     String formatted = format(longInt);
                     return testInstance.read(formatted, formatted)
@@ -127,11 +121,25 @@ public class Benchmark {
         );
     }
 
-    private Runnable scanReader(AppendOnlyStore appendOnlyStore) {
-        return () -> {
-            long count = appendOnlyStore.scan().mapToLong(entry -> entry.getValue().count()).sum();
+    private class ScanReader implements BenchmarkRunnable{
+        private final AppendOnlyStore appendOnlyStore;
+        private LongSummaryStatistics result;
+
+        public ScanReader(AppendOnlyStore appendOnlyStore) {
+            this.appendOnlyStore = appendOnlyStore;
+        }
+
+        @Override
+        public LongSummaryStatistics getStats() {
+            return result;
+        }
+
+
+        @Override
+        public void run() {
+            result = appendOnlyStore.scan().mapToLong(entry -> entry.getValue().count()).summaryStatistics();
             log.info("Scanned {} entries", count);
-        };
+        }
     }
 
     public static String format(long value) {
@@ -161,7 +169,6 @@ public class Benchmark {
             readBytesMeter = metrics.meter(MetricRegistry.name(ROOT_NAME, UPPEND_APPEND_STORE, STORE_NAME, READ_BYTES_METER_METRIC_NAME));
         }
 
-
         final Runtime runtime = Runtime.getRuntime();
 
         AtomicLong tic = new AtomicLong(System.currentTimeMillis());
@@ -170,17 +177,10 @@ public class Benchmark {
         AtomicLong read = new AtomicLong(readBytesMeter.getCount());
         AtomicLong readCount = new AtomicLong(readCounter.get());
 
-        AtomicReference<CacheStats> blobPageCacheStats = new AtomicReference<CacheStats>(testInstance.getBlobPageCacheStats());
-        AtomicReference<CacheStats> keyPageCacheStats = new AtomicReference<CacheStats>(testInstance.getKeyPageCacheStats());
-        AtomicReference<CacheStats> lookupKeyCacheStats = new AtomicReference<CacheStats>(testInstance.getLookupKeyCacheStats());
-        AtomicReference<CacheStats> metadataCacheStats = new AtomicReference<CacheStats>(testInstance.getMetadataCacheStats());
-        AtomicReference<FlushStats> flushStats = new AtomicReference<FlushStats>(testInstance.getFlushStats());
-
         return new TimerTask() {
             @Override
             public void run() {
                 long val;
-                CacheStats stats;
                 try {
                     val = System.currentTimeMillis();
                     double elapsed = (val - tic.getAndSet(val)) / 1000D;
@@ -202,26 +202,11 @@ public class Benchmark {
 
                     log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
 
-                    stats = testInstance.getBlobPageCacheStats();
-                    log.info("Blob Page Cache: {}", stats.minus(blobPageCacheStats.getAndSet(stats)));
+                    PartitionStats pStats = testInstance.getPartitionStats();
+                    log.info(pStats.present(partitionStats.getAndSet(pStats)));
 
-                    stats = testInstance.getKeyPageCacheStats();
-                    log.info("Key Page Cache: {}", stats.minus(keyPageCacheStats.getAndSet(stats)));
-
-                    stats = testInstance.getLookupKeyCacheStats();
-                    log.info("Lookup Key Cache: {}", stats.minus(lookupKeyCacheStats.getAndSet(stats)));
-
-                    stats = testInstance.getMetadataCacheStats();
-                    log.info("Metadata Cache: {}", stats.minus(metadataCacheStats.getAndSet(stats)));
-
-                    FlushStats fstats = testInstance.getFlushStats();
-                    log.info("Flush Stats: {}", fstats.minus(flushStats.getAndSet(fstats)));
-
-                    log.info("Cache Pool: {}", cachePool);
-                    log.info("Write Pool: {}", writerPool);
-                    log.info("Read Pool: {}", readerPool);
-                    log.info("Common Pool: {}", ForkJoinPool.commonPool());
-
+                    BlockStats bStats = testInstance.getBlockLongStats();
+                    log.info("Block Stats: {}", bStats.minus(blockStats.getAndSet(bStats)));
 
 
                 } catch (Exception e) {
@@ -232,13 +217,7 @@ public class Benchmark {
     }
 
     public void run() throws InterruptedException, ExecutionException, IOException {
-        log.info("Running Performance test with {} partitions, {} keys and {} count", maxPartitions, maxKeys, count);
-
-        ProcessBuilder processBuilder = new ProcessBuilder(("iostat " +  ioStatArgs).split("\\s+"));
-        log.info("Running IOSTAT: '{}'", processBuilder.command());
-        processBuilder.redirectErrorStream(true);
-        processBuilder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-        Process process = processBuilder.start();
+        log.info("Running Performance test with {} partitions {} hashCount, {} keys and {} count", partitionCount, hashCount, range, count);
 
         Future writerFuture = writerPool.submit(writer);
 
@@ -267,11 +246,6 @@ public class Benchmark {
             throw new RuntimeException("error closing test uppend store", e);
         }
 
-        process.destroy();
-
         log.info("Benchmark is All Done!");
-        System.out.println("[benchmark is done]"); // used in CliTest
-        isDone = true;
     }
 }
-

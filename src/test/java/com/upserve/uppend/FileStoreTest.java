@@ -4,8 +4,10 @@ import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.file.*;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.junit.Assert.*;
 
@@ -98,6 +100,23 @@ public class FileStoreTest {
     }
 
     @Test
+    public void testCreateCloseOpenReadOnlyClose() {
+        MyFileStore store = new MyFileStore(path.resolve("create-close-open-close"), 0);
+        store.getOrCreate("p1").append("k1", "v1".getBytes());
+        store.close();
+
+        store = new MyFileStore(path.resolve("create-close-open-close"), 0, true);
+        byte[][] result = store.getIfPresent("p1")
+                .map(partition -> partition.read("k1"))
+                .map(byteStream -> byteStream.toArray(byte[][]::new))
+                .orElse(new byte[][]{});
+        byte[][] expected = new byte[][]{"v1".getBytes()};
+        assertArrayEquals(expected, result);
+
+        store.close();
+    }
+
+    @Test
     public void testGetIfPresent() {
         MyFileStore v = new MyFileStore(path.resolve("get-if-present"), 0);
         Optional<AppendStorePartition> optPartition = v.getIfPresent("my-partition");
@@ -178,11 +197,57 @@ public class FileStoreTest {
         SafeDeleting.removeDirectory(base);
     }
 
+    @Test
+    public void testReaderWriter() throws InterruptedException {
+
+        MyFileStore reader = new MyFileStore(path.resolve("reader_writer"), 4, true);
+        assertEquals(0, reader.read("foo","bar").count());
+        assertEquals(0, reader.scan().flatMap(Map.Entry::getValue).count());
+
+        MyFileStore writer = new MyFileStore(path.resolve("reader_writer"), 4, false);
+        writer.append("foo", "bar", "abc".getBytes());
+        writer.flush();
+
+        assertEquals(
+                Collections.singletonList(ByteBuffer.wrap("abc".getBytes())),
+                reader.read("foo","bar").map(ByteBuffer::wrap).collect(Collectors.toList())
+        );
+        assertEquals(
+                Collections.singletonList(ByteBuffer.wrap("abc".getBytes())),
+                reader.scan().flatMap(Map.Entry::getValue).map(ByteBuffer::wrap).collect(Collectors.toList())
+        );
+
+        writer.append("foo", "baz", "def".getBytes());
+        writer.flush();
+
+        assertEquals(0, reader.read("foo","baz").count());
+        assertEquals(
+                Collections.singletonList(ByteBuffer.wrap("abc".getBytes())),
+                reader.scan().flatMap(Map.Entry::getValue).map(ByteBuffer::wrap).collect(Collectors.toList())
+        );
+
+        reader.trim();
+
+        assertEquals(
+                Collections.singletonList(ByteBuffer.wrap("def".getBytes())),
+                reader.read("foo","baz").map(ByteBuffer::wrap).collect(Collectors.toList())
+        );
+        assertEquals(
+                List.of(ByteBuffer.wrap("abc".getBytes()), ByteBuffer.wrap("def".getBytes())),
+                reader.scan().flatMap(Map.Entry::getValue).map(ByteBuffer::wrap).sorted().collect(Collectors.toList())
+        );
+    }
+
     private class MyFileStore extends FileAppendOnlyStore {
         MyFileStore(Path dir, int numPartitions) {
-            super(false, new AppendOnlyStoreBuilder()
+            this(dir, numPartitions, false);
+        }
+
+        MyFileStore(Path dir, int numPartitions, boolean readOnly) {
+            super(readOnly, new AppendOnlyStoreBuilder()
                     .withDir(dir)
-                    .withPartitionSize(numPartitions)
+                    .withPartitionCount(numPartitions)
+                    .withMetadataTTL(30)
             );
         }
     }

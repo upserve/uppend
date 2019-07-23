@@ -1,12 +1,7 @@
 package com.upserve.uppend;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.upserve.uppend.blobs.PageCache;
-import com.upserve.uppend.lookup.*;
-import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
-import java.io.*;
 import java.lang.invoke.MethodHandles;
 import java.util.*;
 import java.util.function.*;
@@ -15,19 +10,14 @@ import java.util.stream.Stream;
 public class FileCounterStore extends FileStore<CounterStorePartition> implements CounterStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final PageCache keyPageCache;
-    private final LookupCache lookupCache;
     private final Function<String, CounterStorePartition> openPartitionFunction;
     private final Function<String, CounterStorePartition> createPartitionFunction;
 
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
-        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
+        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionCount(), readOnly, builder.getStoreName());
 
-        keyPageCache = builder.buildLookupPageCache(getName());
-        lookupCache = builder.buildLookupCache(getName(), readOnly);
-
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache, readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), keyPageCache, lookupCache);
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), readOnly);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize());
     }
 
     @Override
@@ -76,61 +66,10 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     }
 
     @Override
-    public FlushStats getFlushStats() {
-        return lookupCache.getFlushStats();
-    }
-    @Override
-    public CacheStats getKeyPageCacheStats() {
-        return keyPageCache.stats();
-    }
-
-    @Override
-    public CacheStats getLookupKeyCacheStats() {
-        return lookupCache.keyStats();
-    }
-
-    @Override
-    public CacheStats getMetadataCacheStats() {
-        return lookupCache.metadataStats();
-    }
-
-    @Override
     public long keyCount() {
         return streamPartitions()
                 .mapToLong(CounterStorePartition::keyCount)
                 .sum();
-    }
-
-    @Override
-    public void clear() {
-        log.trace("clearing");
-        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + dir);
-
-        log.trace("clearing");
-
-        partitionMap.values().stream().forEach(counterStorePartition -> {
-            try {
-                counterStorePartition.clear();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to clear counter store partition", e);
-            }
-        });
-
-        try {
-            SafeDeleting.removeDirectory(partitionsDir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to clear partitions directory", e);
-        }
-        partitionMap.clear();
-        lookupCache.flush();
-        keyPageCache.flush();
-    }
-
-    @Override
-    public void trimInternal() {
-        if (!readOnly) flushInternal();
-        lookupCache.flush();
-        keyPageCache.flush();
     }
 
     @Override
@@ -143,30 +82,4 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         return createPartitionFunction;
     }
 
-    @Override
-    protected void flushInternal() {
-        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
-
-        partitionMap.values().parallelStream().forEach(counterStorePartition -> {
-            try {
-                counterStorePartition.flush();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error flushing store " + dir, e);
-            }
-        });
-    }
-
-    @Override
-    protected void closeInternal() {
-        partitionMap.values().parallelStream().forEach(counterStorePartition -> {
-            try {
-                counterStorePartition.close();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error closing store " + dir, e);
-            }
-        });
-
-        lookupCache.flush();
-        keyPageCache.flush();
-    }
 }

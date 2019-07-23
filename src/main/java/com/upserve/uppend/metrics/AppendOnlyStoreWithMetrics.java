@@ -1,10 +1,8 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.*;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.*;
-import com.upserve.uppend.lookup.FlushStats;
 
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -186,33 +184,13 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public FlushStats getFlushStats() {
-        return store.getFlushStats();
-    }
-
-    @Override
-    public CacheStats getBlobPageCacheStats() {
-        return store.getBlobPageCacheStats();
-    }
-
-    @Override
-    public CacheStats getKeyPageCacheStats() {
-        return store.getKeyPageCacheStats();
-    }
-
-    @Override
-    public CacheStats getLookupKeyCacheStats() {
-        return store.getLookupKeyCacheStats();
-    }
-
-    @Override
-    public CacheStats getMetadataCacheStats() {
-        return store.getMetadataCacheStats();
-    }
-
-    @Override
     public BlockStats getBlockLongStats() {
         return store.getBlockLongStats();
+    }
+
+    @Override
+    public PartitionStats getPartitionStats() {
+        return store.getPartitionStats();
     }
 
     @Override

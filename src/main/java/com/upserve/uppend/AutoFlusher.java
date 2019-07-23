@@ -13,16 +13,11 @@ import java.util.function.Function;
 public class AutoFlusher {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final int FLUSH_EXEC_POOL_NUM_THREADS = 20;
-
     private static final ConcurrentMap<Flushable, Integer> flushableDelays = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Integer, ConcurrentLinkedQueue<Flushable>> delayFlushables = new ConcurrentHashMap<>();
     private static final ConcurrentMap<Integer, ScheduledFuture> delayFutures = new ConcurrentHashMap<>();
 
-    private static final ConcurrentLinkedQueue<ForkJoinTask> flushTasks = new ConcurrentLinkedQueue<>();
-
     private static final ThreadFactory threadFactory;
-    public static final ExecutorService flushExecPool;
 
     public static final ForkJoinPool flusherWorkPool;
 
@@ -40,10 +35,6 @@ public class AutoFlusher {
             return t;
         };
 
-        AtomicInteger flushExecPoolThreadNumber = new AtomicInteger();
-        ThreadFactory flushExecPoolThreadFactory = r -> new Thread(threadGroup, r, "auto-flush-exec-pool-" + flushExecPoolThreadNumber.incrementAndGet());
-        flushExecPool = Executors.newFixedThreadPool(FLUSH_EXEC_POOL_NUM_THREADS, flushExecPoolThreadFactory);
-
         threadFactoryFunction = name -> pool ->
         {
             final ForkJoinWorkerThread worker = ForkJoinPool.defaultForkJoinWorkerThreadFactory.newThread(pool);
@@ -51,9 +42,8 @@ public class AutoFlusher {
             return worker;
         };
 
-
         forkJoinPoolFunction = name -> new ForkJoinPool(
-                Runtime.getRuntime().availableProcessors(),
+                Runtime.getRuntime().availableProcessors() * 2,
                 threadFactoryFunction.apply(name),
                 (t, e) -> {
                     log.error("In pool {}, thread {} threw exception {}", name, t, e);
@@ -62,7 +52,6 @@ public class AutoFlusher {
         );
 
         flusherWorkPool = forkJoinPoolFunction.apply("flush-worker");
-
     }
 
     public static synchronized void register(int delaySeconds, Flushable flushable) {
@@ -138,9 +127,6 @@ public class AutoFlusher {
     }
 
     public static void submitWork(Runnable runnable) {
-
-        ForkJoinTask task = flusherWorkPool.submit(runnable);
+        flusherWorkPool.submit(runnable);
     }
-
-
 }

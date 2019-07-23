@@ -1,42 +1,24 @@
 package com.upserve.uppend;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.upserve.uppend.blobs.PageCache;
-import com.upserve.uppend.lookup.*;
-import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
-import java.io.*;
 import java.lang.invoke.MethodHandles;
-import java.nio.channels.ClosedChannelException;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.Stream;
 
-import static com.upserve.uppend.BlockStats.ZERO_STATS;
-
 public class FileAppendOnlyStore extends FileStore<AppendStorePartition> implements AppendOnlyStore {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-
-    private final PageCache blobPageCache;
-    private final PageCache keyPageCache;
-    private final LookupCache lookupCache;
 
     private final Function<String, AppendStorePartition> openPartitionFunction;
     private final Function<String, AppendStorePartition> createPartitionFunction;
 
     FileAppendOnlyStore(boolean readOnly, AppendOnlyStoreBuilder builder) {
-        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionSize(), readOnly, builder.getStoreName());
+        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionCount(), readOnly, builder.getStoreName());
 
-        blobPageCache = builder.buildBlobPageCache(getName());
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), builder.getBlobPageSize(), builder.getLookupPageSize(), readOnly);
 
-        keyPageCache = builder.buildLookupPageCache(getName());
-
-        lookupCache = builder.buildLookupCache(getName(), readOnly);
-
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache, readOnly);
-
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashSize(), builder.getFlushThreshold(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), blobPageCache, keyPageCache, lookupCache);
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), builder.getBlobPageSize(), builder.getLookupPageSize());
     }
 
     @Override
@@ -45,33 +27,13 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     }
 
     @Override
-    public FlushStats getFlushStats() {
-        return lookupCache.getFlushStats();
-    }
-
-    @Override
-    public CacheStats getBlobPageCacheStats() {
-        return blobPageCache.stats();
-    }
-
-    @Override
-    public CacheStats getKeyPageCacheStats() {
-        return keyPageCache.stats();
-    }
-
-    @Override
-    public CacheStats getLookupKeyCacheStats() {
-        return lookupCache.keyStats();
-    }
-
-    @Override
-    public CacheStats getMetadataCacheStats() {
-        return lookupCache.metadataStats();
-    }
-
-    @Override
     public BlockStats getBlockLongStats() {
-        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(ZERO_STATS, BlockStats::add);
+        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(BlockStats.ZERO_STATS, BlockStats::add);
+    }
+
+    @Override
+    public PartitionStats getPartitionStats(){
+        return partitionMap.values().parallelStream().map(AppendStorePartition::getPartitionStats).reduce(PartitionStats.ZERO_STATS, PartitionStats::add);
     }
 
     @Override
@@ -132,20 +94,6 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     }
 
     @Override
-    public void clear() {
-        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + name);
-        log.trace("clearing");
-
-        closeInternal();
-
-        try {
-            SafeDeleting.removeDirectory(partitionsDir);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to clear partitions directory", e);
-        }
-    }
-
-    @Override
     Function<String, AppendStorePartition> getOpenPartitionFunction() {
         return openPartitionFunction;
     }
@@ -153,52 +101,5 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     Function<String, AppendStorePartition> getCreatePartitionFunction() {
         return createPartitionFunction;
-    }
-
-    @Override
-    protected void flushInternal() {
-        // Flush lookups, then blocks, then blobs, since this is the access order of a read.
-        // Check non null because the super class is registered in the autoflusher before the constructor finishes
-        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + name);
-
-        partitionMap.values().parallelStream().forEach(appendStorePartition -> {
-            try {
-                appendStorePartition.flush();
-            } catch (ClosedChannelException e) {
-                if (isClosed.get()) {
-                    log.debug("Tried to flush a closed store {}", name, e);
-                } else {
-                    throw new UncheckedIOException("Error flushing store " + name, e);
-                }
-
-            } catch (IOException e) {
-                if (isClosed.get())
-                    throw new UncheckedIOException("Error flushing store " + name, e);
-            }
-        });
-    }
-
-    @Override
-    public void trimInternal() {
-        if (!readOnly) flushInternal();
-        lookupCache.flush();
-        blobPageCache.flush();
-        keyPageCache.flush();
-    }
-
-    @Override
-    protected void closeInternal() {
-        partitionMap.values().parallelStream().forEach(appendStorePartition -> {
-            try {
-                appendStorePartition.close();
-            } catch (IOException e) {
-                throw new UncheckedIOException("Error closing store " + name, e);
-            }
-        });
-
-        partitionMap.clear();
-        lookupCache.flush();
-        blobPageCache.flush();
-        keyPageCache.flush();
     }
 }

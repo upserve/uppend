@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.google.common.hash.*;
+import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -9,36 +10,36 @@ import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
-abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimmable {
-    public static final int MAX_NUM_PARTITIONS = 9999;
+abstract class FileStore<T extends Partition> implements AutoCloseable, RegisteredFlushable, Trimmable {
+    static final int MAX_NUM_PARTITIONS = 9999;
 
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    protected final Path dir;
-    protected final Path partitionsDir;
+    final Path dir;
+    final Path partitionsDir;
 
     private final int flushDelaySeconds;
-    protected final Map<String, T> partitionMap;
+    final ConcurrentHashMap<String, T> partitionMap;
 
     protected final boolean readOnly;
     protected final String name;
     private final Path lockPath;
     private final FileChannel lockChan;
     private final FileLock lock;
-    private final int partitionSize;
+    private final int partitionCount;
     private final boolean doHashPartitionValues;
 
-    protected final AtomicBoolean isClosed;
+    final AtomicBoolean isClosed;
 
     private static final int PARTITION_HASH_SEED = 626433832;
     private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
 
-    FileStore(Path dir, int flushDelaySeconds, int partitionSize, boolean readOnly, String name) {
+    FileStore(Path dir, int flushDelaySeconds, int partitionCount, boolean readOnly, String name) {
         if (dir == null) {
             throw new NullPointerException("null dir");
         }
@@ -49,18 +50,18 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
         partitionsDir = dir.resolve("partitions");
-        if (partitionSize > MAX_NUM_PARTITIONS) {
-            throw new IllegalArgumentException("bad partition size: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionSize);
+        if (partitionCount > MAX_NUM_PARTITIONS) {
+            throw new IllegalArgumentException("bad partition count: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionCount);
         }
-        if (partitionSize < 0) {
-            throw new IllegalArgumentException("bad partition size: negative: " + partitionSize);
+        if (partitionCount < 0) {
+            throw new IllegalArgumentException("bad partition count: negative: " + partitionCount);
         }
-        this.partitionSize = partitionSize;
-        if (partitionSize == 0) {
+        this.partitionCount = partitionCount;
+        if (partitionCount == 0) {
             partitionMap = new ConcurrentHashMap<>();
             doHashPartitionValues = false;
         } else {
-            partitionMap = new ConcurrentHashMap<>(partitionSize);
+            partitionMap = new ConcurrentHashMap<>(partitionCount);
             doHashPartitionValues = true;
         }
         this.name = name;
@@ -83,10 +84,10 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         isClosed = new AtomicBoolean(false);
     }
 
-    protected String partitionHash(String partition) {
+    String partitionHash(String partition) {
         if (doHashPartitionValues) {
             HashCode hcode = hashFunction.hashBytes(partition.getBytes(StandardCharsets.UTF_8));
-            return String.format("%04d", Math.abs(hcode.asInt()) % partitionSize);
+            return String.format("%04d", Math.abs(hcode.asInt()) % partitionCount);
         } else {
             return partition;
         }
@@ -130,22 +131,46 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         return partitionMap.values().parallelStream();
     }
 
+    @Override
+    public void flush() {
+        // Flush lookups, then blocks, then blobs, since this is the access order of a read.
+        // NPE may occur because the super class is registered in the autoflusher before the constructor finishes
+        if (readOnly) throw new RuntimeException("Can not flush a store opened in read only mode:" + dir);
 
-    protected abstract void flushInternal() throws IOException;
+        log.debug("Flushing!");
 
-    protected abstract void closeInternal() throws IOException;
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+                partitionMap.values().parallelStream().forEach(T::flush)
+        );
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Flush interrupted", e);
 
-    protected abstract void trimInternal() throws IOException;
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Partition map flush failed with", e);
+        }
+
+        log.debug("Flushed!");
+    }
 
     @Override
-    public void trim() {
-        log.debug("Triming {}", name);
+    public void trim(){
+        log.debug("Trimming!");
+
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+                partitionMap.values().parallelStream().forEach(T::trim)
+        );
         try {
-            trimInternal();
-        } catch (Exception e) {
-            log.error("unable to trim {}", name, e);
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Trim interrupted", e);
+
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Partition map trim failed with", e);
         }
-        log.debug("Trimed {}", name);
+
+        log.debug("Trimmed!");
     }
 
     @Override
@@ -158,15 +183,17 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         AutoFlusher.deregister(this);
     }
 
-    @Override
-    public void flush() {
-        log.info("flushing {}", name);
+    public void clear() {
+        if (readOnly) throw new RuntimeException("Can not clear a store opened in read only mode:" + name);
+        log.trace("clearing");
+
+        closePartitions();
+
         try {
-            flushInternal();
-        } catch (Exception e) {
-            log.error("unable to flush {}", name, e);
+            SafeDeleting.removeDirectory(partitionsDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to clear partitions directory", e);
         }
-        log.info("flushed {}", name);
     }
 
     @Override
@@ -178,11 +205,7 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
 
         if (!readOnly && flushDelaySeconds > 0) AutoFlusher.deregister(this);
 
-        try {
-            closeInternal();
-        } catch (Exception e) {
-            log.error("unable to close {}", name, e);
-        }
+        closePartitions();
 
         try {
             lock.release();
@@ -194,5 +217,27 @@ abstract class FileStore<T> implements AutoCloseable, RegisteredFlushable, Trimm
         } catch (IOException e) {
             log.error("unable to close lock file: " + lockPath, e);
         }
+    }
+
+    private void closePartitions(){
+        ForkJoinTask task = AutoFlusher.flusherWorkPool.submit(() ->
+                partitionMap.values().parallelStream().forEach(partition -> {
+                    try {
+                        partition.close();
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Error closing store " + name, e);
+                    }
+                })
+        );
+
+        try {
+            task.get();
+        } catch (InterruptedException e) {
+            log.error("Close interrupted", e);
+
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Partition map close failed with", e);
+        }
+        partitionMap.clear();
     }
 }

@@ -6,7 +6,6 @@ import org.junit.rules.ExpectedException;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 
@@ -14,7 +13,7 @@ public class AppendOnlyStorePartitionSizeTest {
     private final Path path = Paths.get("build/test/file-append-only-partition-size");
 
     private AppendOnlyStore newStore() {
-        return TestHelper.getDefaultTestBuilder().withDir(path.resolve("store-path")).withPartitionSize(2).build(false);
+        return TestHelper.getDefaultAppendStoreTestBuilder().withDir(path.resolve("store-path")).withPartitionCount(2).build(false);
     }
     private AppendOnlyStore store;
 
@@ -28,7 +27,7 @@ public class AppendOnlyStorePartitionSizeTest {
     }
 
     @After
-    public void cleanUp() throws IOException {
+    public void cleanUp() {
         try {
             store.close();
         } catch (Exception e) {

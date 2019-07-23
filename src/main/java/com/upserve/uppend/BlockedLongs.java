@@ -1,7 +1,6 @@
 package com.upserve.uppend;
 
 import com.google.common.util.concurrent.Striped;
-import com.upserve.uppend.util.*;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -12,7 +11,6 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
 import java.util.concurrent.locks.Lock;
-import java.util.function.Supplier;
 import java.util.stream.*;
 
 public class BlockedLongs implements AutoCloseable, Flushable {
@@ -22,8 +20,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int LOCK_SIZE = 10007;
     private final Striped<Lock> stripedLocks;
 
-    private static final int PAGE_SIZE = 4 * 1024 * 1024; // allocate 4 MB chunks
-    private static final int MAX_PAGES = 1024 * 1024; // max 4 TB (~800 MB heap)
+    private static final int PAGE_SIZE = 128 * 1024 * 1024; // allocate 128 MB chunks
+    private static final int MAX_PAGES = 32 * 1024; // max 4 TB
 
     private final Path file;
 
@@ -32,8 +30,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
     private final FileChannel blocks;
     private final MappedByteBuffer[] pages;
-
-    private final Supplier<ByteBuffer> bufferLocal;
 
     private final FileChannel blocksPos;
     private final MappedByteBuffer posBuf;
@@ -45,7 +41,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final LongAdder appendCounter;
     private final LongAdder allocCounter;
     private final LongAdder valuesReadCounter;
-
 
     public BlockedLongs(Path file, int valuesPerBlock, boolean readOnly) {
         if (file == null) {
@@ -75,8 +70,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         this.valuesPerBlock = valuesPerBlock;
         blockSize = 16 + valuesPerBlock * 8;
 
-        // size | -next
-        // prev | -last
         StandardOpenOption[] openOptions;
         if (readOnly) {
             openOptions = new StandardOpenOption[]{StandardOpenOption.READ};
@@ -92,19 +85,14 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         if (readOnly) {
             stripedLocks = null;
-            pages = null;
-            currentPage = null;
-
         } else {
             stripedLocks = Striped.lock(LOCK_SIZE);
-
-            pages = new MappedByteBuffer[MAX_PAGES];
-
-            ensurePage(0);
-            currentPage = new AtomicInteger(0);
         }
 
-        bufferLocal = ThreadLocalByteBuffers.threadLocalByteBufferSupplier(blockSize);
+        pages = new MappedByteBuffer[MAX_PAGES];
+
+        ensurePage(0);
+        currentPage = new AtomicInteger(0);
 
         try {
             blocksPos = FileChannel.open(posFile, openOptions);
@@ -223,47 +211,103 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             return LongStream.empty();
         }
 
+        long[] longs = valuesArray(pos);
+        return Arrays.stream(longs);
+    }
+
+    public long[] valuesArray(Long pos) {
+        /*
+        This method is deprecated. It will be replaced with a Spliterator that is block aware to allow parallel reads
+         */
+
         if (pos < 0 || pos > size()) {
             log.error("Bad position value {} in file {} of size {}", pos, file, size());
-            return LongStream.empty();
+            return new long[]{};
         }
-
-        ByteBuffer buf = readBlock(pos);
-        if (buf == null) {
-            return LongStream.empty();
-        }
-        buf.flip();
 
         // size | -next
         // prev | -last
-
-        long size = buf.getLong();
-        buf.getLong();
+        final long size = readLong(pos);
 
         if (size < 0) {
             long nextPos = -size;
             long[] values = new long[valuesPerBlock];
             for (int i = 0; i < valuesPerBlock; i++) {
-                values[i] = buf.getLong();
+                values[i] = readLong(pos + 16 + i * 8);
             }
-            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
+
+            long[] additionalValues = valuesArray(nextPos);
+
+            if (additionalValues.length == 0){
+                return values;
+            } else {
+                long[] result = new long[valuesPerBlock + additionalValues.length];
+                System.arraycopy(values,0,result,0, valuesPerBlock);
+                System.arraycopy(additionalValues,0,result,valuesPerBlock, additionalValues.length);
+                return result;
+            }
         } else if (size > valuesPerBlock) {
             throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
         } else if (size == 0) {
-            return LongStream.empty();
+            return new long[]{};
         } else {
             int numValues = (int) size;
             long[] values = new long[numValues];
             for (int i = 0; i < numValues; i++) {
-                values[i] = buf.getLong();
+                values[i] = readLong(pos + 16 + i * 8);
             }
-            if (log.isTraceEnabled()) {
-                String valuesStr = Arrays.toString(values);
-                log.trace("got values from {} at {}: {}", file, pos, valuesStr);
-            }
-            return Arrays.stream(values);
+            return values;
         }
     }
+
+//    public LongStream lazyValues(Long pos) {
+//        /*
+//        Lazy values is much slower in Performance tests with a large number of blocks.
+//        This method is retained for reference purposes only till the Spliterator is impelemnted.
+//         */
+//        log.trace("streaming values from {} at {}", file, pos);
+//
+//        valuesReadCounter.increment();
+//
+//        if (pos == null) {
+//            // pos will be null for missing keys
+//            return LongStream.empty();
+//        }
+//
+//        if (pos < 0 || pos > size()) {
+//            log.error("Bad position value {} in file {} of size {}", pos, file, size());
+//            return LongStream.empty();
+//        }
+//
+//        // size | -next
+//        // prev | -last
+//        final long size = readLong(pos);
+//
+//        if (size < 0) {
+//            long nextPos = -size;
+//            long[] values = new long[valuesPerBlock];
+//            for (int i = 0; i < valuesPerBlock; i++) {
+//                values[i] = readLong(pos + 16 + i * 8);
+//            }
+//            return LongStreams.lazyConcat(Arrays.stream(values), () -> values(nextPos));
+//        } else if (size > valuesPerBlock) {
+//            throw new IllegalStateException("too high num values: expected <= " + valuesPerBlock + ", got " + size);
+//        } else if (size == 0) {
+//            return LongStream.empty();
+//        } else {
+//
+//            int numValues = (int) size;
+//            long[] values = new long[numValues];
+//            for (int i = 0; i < numValues; i++) {
+//                values[i] = readLong(pos + 16 + i * 8);
+//            }
+//            if (log.isTraceEnabled()) {
+//                String valuesStr = Arrays.toString(values);
+//                log.trace("got values from {} at {}: {}", file, pos, valuesStr);
+//            }
+//            return Arrays.stream(values);
+//        }
+//    }
 
     public long lastValue(long pos) {
         log.trace("reading last value from {} at {}", file, pos);
@@ -271,11 +315,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (pos >= posMem.get()) {
             return -1;
         }
-        ByteBuffer buf = readBlock(pos);
-        if (buf == null) {
-            return -1;
-        }
-        buf.flip();
 
         // size | -next
         // prev | -last
@@ -368,22 +407,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
     }
 
-    private ByteBuffer readBlock(long pos) {
-        ByteBuffer buf = bufferLocal.get();
-        try {
-            int numRead = blocks.read(buf, pos);
-            if (numRead == -1) {
-                return null;
-            }
-            if (numRead != blockSize) {
-                throw new RuntimeException("read bad block size from " + file + " at pos " + pos + ": got " + numRead + ", expected " + blockSize);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("unable to read block at pos " + pos + ": " + file, e);
-        }
-        return buf;
-    }
-
     private long readLong(long pos) {
         int pagePos = (int) (pos % (long) PAGE_SIZE);
         return page(pos).getLong(pagePos);
@@ -424,7 +447,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                 if (page == null) {
                     long pageStart = (long) pageIndex * PAGE_SIZE;
                     try {
-                        page = blocks.map(FileChannel.MapMode.READ_WRITE, pageStart, PAGE_SIZE);
+                        FileChannel.MapMode mapMode = readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE;
+                        page = blocks.map(mapMode, pageStart, PAGE_SIZE);
                     } catch (IOException e) {
                         throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
                     }

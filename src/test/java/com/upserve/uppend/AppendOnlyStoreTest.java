@@ -13,6 +13,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
+import static com.upserve.uppend.TestHelper.genBytes;
 import static org.junit.Assert.*;
 
 public class AppendOnlyStoreTest {
@@ -23,7 +24,7 @@ public class AppendOnlyStoreTest {
     }
 
     private AppendOnlyStore newStore(boolean readOnly) {
-        return TestHelper.getDefaultTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
+        return TestHelper.getDefaultAppendStoreTestBuilder().withDir(path.resolve("store-path")).build(readOnly);
     }
     private AppendOnlyStore store;
 
@@ -84,7 +85,7 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testClear() throws Exception {
+    public void testClear() {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
@@ -99,7 +100,7 @@ public class AppendOnlyStoreTest {
     }
 
     @Test
-    public void testPurge() throws Exception {
+    public void testTrim() {
         String key = "foobar";
 
         byte[] bytes = genBytes(12);
@@ -117,7 +118,7 @@ public class AppendOnlyStoreTest {
         ExecutorService executor = new ForkJoinPool();
         Future future = executor.submit(() -> {
             new Random(314159)
-                    .longs(100_000, 0, 5_000)
+                    .longs(500_000, 0, 5_000)
                     .parallel()
                     .forEach(val -> {
                         String key = String.valueOf(val);
@@ -149,6 +150,8 @@ public class AppendOnlyStoreTest {
         });
 
         future.get(40_000, TimeUnit.MILLISECONDS);
+
+        executor.shutdown();
     }
 
     @Test
@@ -180,7 +183,7 @@ public class AppendOnlyStoreTest {
 
     @Test
     public void fillTheCache() throws Exception {
-        int keys = TestHelper.getDefaultTestBuilder().getInitialLookupKeyCacheSize() * 2;
+        int keys = 1024 * 256;
 
         Random random = new Random(9876);
         Set<String> uuidSet = new HashSet<>();
@@ -387,37 +390,11 @@ public class AppendOnlyStoreTest {
 
         assertEquals(inputBytes.size(), outputBytes.size());
 
-        inputBytes.sort(AppendOnlyStoreTest::compareByteArrays);
-        outputBytes.sort(AppendOnlyStoreTest::compareByteArrays);
+        inputBytes.sort(TestHelper::compareByteArrays);
+        outputBytes.sort(TestHelper::compareByteArrays);
 
         for (int i = 0; i < number; i++) {
             assertArrayEquals("input and output byte arrays differ at index " + i, inputBytes.get(i), outputBytes.get(i));
         }
-    }
-
-    private static int compareByteArrays(byte[] o1, byte[] o2) {
-        if (o1 == null) {
-            if (o2 == null) {
-                return 0;
-            }
-            return -1;
-        }
-        if (o2 == null) {
-            return 1;
-        }
-        for (int i = 0; i < o1.length && i < o2.length; i++) {
-            int v1 = 0xff & o1[i];
-            int v2 = 0xff & o2[i];
-            if (v1 != v2) {
-                return v1 < v2 ? -1 : 1;
-            }
-        }
-        return Integer.compare(o1.length, o2.length);
-    }
-
-    private byte[] genBytes(int len) {
-        byte[] bytes = new byte[len];
-        new Random().nextBytes(bytes);
-        return bytes;
     }
 }

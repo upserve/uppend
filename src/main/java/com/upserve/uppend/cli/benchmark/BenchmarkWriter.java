@@ -3,14 +3,21 @@ package com.upserve.uppend.cli.benchmark;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
+import java.util.LongSummaryStatistics;
 import java.util.function.Function;
 import java.util.stream.LongStream;
 
-public class BenchmarkWriter implements Runnable {
+public class BenchmarkWriter implements BenchmarkRunnable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final LongStream longStream;
     private final Function<Long, Integer> longFunction;
+
+    public LongSummaryStatistics getStats() {
+        return result;
+    }
+
+    private LongSummaryStatistics result;
 
     BenchmarkWriter(LongStream longStream, Function<Long, Integer> longFunction) {
         this.longStream = longStream;
@@ -28,7 +35,7 @@ public class BenchmarkWriter implements Runnable {
         }
         log.info("starting writer...");
         long tic = -1 * System.currentTimeMillis();
-        longStream.forEach(longFunction::apply);
+        result = longStream.map(longFunction::apply).summaryStatistics();
         log.info(
                 String.format(
                         "done writing in %5.2f seconds",

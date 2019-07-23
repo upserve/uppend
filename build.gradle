@@ -13,6 +13,8 @@ plugins {
 }
 
 import org.apache.tools.ant.filters.ExpandProperties
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
 
 if (new File('.git').exists() && (exec {
     commandLine "sh", "-c", "git --version"
@@ -30,10 +32,6 @@ group 'com.upserve'
 
 description = """Uppend: fast, append-only key-multivalue store"""
 
-task wrapper(type: Wrapper) {
-    gradleVersion = '4.4'
-}
-
 // TODO unused-dependency is broken - claims all dependencies are unused!
 //gradleLint.rules += 'unused-dependency'
 
@@ -41,6 +39,10 @@ apply plugin: 'java'
 apply plugin: 'maven'
 apply plugin: 'jacoco'
 apply plugin: 'com.bmuschko.nexus'
+
+jacoco {
+    toolVersion = "0.8.2" // Fixed to resolve issue with JDK 11 in Gradle 4.X.Y
+}
 
 sourceCompatibility = 1.9
 targetCompatibility = 1.9
@@ -52,8 +54,7 @@ repositories {
 
 dependencies {
     compile 'com.google.guava:guava:21.0'
-    compile 'com.github.ben-manes.caffeine:caffeine:2.6.2'
-    compile 'info.picocli:picocli:3.0.0'
+    compile 'info.picocli:picocli:4.0.1'
     compile 'io.dropwizard.metrics:metrics-core:3.2.3'
     compile 'it.unimi.dsi:fastutil:7.0.13'
 //    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
@@ -62,12 +63,6 @@ dependencies {
     testCompile 'junit:junit:4.12'
     testCompile 'org.apache.logging.log4j:log4j-api:2.8'
     testCompile 'org.mockito:mockito-core:2.18.3'
-
-    gradleLint.ignore {
-        // gradle-lint doesn't like log4j because it's not used directly
-        compile 'org.apache.logging.log4j:log4j-core:2.8'
-        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
-    }
 }
 
 tasks.withType(JavaCompile) {
@@ -93,12 +88,54 @@ processResources {
 }
 
 task fatJar(type: Jar) {
+    dependencies {
+        compile 'org.apache.logging.log4j:log4j-core:2.8'
+        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+    }
     manifest {
         attributes 'Main-Class': 'com.upserve.uppend.Uppend'
     }
     baseName = project.name + '-all'
     from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
     with jar
+}
+
+tasks.withType(Test) {
+    // From https://stackoverflow.com/a/36130467/2136991
+    testLogging {
+        // set options for log level LIFECYCLE
+        events TestLogEvent.FAILED,
+                TestLogEvent.PASSED,
+                TestLogEvent.SKIPPED,
+                TestLogEvent.STANDARD_OUT
+        exceptionFormat TestExceptionFormat.FULL
+        showExceptions true
+        showCauses true
+        showStackTraces true
+
+        // set options for log level DEBUG and INFO
+        debug {
+
+            events TestLogEvent.STARTED,
+                    TestLogEvent.FAILED,
+                    TestLogEvent.PASSED,
+                    TestLogEvent.SKIPPED,
+                    TestLogEvent.STANDARD_ERROR,
+                    TestLogEvent.STANDARD_OUT
+            exceptionFormat TestExceptionFormat.FULL
+        }
+        info.events = debug.events
+        info.exceptionFormat = debug.exceptionFormat
+
+        afterSuite { desc, result ->
+            if (!desc.parent) { // will match the outermost suite
+                def output = "Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} successes, ${result.failedTestCount} failures, ${result.skippedTestCount} skipped)"
+                def startItem = '|  ', endItem = '  |'
+                def repeatLength = startItem.length() + output.length() + endItem.length()
+                println('\n' + ('-' * repeatLength) + '\n' + startItem + output + endItem + '\n' + ('-' * repeatLength))
+            }
+        }
+    }
 }
 
 jacocoTestReport {

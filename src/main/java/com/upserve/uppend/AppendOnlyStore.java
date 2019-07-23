@@ -1,10 +1,5 @@
 package com.upserve.uppend;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
-import com.upserve.uppend.lookup.FlushStats;
-
-import java.io.Flushable;
-
 /**
  * Add byte arrays under a key and partition, and retrieve them. Note the
  * expectation that the byte arrays are appended to the value, which is an
@@ -46,6 +41,4 @@ public interface AppendOnlyStore extends ReadOnlyAppendOnlyStore, RegisteredFlus
      * @return the name
      */
     String getName();
-
-    FlushStats getFlushStats();
 }

@@ -6,30 +6,20 @@ import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
-import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.Supplier;
 
 public class VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
-    static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
+    private static final Supplier<ByteBuffer> LOCAL_INT_BUFFER = ThreadLocalByteBuffers.LOCAL_INT_BUFFER;
+    private static final Supplier<ByteBuffer> LOCAL_LONG_BUFFER = ThreadLocalByteBuffers.LOCAL_LONG_BUFFER;
 
-    protected final int virtualFileNumber;
+    final int virtualFileNumber;
     private final VirtualPageFile virtualPageFile;
-    private final boolean useMappedPages;
-    private final AtomicStampedReference<Page> lastPage;
 
     VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile) {
-        this(virtualFileNumber, virtualPageFile, false);
-    }
-
-    VirtualPageFileIO(int virtualFileNumber, VirtualPageFile virtualPageFile, boolean useMappedPages) {
         this.virtualFileNumber = virtualFileNumber;
         this.virtualPageFile = virtualPageFile;
-        this.useMappedPages = useMappedPages;
-
-        lastPage = new AtomicStampedReference<>(null, -1);
 
         if (virtualFileNumber > virtualPageFile.getVirtualFiles())
             throw new IllegalStateException("Requested a virtual file " + virtualFileNumber + " which is greater than the max allocated " + virtualPageFile.getVirtualFiles());
@@ -82,7 +72,7 @@ public class VirtualPageFileIO {
 
     void write(long pos, byte[] bytes) {
         if (bytes.length == 0) {
-            throw new IllegalArgumentException("Can not write empty bytes!");
+            throw new IllegalStateException("Can not write empty bytes to pos " + pos + " in file " + virtualFileNumber + " of " + virtualPageFile.filePath);
         }
         final int result = writePagedOffset(pos, bytes, 0);
         if (result != bytes.length) {
@@ -93,13 +83,7 @@ public class VirtualPageFileIO {
     private int writePagedOffset(long pos, byte[] bytes, int offset) {
         int pageNumber = virtualPageFile.pageNumber(pos);
 
-        Page page;
-        int[] holder = new int[1];
-        page = lastPage.get(holder);
-        if (holder[0] != pageNumber) {
-            page = virtualPageFile.getCachedOrCreatePage(virtualFileNumber, pageNumber, useMappedPages);
-            lastPage.set(page, pageNumber);
-        }
+        Page page = virtualPageFile.getOrCreatePage(virtualFileNumber, pageNumber);
 
         int bytesWritten;
         bytesWritten = page.put(virtualPageFile.pagePosition(pos), bytes, offset);
@@ -125,6 +109,7 @@ public class VirtualPageFileIO {
     }
 
     void read(long pos, byte[] buf) {
+        // Short circuit read of empty value here
         if (buf.length == 0) return;
         final int result = readPagedOffset(pos, buf, 0);
         if (result != buf.length) {
@@ -135,19 +120,12 @@ public class VirtualPageFileIO {
     private int readPagedOffset(long pos, byte[] buf, int offset) {
         int pageNumber = virtualPageFile.pageNumber(pos);
 
-        Page page;
-        int[] holder = new int[1];
-        page = lastPage.get(holder);
-        if (holder[0] != pageNumber) {
-            page = virtualPageFile.getExistingPage(virtualFileNumber, pageNumber);
-            lastPage.set(page, pageNumber);
-        }
+        Page page = virtualPageFile.getExistingPage(virtualFileNumber, pageNumber);
 
         int bytesRead;
         bytesRead = page.get(virtualPageFile.pagePosition(pos), buf, offset);
 
         if (bytesRead < (buf.length - offset)) {
-            // TODO see if it is faster to use the head pointer to the next page start rather than recursion here?
             bytesRead += readPagedOffset(pos + bytesRead, buf, offset + bytesRead);
         }
         return bytesRead;

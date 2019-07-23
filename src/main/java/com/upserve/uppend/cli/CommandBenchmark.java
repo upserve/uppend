@@ -27,6 +27,7 @@ public class CommandBenchmark implements Callable<Void> {
     public static final String ROOT_NAME = "Root";
     public static final String STORE_NAME = "Benchmark";
 
+    Benchmark benchmark;
 
     @Parameters(index = "0", description = "Store path")
     Path path;
@@ -40,8 +41,8 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-c", "--case"}, description = "Benchmark class (narrow|wide) key space")
     BenchmarkCase benchmarkCase = BenchmarkCase.narrow;
 
-    @Option(names= {"-i", "--iostat"}, description = "arguments for iostat process")
-    String ioStatArgs = "5";
+    @Option(names = {"-b", "--buffer-size"}, description = "Buffer Size (small|medium|large)")
+    BufferSize bufferSize = BufferSize.medium;
 
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
@@ -54,22 +55,18 @@ public class CommandBenchmark implements Callable<Void> {
             log.warn("Location already exists: appending to {}", path);
         }
 
-        Benchmark benchmark = createBenchmark();
+        benchmark = createBenchmark();
         benchmark.run();
         return null;
     }
-
 
     private Benchmark createBenchmark() {
         long keys;
         long count;
 
         final int blockSize;
-        int partitions;
-        int hashSize;
-
-        int keyCacheSize;
-        long keyCacheWeight;
+        int partitionCount;
+        int hashCount;
 
         int blobCacheSize;
         int blobPageSize;
@@ -90,21 +87,11 @@ public class CommandBenchmark implements Callable<Void> {
                 keys = (long) Math.pow(Math.log10(count), 2.0) * 100;
 
                 blockSize = 16_384;
-                partitions = 64;
-                hashSize = 64;
+                partitionCount = 64;
+                hashCount = 64;
 
-                // Cache all the keys
-                keyCacheSize = (int) keys;
-                keyCacheWeight = keys * 9 + 1000; // 9 bytes per key plus some room
-
-                blobCacheSize = 16_384;
                 blobPageSize = 16 * 1024 * 1024;
-
-                keyPageCacheSize = 16 * partitions * hashSize;
                 keyPageSize = 1024 * 1024;
-
-                metadataCacheSize = partitions * hashSize;
-                metadataCacheWeight = keys * 4 + 1000; // one int per key plus some room
                 metadataPageSize = 1024 * 1024;
 
                 flushDelay = 60;
@@ -117,23 +104,15 @@ public class CommandBenchmark implements Callable<Void> {
                 count = keys * 2;
 
                 blockSize = 4;
-                hashSize = 512;
-                partitions = 128;
-                keyCacheSize = 0;
-                keyCacheWeight = 0;
+                hashCount = 256;
+                partitionCount = 128;
 
-                blobCacheSize = 524_288;
-                blobPageSize = 1024 * 1024; // Pages will roll over at 135M keys 
-
-                keyPageCacheSize = 16 * partitions * hashSize;
-                keyPageSize = 1024 * 1024; // Key pages will roll over at about 2.9B keys
-
-                metadataCacheSize = partitions * hashSize;
-                metadataCacheWeight = 4 * keys + 10_000; // one int per key plus some room
-                metadataPageSize = 1024 * 1024;
+                blobPageSize = 64 * 1024; // Pages will roll over at 135M keys
+                keyPageSize = 4 * 1024; // Key pages will roll over at about 2.9B keys
+                metadataPageSize = 4 * 1024;
 
                 flushDelay = -1;
-                flushThreshold = 512;
+                flushThreshold = 256;
 
                 break;
 
@@ -146,32 +125,17 @@ public class CommandBenchmark implements Callable<Void> {
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withStoreName(STORE_NAME)
                 .withMetricsRootName(ROOT_NAME)
-
                 .withBlobsPerBlock(blockSize)
-                .withLongLookupHashSize(hashSize)
-                .withPartitionSize(partitions) // Use direct partition
-
-                .withInitialLookupKeyCacheSize(keyCacheSize)
-                .withMaximumLookupKeyCacheWeight(keyCacheWeight)
-
-                .withInitialBlobCacheSize(blobCacheSize)
-                .withMaximumBlobCacheSize(blobCacheSize)
+                .withLongLookupHashCount(hashCount)
+                .withPartitionCount(partitionCount) // Use direct partition
+                .withTargetBufferSize(bufferSize.getSize())
                 .withBlobPageSize(blobPageSize)
-
-                .withInitialLookupPageCacheSize(keyPageCacheSize)
-                .withMaximumLookupPageCacheSize(keyPageCacheSize)
                 .withLookupPageSize(keyPageSize)
-
-                .withInitialMetaDataCacheSize(metadataCacheSize)
-                .withMetaDataPageSize(metadataPageSize)
-                .withMaximumMetaDataCacheWeight(metadataCacheWeight)
-
+                .withMetadataPageSize(metadataPageSize)
                 .withFlushThreshold(flushThreshold)
                 .withFlushDelaySeconds(flushDelay)
+                .withStoreMetrics(metrics);
 
-                .withStoreMetrics(metrics)
-                .withCacheMetrics();
-
-        return new Benchmark(mode, builder, partitions, keys, count, ioStatArgs);
+        return new Benchmark(mode, builder, keys, count);
     }
 }

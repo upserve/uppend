@@ -22,6 +22,14 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
         return super.getPosition();
     }
 
+    /**
+     * Read a byte array at this position from the virtual blob store
+     * Results are unpredictable for bad position requests. It may lead to a negative size and a NegativeArraySizeException
+     * it may lead to an IllegalStateException if the page does not yet exist for that position or it may result in an
+     * empty array value if the page exists but the position is currently past the end of the virtual file.
+     * @param pos the position to read from in the virtual file
+     * @return the byte array blob
+     */
     public byte[] read(long pos) {
         if (log.isTraceEnabled()) log.trace("read mapped from  {} @ {}", virtualFileNumber, pos);
         int size = readInt(pos);
@@ -32,11 +40,11 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
         return buf;
     }
 
-    public static int recordSize(byte[] inputBytes) {
+    private static int recordSize(byte[] inputBytes) {
         return inputBytes.length + 4;
     }
 
-    public static byte[] byteRecord(byte[] inputBytes) {
+    private static byte[] byteRecord(byte[] inputBytes) {
         byte[] result = new byte[recordSize(inputBytes)];
         System.arraycopy(int2bytes(inputBytes.length), 0, result, 0, 4);
         System.arraycopy(inputBytes, 0, result, 4, inputBytes.length);

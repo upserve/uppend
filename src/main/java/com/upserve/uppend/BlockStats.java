@@ -10,9 +10,7 @@ public class BlockStats {
     private final long allocCount;
     private final long valuesReadCount;
 
-
     public static BlockStats ZERO_STATS = new BlockStats(0,0,0,0,0);
-
     public BlockStats(int pagesLoaded, long size, long appendCount, long allocCount, long valuesReadCount) {
         this.pagesLoaded = pagesLoaded;
         this.size = size;
@@ -20,8 +18,6 @@ public class BlockStats {
         this.allocCount = allocCount;
         this.valuesReadCount = valuesReadCount;
     }
-
-
 
     public int getPagesLoaded() {
         return pagesLoaded;
@@ -50,6 +46,7 @@ public class BlockStats {
                 ", size=" + size +
                 ", appendCount=" + appendCount +
                 ", allocCount=" + allocCount +
+                ", valuesReadCount=" + valuesReadCount +
                 '}';
     }
 
@@ -65,7 +62,7 @@ public class BlockStats {
     }
 
     public BlockStats add(BlockStats other) {
-        if (Objects.isNull(other)) throw new NullPointerException("BlockStats minus method argument is null");
+        if (Objects.isNull(other)) throw new NullPointerException("BlockStats add method argument is null");
         return new BlockStats(
                 pagesLoaded + other.pagesLoaded,
                 size + other.size,

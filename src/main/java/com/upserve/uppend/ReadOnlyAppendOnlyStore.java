@@ -1,7 +1,5 @@
 package com.upserve.uppend;
 
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
-
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
@@ -68,15 +66,9 @@ public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable {
      */
     void scan(BiConsumer<String, Stream<byte[]>> callback);
 
-    CacheStats getBlobPageCacheStats();
-
-    CacheStats getKeyPageCacheStats();
-
-    CacheStats getLookupKeyCacheStats();
-
-    CacheStats getMetadataCacheStats();
-
     BlockStats getBlockLongStats();
+
+    PartitionStats getPartitionStats();
 
     long keyCount();
 }

@@ -6,12 +6,34 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
-import java.util.concurrent.ConcurrentHashMap;
-
+import java.util.Arrays;
+import java.util.concurrent.atomic.LongAdder;
+/**
+ * The bisect tree is linearized as follows
+ *              8
+ *          4
+ *              9
+ *      2
+ *              10
+ *          5
+ *              11
+ *  1
+ *              12
+ *          6
+ *              13
+ *      3
+ *              14
+ *          7
+ *              15
+ *  The size of the array containing the tree is 2^(n+1)
+ *  If n is the current index the branch above is 2*n and the branch below is 2*n+1
+ */
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 9;
+    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 9; // Size == 1024
+    private static final int MAX_TREE_NODES = treeSize(MAX_BISECT_KEY_CACHE_DEPTH);
+    private final LookupKey[] bisectKeys = new LookupKey[MAX_TREE_NODES];
 
     private final int metadataGeneration;
 
@@ -20,15 +42,17 @@ public class LookupMetadata {
     private final LookupKey maxKey;
     private final int[] keyStorageOrder;
 
-    private final ConcurrentHashMap<Integer, LookupKey> bisectKeys;
-
-    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) throws IOException {
+    final LongAdder hitCount;
+    final LongAdder missCount;
+    public static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, VirtualMutableBlobStore metaDataBlobs, int metadataGeneration, LongAdder missCount, LongAdder hitCount) throws IOException {
 
         LookupMetadata newMetadata = new LookupMetadata(
                 minKey,
                 maxKey,
                 keyStorageOrder,
-                metadataGeneration
+                metadataGeneration,
+                missCount,
+                hitCount
         );
 
         newMetadata.writeTo(metaDataBlobs);
@@ -37,25 +61,36 @@ public class LookupMetadata {
     }
 
     LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration) {
+        this(minKey, maxKey, keyStorageOrder, metadataGeneration, new LongAdder(), new LongAdder());
+    }
+
+    private LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
         this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
         this.maxKey = maxKey;
         this.keyStorageOrder = keyStorageOrder;
         this.metadataGeneration = metadataGeneration;
 
-        bisectKeys = new ConcurrentHashMap<>();
+        this.hitCount = hitCount;
+        this.missCount = missCount;
+
     }
 
     public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration) {
+        return open(metadataBlobs, metadataGeneration, new LongAdder(), new LongAdder());
+    }
+
+    public static LookupMetadata open(VirtualMutableBlobStore metadataBlobs, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
+        // TODO can we preserve bisectKeys if the content is not changed? (Currently periodic reload clears this cache)
         if (metadataBlobs.isPageAllocated(0L)) {
             byte[] bytes = metadataBlobs.read(0L);
-            return new LookupMetadata(bytes, metadataGeneration);
+            return new LookupMetadata(bytes, metadataGeneration, missCount, hitCount);
         } else {
-            return new LookupMetadata(null, null, new int[0], metadataGeneration);
+            return new LookupMetadata(null, null, new int[0], metadataGeneration, missCount, hitCount);
         }
     }
 
-    LookupMetadata(byte[] bytes, int metadataGeneration) {
+    private LookupMetadata(byte[] bytes, int metadataGeneration, LongAdder missCount, LongAdder hitCount) {
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         int minKeyLength, maxKeyLength;
@@ -79,7 +114,8 @@ public class LookupMetadata {
 
         this.metadataGeneration = metadataGeneration;
 
-        bisectKeys = new ConcurrentHashMap<>();
+        this.hitCount = hitCount;
+        this.missCount = missCount;
     }
 
     /**
@@ -92,13 +128,13 @@ public class LookupMetadata {
      * @param key the key to find and mark
      * @return the position of the key
      */
-
     public Long findKey(VirtualLongBlobStore longBlobStore, LookupKey key) {
 
         key.setMetaDataGeneration(metadataGeneration);
 
         if (numKeys == 0) {
             key.setInsertAfterSortIndex(-1);
+            missCount.increment();
             return null;
         }
 
@@ -108,6 +144,8 @@ public class LookupMetadata {
         LookupKey upperKey = maxKey;
 
         int bisectCount = 0;
+        int bisectKeyTreeArrayIndex = 1;
+
         int keyPosition;
         LookupKey midpointKey;
         int midpointKeyIndex;
@@ -115,25 +153,30 @@ public class LookupMetadata {
         int comparison = lowerKey.compareTo(key);
         if (comparison > 0 /* new key is less than lowerKey */) {
             key.setInsertAfterSortIndex(-1); // Insert it after this index in the sort order
+            missCount.increment();
             return null;
         }
         if (comparison == 0) {
             key.setPosition(keyStorageOrder[keyIndexLower]);
+            hitCount.increment();
             return longBlobStore.readLong(keyStorageOrder[keyIndexLower]);
         }
 
         comparison = upperKey.compareTo(key);
         if (comparison < 0 /* new key is greater than upperKey */) {
             key.setInsertAfterSortIndex(keyIndexUpper); // Insert it after this index in the sort order
+            missCount.increment();
             return null;
         }
         if (comparison == 0) {
             key.setPosition(keyStorageOrder[keyIndexUpper]);
+            hitCount.increment();
             return longBlobStore.readLong(keyStorageOrder[keyIndexUpper]);
         }
 
         if (numKeys == 2) { // There are no other values keys besides upper and lower
             key.setInsertAfterSortIndex(keyIndexLower);
+            missCount.increment();
             return null;
         }
 
@@ -147,28 +190,48 @@ public class LookupMetadata {
             keyPosition = keyStorageOrder[midpointKeyIndex];
             // Cache only the most frequently used midpoint keys
             if (bisectCount < MAX_BISECT_KEY_CACHE_DEPTH) {
-                midpointKey = bisectKeys.computeIfAbsent(keyPosition, position -> new LookupKey(longBlobStore.readBlob(position)));
+                if (bisectKeys[bisectKeyTreeArrayIndex] == null){
+                    midpointKey = bisectKeys[bisectKeyTreeArrayIndex] = new LookupKey(longBlobStore.readBlob(keyPosition));
+                } else {
+                    midpointKey = bisectKeys[bisectKeyTreeArrayIndex];
+                }
             } else {
                 midpointKey = new LookupKey(longBlobStore.readBlob(keyPosition));
             }
 
             comparison = key.compareTo(midpointKey);
+
+            if (comparison == 0) {
+                key.setPosition(keyPosition);
+                hitCount.increment();
+                return longBlobStore.readLong(keyPosition);
+            }
+
             if (comparison < 0) {
                 upperKey = midpointKey;
                 keyIndexUpper = midpointKeyIndex;
-            } else if (comparison > 0) {
-                keyIndexLower = midpointKeyIndex;
-                lowerKey = midpointKey;
+                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2;
+
             } else {
-                key.setPosition(keyPosition);
-                return longBlobStore.readLong(keyPosition);
+                lowerKey = midpointKey;
+                keyIndexLower = midpointKeyIndex;
+                bisectKeyTreeArrayIndex = bisectKeyTreeArrayIndex * 2 + 1;
             }
 
             bisectCount++;
         } while ((keyIndexLower + 1) < keyIndexUpper);
 
         key.setInsertAfterSortIndex(keyIndexLower); // Insert it in the sort order after this key
+        missCount.increment();
         return null;
+    }
+
+    public static int treeSize(int depth) {
+        return 1 << (depth +1);
+    }
+
+    void clearLookupTree(){
+        Arrays.fill(bisectKeys, null);
     }
 
     public void writeTo(VirtualMutableBlobStore metadataBlobs) {
@@ -211,6 +274,14 @@ public class LookupMetadata {
 
     public int getNumKeys() {
         return numKeys;
+    }
+
+    public long getHitCount() {
+        return hitCount.sum();
+    }
+
+    public long getMissCount(){
+        return missCount.sum();
     }
 
     public int[] getKeyStorageOrder() {

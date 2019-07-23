@@ -1,9 +1,7 @@
 package com.upserve.uppend.metrics;
 
 import com.codahale.metrics.MetricRegistry;
-import com.github.benmanes.caffeine.cache.stats.CacheStats;
 import com.upserve.uppend.*;
-import com.upserve.uppend.lookup.FlushStats;
 import org.junit.*;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
@@ -45,7 +43,6 @@ public class CounterStoreWithMetricsTest {
     public void testGetName() {
         assertEquals("testStore", instance.getName());
     }
-
 
     @Test
     public void testIncrement() {
@@ -156,34 +153,6 @@ public class CounterStoreWithMetricsTest {
     public void testDeregister() {
         instance.deregister();
         verify(store).deregister();
-    }
-
-    @Test
-    public void testGetFlushStats() {
-        FlushStats v = new FlushStats(0, 0);
-        when(store.getFlushStats()).thenReturn(v);
-        assertEquals(v, instance.getFlushStats());
-    }
-
-    @Test
-    public void testGetKeyPageCacheStats() {
-        CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
-        when(store.getKeyPageCacheStats()).thenReturn(v);
-        assertEquals(v, instance.getKeyPageCacheStats());
-    }
-
-    @Test
-    public void testGetLookupKeyCacheStats() {
-        CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
-        when(store.getLookupKeyCacheStats()).thenReturn(v);
-        assertEquals(v, instance.getLookupKeyCacheStats());
-    }
-
-    @Test
-    public void testGetMetadataCacheStats() {
-        CacheStats v = new CacheStats(0, 0, 0, 0, 0, 0, 0);
-        when(store.getMetadataCacheStats()).thenReturn(v);
-        assertEquals(v, instance.getMetadataCacheStats());
     }
 
     @Test
