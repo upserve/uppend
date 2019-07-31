@@ -65,7 +65,6 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold, int reloadInterval, boolean readOnly) {
-
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
 
@@ -367,13 +366,17 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     LookupMetadata loadMetadata() {
+        return loadMetadata(null);
+    }
+
+    LookupMetadata loadMetadata(LookupMetadata prev) {
         if (readOnly) {
             try {
                 return LookupMetadata.open(
                         getMetadataBlobs(),
                         getMetaDataGeneration(),
-                        getMetaMissCount(),
-                        getMetaHitCount()
+                        getMetaMissCount(prev == null ? 0 : prev.missCount.longValue()),
+                        getMetaHitCount(prev == null ? 0 : prev.hitCount.longValue())
                 );
             } catch (IllegalStateException e) {
                 // Try again and let the exception bubble if it fails
@@ -381,8 +384,8 @@ public class LookupData implements Flushable, Trimmable {
                 return LookupMetadata.open(
                         getMetadataBlobs(),
                         getMetaDataGeneration(),
-                        getMetaMissCount(),
-                        getMetaHitCount()
+                        getMetaMissCount(prev == null ? 0 : prev.missCount.longValue()),
+                        getMetaHitCount(prev == null ? 0 : prev.hitCount.longValue())
                 );
             }
         } else {
@@ -419,12 +422,26 @@ public class LookupData implements Flushable, Trimmable {
         return metaDataGeneration.get();
     }
 
+    private static LongAdder longAdderWithInitialValue(long initialValue) {
+        LongAdder la = new LongAdder();
+        la.add(initialValue);
+        return la;
+    }
+
     private LongAdder getMetaHitCount() {
-        return Optional.ofNullable(atomicMetadataRef.get()).map(md -> md.hitCount).orElse(new LongAdder());
+        return getMetaHitCount(0l);
+    }
+
+    private LongAdder getMetaHitCount(long initialValue) {
+        return Optional.ofNullable(atomicMetadataRef.get()).map(md -> md.hitCount).orElse(longAdderWithInitialValue(initialValue));
     }
 
     private LongAdder getMetaMissCount() {
-        return Optional.ofNullable(atomicMetadataRef.get()).map(md -> md.missCount).orElse(new LongAdder());
+        return getMetaMissCount(0l);
+    }
+
+    private LongAdder getMetaMissCount(long initialValue) {
+        return Optional.ofNullable(atomicMetadataRef.get()).map(md -> md.missCount).orElse(longAdderWithInitialValue(initialValue));
     }
 
     /**
@@ -582,7 +599,7 @@ public class LookupData implements Flushable, Trimmable {
                 boolean luckyMe = reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
 
                 if (luckyMe) {
-                    result = loadMetadata();
+                    result = loadMetadata(result);
                     timeStampedMetadata.set(result, stamp[0] + reloadInterval);
                 }
             }
