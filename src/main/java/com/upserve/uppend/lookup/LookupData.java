@@ -388,10 +388,8 @@ public class LookupData implements Flushable, Trimmable {
                         prevHitCount
                 );
             }
-            else {
-                log.warn("getMetaData failed for read write store - attempting to repair it!", e);
-                return repairMetadata(prevMissCount, prevHitCount);
-            }
+            log.warn("getMetaData failed for read write store - attempting to repair it!", e);
+            return repairMetadata(prevMissCount, prevHitCount);
         }
     }
 
