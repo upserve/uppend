@@ -366,7 +366,7 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     LookupMetadata loadMetadata() {
-        return loadMetadata();
+        return loadMetadata(new LongAdder(), new LongAdder());
     }
 
     LookupMetadata loadMetadata(LongAdder prevMissCount, LongAdder prevHitCount) {
