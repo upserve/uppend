@@ -492,6 +492,10 @@ public class LookupData implements Flushable, Trimmable {
         log.debug("flushed keys");
     }
 
+    void generateMetaData(LookupMetadata currentMetadata) {
+        generateMetaData(currentMetadata, new LongAdder(), new LongAdder());
+    }
+
     void generateMetaData(LookupMetadata currentMetadata, LongAdder prevMissCount, LongAdder prevHitCount) {
         int[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
 
@@ -589,7 +593,7 @@ public class LookupData implements Flushable, Trimmable {
             LookupMetadata md = atomicMetadataRef.get();
             flushWriteCache(md);
 
-            generateMetaData(md, new LongAdder(), new LongAdder());
+            generateMetaData(md);
 
             flushCache.clear();
 
