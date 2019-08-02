@@ -345,14 +345,7 @@ public class LookupData implements Flushable, Trimmable {
 
     public int getFlushCount() { return flushCounter; }
 
-    // i was going to start counting calls to findKey
-    // not sure if a LongAdder is needed or if I can use just a long
-    //public static LongAdder findKeyCalls_la = new LongAdder();
-    //public static long findKeyCalls_l = 0l;
-
     private Long timeFindKey(LookupMetadata md, VirtualLongBlobStore longBlobStore, LookupKey key) {
-        //findKeyCalls_la.increment();
-        //findKeyCalls_l++; // not an atomic operation!
         long tic = -System.nanoTime();
         Long val = md.findKey(longBlobStore, key);
         findKeyTimer.add(System.nanoTime() + tic);
@@ -402,6 +395,7 @@ public class LookupData implements Flushable, Trimmable {
                         prevHitCount
                 );
             }
+            // `else` statement not needed because of the return statement above
             log.warn("getMetaData failed for read write store - attempting to repair it!", e);
             return repairMetadata(prevMissCount, prevHitCount);
         }
@@ -479,7 +473,6 @@ public class LookupData implements Flushable, Trimmable {
                         // Check the metadata generation of the LookupKeys
                         if (key.getMetaDataGeneration() != currentMetadataGeneration) {
                             // Update the index of the key for the current metadata generation for so we can insert it correctly
-                            //currentMetadata.findKey(keyLongBlobs, key);
                             timeFindKey(currentMetadata, keyLongBlobs, key);
                         }
                     })
