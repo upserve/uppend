@@ -345,6 +345,20 @@ public class LookupData implements Flushable, Trimmable {
 
     public int getFlushCount() { return flushCounter; }
 
+    // i was going to start counting calls to findKey
+    // not sure if a LongAdder is needed or if I can use just a long
+    //public static LongAdder findKeyCalls_la = new LongAdder();
+    //public static long findKeyCalls_l = 0l;
+
+    private Long timeFindKey(LookupMetadata md, VirtualLongBlobStore longBlobStore, LookupKey key) {
+        //findKeyCalls_la.increment();
+        //findKeyCalls_l++; // not an atomic operation!
+        long tic = -System.nanoTime();
+        Long val = md.findKey(longBlobStore, key);
+        findKeyTimer.add(System.nanoTime() + tic);
+        return val;
+    }
+
     /**
      * Load a key from cached pages
      *
@@ -359,12 +373,12 @@ public class LookupData implements Flushable, Trimmable {
             }
         }
         LookupMetadata md = getMetadata();
-        long tic = -System.nanoTime();
-        Long val = md.findKey(keyLongBlobs, key);
-        findKeyTimer.add(System.nanoTime() + tic);
-        return val;
+        return timeFindKey(md, keyLongBlobs, key);
     }
 
+    // Allows calling of loadMetaData with default-0 LongAdders.
+    // This is used in the constructor of this class and also
+    // in the test class.
     LookupMetadata loadMetadata() {
         return loadMetadata(new LongAdder(), new LongAdder());
     }
@@ -465,7 +479,8 @@ public class LookupData implements Flushable, Trimmable {
                         // Check the metadata generation of the LookupKeys
                         if (key.getMetaDataGeneration() != currentMetadataGeneration) {
                             // Update the index of the key for the current metadata generation for so we can insert it correctly
-                            currentMetadata.findKey(keyLongBlobs, key);
+                            //currentMetadata.findKey(keyLongBlobs, key);
+                            timeFindKey(currentMetadata, keyLongBlobs, key);
                         }
                     })
                     .forEach(key -> {
@@ -571,6 +586,7 @@ public class LookupData implements Flushable, Trimmable {
                 // a reloadInterval of 0 prevents reloading of the metadata
                 boolean reloadMetadata = !reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
                 if (reloadMetadata) {
+                    log.warn("getMetadata calling loadMetadata");
                     result = loadMetadata(result.missCount, result.hitCount);
                     timeStampedMetadata.set(result, stamp[0] + reloadInterval);
                 }
