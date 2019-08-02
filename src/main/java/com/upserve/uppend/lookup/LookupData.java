@@ -508,7 +508,7 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     void generateMetaData(LookupMetadata currentMetadata) {
-        generateMetaData(currentMetadata, new LongAdder(), new LongAdder());
+        generateMetaData(currentMetadata, currentMetadata.missCount, currentMetadata.hitCount);
     }
 
     void generateMetaData(LookupMetadata currentMetadata, LongAdder prevMissCount, LongAdder prevHitCount) {
