@@ -38,7 +38,7 @@ public class LookupData implements Flushable, Trimmable {
 
     // Timestamped references for readers
     private final AtomicStampedReference<LookupMetadata> timeStampedMetadata;
-    private final AtomicInteger reloadStamp;
+    /*private final*/ AtomicInteger reloadStamp;  // removed 'private final' to support unit testing
     private final long startTime;
 
     private final boolean readOnly;
@@ -555,7 +555,6 @@ public class LookupData implements Flushable, Trimmable {
         if (readOnly){
             int[] stamp = new int[1];
             LookupMetadata result = timeStampedMetadata.get(stamp);
-
             // Convert millis to seconds
             if (reloadInterval > 0 && ((System.currentTimeMillis() - startTime) / 1000) > stamp[0]){
                 // a reloadInterval of 0 prevents reloading of the metadata
@@ -568,7 +567,6 @@ public class LookupData implements Flushable, Trimmable {
             }
             return result;
         } else {
-
             return atomicMetadataRef.get();
         }
     }
