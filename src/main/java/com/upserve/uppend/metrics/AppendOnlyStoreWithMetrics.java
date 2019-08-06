@@ -184,13 +184,28 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     }
 
     @Override
-    public BlockStats getBlockLongStats() {
-        return store.getBlockLongStats();
+    public BlockedLongMetrics getBlockedLongMetrics() {
+        return store.getBlockedLongMetrics();
     }
 
     @Override
-    public PartitionStats getPartitionStats() {
-        return store.getPartitionStats();
+    public BlobStoreMetrics getBlobStoreMetrics() {
+        return store.getBlobStoreMetrics();
+    }
+
+    @Override
+    public LookupDataMetrics getLookupDataMetrics() {
+        return store.getLookupDataMetrics();
+    }
+
+    @Override
+    public LongBlobStoreMetrics getLongBlobStoreMetrics() {
+        return store.getLongBlobStoreMetrics();
+    }
+
+    @Override
+    public MutableBlobStoreMetrics getMutableBlobStoreMetrics() {
+        return store.getMutableBlobStoreMetrics();
     }
 
     @Override
