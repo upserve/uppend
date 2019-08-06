@@ -3,6 +3,7 @@ package com.upserve.uppend.lookup;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.*;
 import com.upserve.uppend.blobs.*;
+import com.upserve.uppend.metrics.LookupDataMetrics;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -52,23 +53,41 @@ public class LookupData implements Flushable, Trimmable {
 
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
-    private LongAdder findKeyTimer;
-    private int flushCounter;
-    private long flushedKeyCounter;
 
-    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold){
-        return new LookupData(keyLongBlobs, metadataBlobs, flushThreshold, -1, false);
+    final LookupDataMetrics.Adders lookupDataMetricsAdders;
+
+
+    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
+                                          int flushThreshold){
+        return lookupWriter(keyLongBlobs, metadataBlobs, flushThreshold, new LookupDataMetrics.Adders());
     }
 
-    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int reloadInterval){
-        return new LookupData(keyLongBlobs, metadataBlobs, -1, reloadInterval, true);
+    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
+                                          int flushThreshold, LookupDataMetrics.Adders lookupDataMetricsAdders){
+        return new LookupData(
+                keyLongBlobs, metadataBlobs, flushThreshold, -1, false, lookupDataMetricsAdders
+        );
     }
 
-    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold, int reloadInterval, boolean readOnly) {
+    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
+                                          int reloadInterval){
+        return lookupReader(keyLongBlobs, metadataBlobs, reloadInterval, new LookupDataMetrics.Adders());
+    }
+
+    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
+                                          int reloadInterval, LookupDataMetrics.Adders lookupDataMetricsAdders){
+        return new LookupData(
+                keyLongBlobs, metadataBlobs, -1, reloadInterval, true, lookupDataMetricsAdders
+        );
+    }
+
+    private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold,
+                       int reloadInterval, boolean readOnly, LookupDataMetrics.Adders lookupDataMetricsAdders) {
         this.keyLongBlobs = keyLongBlobs;
         this.metadataBlobs = metadataBlobs;
 
         this.readOnly = readOnly;
+        this.lookupDataMetricsAdders = lookupDataMetricsAdders;
 
         this.firstFlush = new AtomicBoolean(true);
         this.firstFlushThreshold = flushThreshold *  (random.nextInt(100) + 25) / 100;
@@ -81,7 +100,6 @@ public class LookupData implements Flushable, Trimmable {
 
         writeCacheCounter = new AtomicInteger();
         metaDataGeneration = new AtomicInteger();
-        findKeyTimer = new LongAdder();
 
         atomicMetadataRef = new AtomicReference<>();
 
@@ -325,31 +343,8 @@ public class LookupData implements Flushable, Trimmable {
         return keyLongBlobs.readLong(keyPosition);
     }
 
-    public long getMetadataLookupMissCount(){
-        return getMetadata().getMissCount();
-    }
-
-    public long getMetadataLookupHitCount(){
-        return getMetadata().getHitCount();
-    }
-
     public long getMetadataSize(){
         return getMetadata().getNumKeys();
-    }
-
-    public long getFindKeyTimer(){
-        return findKeyTimer.sum();
-    }
-
-    public long getFlushedKeyCount() { return flushedKeyCounter; }
-
-    public int getFlushCount() { return flushCounter; }
-
-    private Long timeFindKey(LookupMetadata md, VirtualLongBlobStore longBlobStore, LookupKey key) {
-        long tic = -System.nanoTime();
-        Long val = md.findKey(longBlobStore, key);
-        findKeyTimer.add(System.nanoTime() + tic);
-        return val;
     }
 
     /**
@@ -366,23 +361,20 @@ public class LookupData implements Flushable, Trimmable {
             }
         }
         LookupMetadata md = getMetadata();
-        return timeFindKey(md, keyLongBlobs, key);
+        return md.findKey(keyLongBlobs, key);
     }
 
-    // Allows calling of loadMetaData with default-0 LongAdders.
-    // This is used in the constructor of this class and also
-    // in the test class.
     LookupMetadata loadMetadata() {
-        return loadMetadata(new LongAdder(), new LongAdder());
+        return loadMetadata(null);
     }
 
-    LookupMetadata loadMetadata(LongAdder prevMissCount, LongAdder prevHitCount) {
+    LookupMetadata loadMetadata(LookupMetadata lookupMetadata) {
         try {
             return LookupMetadata.open(
                     getMetadataBlobs(),
                     getMetaDataGeneration(),
-                    prevMissCount,
-                    prevHitCount
+                    lookupMetadata,
+                    lookupDataMetricsAdders
             );
         } catch (IllegalStateException e) {
             if (readOnly) {
@@ -391,29 +383,27 @@ public class LookupData implements Flushable, Trimmable {
                 return LookupMetadata.open(
                         getMetadataBlobs(),
                         getMetaDataGeneration(),
-                        prevMissCount,
-                        prevHitCount
+                        lookupMetadata,
+                        lookupDataMetricsAdders
                 );
             }
             // `else` statement not needed because of the return statement above
             log.warn("getMetaData failed for read write store - attempting to repair it!", e);
-            return repairMetadata(prevMissCount, prevHitCount);
+            return repairMetadata();
         }
     }
 
-    private synchronized LookupMetadata repairMetadata(LongAdder prevMissCount, LongAdder prevHitCount) {
+    private synchronized LookupMetadata repairMetadata() {
         int[] sortedPositions = keyLongBlobs.positionBlobStream()
                 .sorted(Comparator.comparing(entry -> new LookupKey(entry.getValue())))
                 .mapToInt(entry -> entry.getKey().intValue())
                 .toArray();
-        try {
-            int sortedPositionsSize = sortedPositions.length;
-            LookupKey minKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[0]) : null;
-            LookupKey maxKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[sortedPositionsSize - 1]) : null;
-            return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs, metaDataGeneration.incrementAndGet(), prevMissCount, prevHitCount);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Unable to write repaired metadata!", e);
-        }
+
+        int sortedPositionsSize = sortedPositions.length;
+        LookupKey minKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[0]) : null;
+        LookupKey maxKey = sortedPositionsSize > 0 ? readKey((long) sortedPositions[sortedPositionsSize - 1]) : null;
+        return LookupMetadata.generateMetadata(minKey, maxKey, sortedPositions, metadataBlobs,
+                metaDataGeneration.incrementAndGet(), lookupDataMetricsAdders);
     }
 
     private int getMetaDataGeneration() {
@@ -473,7 +463,7 @@ public class LookupData implements Flushable, Trimmable {
                         // Check the metadata generation of the LookupKeys
                         if (key.getMetaDataGeneration() != currentMetadataGeneration) {
                             // Update the index of the key for the current metadata generation for so we can insert it correctly
-                            timeFindKey(currentMetadata, keyLongBlobs, key);
+                            currentMetadata.findKey(keyLongBlobs, key);
                         }
                     })
                     .forEach(key -> {
@@ -501,17 +491,13 @@ public class LookupData implements Flushable, Trimmable {
     }
 
     void generateMetaData(LookupMetadata currentMetadata) {
-        generateMetaData(currentMetadata, currentMetadata.missCount, currentMetadata.hitCount);
-    }
-
-    void generateMetaData(LookupMetadata currentMetadata, LongAdder prevMissCount, LongAdder prevHitCount) {
         int[] currentKeySortOrder = currentMetadata.getKeyStorageOrder();
 
         int flushSize = flushCache.size();
 
         // Increment the stats here
-        flushedKeyCounter += flushSize;
-        flushCounter ++;
+        lookupDataMetricsAdders.flushedKeyCounter.add(flushSize);
+        lookupDataMetricsAdders.flushCounter.increment();
 
         // Update the counter and flush again if there are still more entries in the write cache than the threshold
         if (flushThreshold != -1 && writeCacheCounter.addAndGet(-flushSize) > flushThreshold) {
@@ -552,21 +538,17 @@ public class LookupData implements Flushable, Trimmable {
 
         log.debug("Finished creating sortOrder");
 
-        try {
-            atomicMetadataRef.set(
-                    LookupMetadata
-                            .generateMetadata(
-                                    minKey,
-                                    maxKey,
-                                    newKeySortOrder,
-                                    metadataBlobs,
-                                    metaDataGeneration.incrementAndGet(),
-                                    prevMissCount,
-                                    prevHitCount)
-            );
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to write new metadata!", e);
-        }
+        atomicMetadataRef.set(
+                LookupMetadata
+                        .generateMetadata(
+                                minKey,
+                                maxKey,
+                                newKeySortOrder,
+                                metadataBlobs,
+                                metaDataGeneration.incrementAndGet(),
+                                lookupDataMetricsAdders
+                        )
+        );
     }
 
     protected LookupMetadata getMetadata() {
@@ -575,12 +557,12 @@ public class LookupData implements Flushable, Trimmable {
             LookupMetadata result = timeStampedMetadata.get(stamp);
 
             // Convert millis to seconds
-            if (((System.currentTimeMillis() - startTime) / 1000) > stamp[0]){
+            if (reloadInterval > 0 && ((System.currentTimeMillis() - startTime) / 1000) > stamp[0]){
                 // a reloadInterval of 0 prevents reloading of the metadata
-                boolean reloadMetadata = !reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
+                boolean reloadMetadata = reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
                 if (reloadMetadata) {
-                    log.warn("getMetadata calling loadMetadata");
-                    result = loadMetadata(result.missCount, result.hitCount);
+                    log.warn("Loading metadata");
+                    result = loadMetadata(result);
                     timeStampedMetadata.set(result, stamp[0] + reloadInterval);
                 }
             }
@@ -596,6 +578,7 @@ public class LookupData implements Flushable, Trimmable {
         if (readOnly) throw new RuntimeException("Can not flush read only LookupData");
 
         if (writeCache.size() > 0) {
+            final long tic = System.nanoTime();
             flushing.set(true);
             log.debug("starting flush");
 
@@ -607,6 +590,7 @@ public class LookupData implements Flushable, Trimmable {
             flushCache.clear();
 
             log.debug("flushed");
+            lookupDataMetricsAdders.flushTimer.add(System.nanoTime() - tic);
         }
         flushing.set(false);
     }
@@ -616,11 +600,11 @@ public class LookupData implements Flushable, Trimmable {
         if (!readOnly) {
             flush();
         } else {
-            LookupMetadata result = timeStampedMetadata.get(new int[1]);
-            int stamp = (int) ((System.currentTimeMillis() - startTime) / 1000) - 1;
-            // set to elapsed time minus one - it will reload next time it is used.
-            timeStampedMetadata.set(result, stamp);
-            reloadStamp.set(stamp);
+            int[] stamp = new int[1];
+            LookupMetadata result = timeStampedMetadata.get(stamp);
+            result = loadMetadata(result);
+            timeStampedMetadata.set(result, stamp[0]);
+            reloadStamp.set(stamp[0]);
         }
     }
 

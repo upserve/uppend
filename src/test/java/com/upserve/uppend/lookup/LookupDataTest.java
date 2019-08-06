@@ -244,15 +244,13 @@ public class LookupDataTest {
 
     @Test
     public void testLoadReadOnlyMetadata() {
-        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
 
         mutableBlobStore.write(0, Ints.toByteArray(50));
         mutableBlobStore.write(4, Ints.toByteArray(284482732)); // Check checksum
-
         thrown.expect(IllegalStateException.class);
         thrown.expectMessage("Checksum did not match for the requested blob");
 
-        data.getValue(new LookupKey("foobar"));
+        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
     }
 
     @Test
