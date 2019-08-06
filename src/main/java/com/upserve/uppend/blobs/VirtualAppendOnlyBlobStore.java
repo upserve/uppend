@@ -1,5 +1,6 @@
 package com.upserve.uppend.blobs;
 
+import com.upserve.uppend.metrics.BlobStoreMetrics;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -7,14 +8,27 @@ import java.lang.invoke.MethodHandles;
 public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
+    final BlobStoreMetrics.Adders blobStoreMetricsAdders;
+
+
     public VirtualAppendOnlyBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
+        this(virtualFileNumber, virtualPageFile, new BlobStoreMetrics.Adders());
+    }
+
+    public VirtualAppendOnlyBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile, BlobStoreMetrics.Adders blobStoreMetricsAdders) {
         super(virtualFileNumber, virtualPageFile);
+        this.blobStoreMetricsAdders = blobStoreMetricsAdders;
     }
 
     public long append(byte[] bytes) {
-        final long pos = appendPosition(recordSize(bytes));
+        final long tic = System.nanoTime();
+        final int size = recordSize(bytes);
+        final long pos = appendPosition(size);
         write(pos, byteRecord(bytes));
         if (log.isTraceEnabled()) log.trace("appended {} bytes to {} at pos {}", bytes.length, virtualFileNumber, pos);
+        blobStoreMetricsAdders.appendCounter.increment();
+        blobStoreMetricsAdders.bytesAppended.add(size);
+        blobStoreMetricsAdders.appendTimer.add(System.nanoTime() - tic);
         return pos;
     }
 
@@ -31,12 +45,16 @@ public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
      * @return the byte array blob
      */
     public byte[] read(long pos) {
+        final long tic = System.nanoTime();
         if (log.isTraceEnabled()) log.trace("read mapped from  {} @ {}", virtualFileNumber, pos);
         int size = readInt(pos);
         byte[] buf = new byte[size];
         super.read(pos + 4, buf);
-
         if (log.isTraceEnabled()) log.trace("read mapped {} bytes from {} @ {}", size, virtualFileNumber, pos);
+
+        blobStoreMetricsAdders.readCounter.increment();
+        blobStoreMetricsAdders.bytesRead.add(recordSize(buf));
+        blobStoreMetricsAdders.readTimer.add(System.nanoTime() - tic);
         return buf;
     }
 
