@@ -132,6 +132,7 @@ public class CommandBenchmark implements Callable<Void> {
                 .withBlobPageSize(blobPageSize)
                 .withLookupPageSize(keyPageSize)
                 .withMetadataPageSize(metadataPageSize)
+                //.withMetadataTTL(30) // To run with a metadata expiration to force reload of new keys
                 .withFlushThreshold(flushThreshold)
                 .withFlushDelaySeconds(flushDelay)
                 .withStoreMetrics(metrics);
