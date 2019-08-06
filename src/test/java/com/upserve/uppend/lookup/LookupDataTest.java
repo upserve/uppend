@@ -6,9 +6,6 @@ import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
-import org.junit.runner.RunWith;
-import org.mockito.Mockito;
-import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -18,10 +15,7 @@ import java.util.function.Function;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
-@RunWith(MockitoJUnitRunner.class)
 public class LookupDataTest {
     private static final int RELOAD_INTERVAL = -1;
     private static final int FLUSH_THRESHOLD = -1;
@@ -329,16 +323,20 @@ public class LookupDataTest {
 
     @Test
     public void testGetMetadataShouldNotLoadMetada() {
-        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL));
-        data.getMetadata();  // returns a LookupMetadata, but that value is irrelevant here
-        Mockito.verify(data, never()).loadMetadata();
+        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
+        LookupMetadata lmd1 = data.getMetadata();
+        data.startTime -= 60_000;
+        LookupMetadata lmd2 = data.getMetadata();
+        assertEquals(lmd1, lmd2);
     }
 
     @Test
     public void testGetMetadataShouldLoadMetada() {
-        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL));
-        data.reloadStamp.set(1);
-        data.getMetadata();  // returns a LookupMetadata, but that value is irrelevant here
-        Mockito.verify(data).loadMetadata(any(), any());
+        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, 5);
+        LookupMetadata lmd1 = data.getMetadata();
+        data.startTime -= 60_000;
+        data.reloadStamp.set(10);
+        LookupMetadata lmd2 = data.getMetadata();
+        assertNotEquals(lmd1, lmd2);
     }
 }
