@@ -208,6 +208,7 @@ public class FileStoreTest {
         writer.append("foo", "bar", "abc".getBytes());
         writer.flush();
 
+        // The first time we load a partition it will get the latest flush keys.
         assertEquals(
                 Collections.singletonList(ByteBuffer.wrap("abc".getBytes())),
                 reader.read("foo","bar").map(ByteBuffer::wrap).collect(Collectors.toList())
@@ -220,12 +221,14 @@ public class FileStoreTest {
         writer.append("foo", "baz", "def".getBytes());
         writer.flush();
 
+        // The second time we read a partition, it will not see new keys till the metadataTTL expires
         assertEquals(0, reader.read("foo","baz").count());
         assertEquals(
                 Collections.singletonList(ByteBuffer.wrap("abc".getBytes())),
                 reader.scan().flatMap(Map.Entry::getValue).map(ByteBuffer::wrap).collect(Collectors.toList())
         );
 
+        // Or we force the metadata to reload (check LookupData::trim!)!
         reader.trim();
 
         assertEquals(

@@ -1,5 +1,7 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.metrics.*;
+
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
@@ -7,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * Reader interface to an append-only store
  */
-public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable {
+public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable, KeyStoreMetrics, AppendStoreMetrics {
     /**
      * Read byte arrays that have been stored under a given partition and key in
      * parallel
@@ -65,10 +67,6 @@ public interface ReadOnlyAppendOnlyStore extends Trimmable, AutoCloseable {
      * @param callback function to call for each key and stream of values
      */
     void scan(BiConsumer<String, Stream<byte[]>> callback);
-
-    BlockStats getBlockLongStats();
-
-    PartitionStats getPartitionStats();
 
     long keyCount();
 }

@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.metrics.*;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -14,10 +15,10 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
     private final Function<String, CounterStorePartition> createPartitionFunction;
 
     FileCounterStore(boolean readOnly, CounterStoreBuilder builder) {
-        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionCount(), readOnly, builder.getStoreName());
+        super(readOnly, builder);
 
-        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize(), readOnly);
-        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getLookupPageSize());
+        openPartitionFunction = partitionKey -> CounterStorePartition.openPartition(partitionsDir, partitionKey, readOnly, builder);
+        createPartitionFunction = partitionKey -> CounterStorePartition.createPartition(partitionsDir, partitionKey, builder);
     }
 
     @Override
@@ -82,4 +83,19 @@ public class FileCounterStore extends FileStore<CounterStorePartition> implement
         return createPartitionFunction;
     }
 
+
+    @Override
+    public LookupDataMetrics getLookupDataMetrics(){
+        return super.getLookupDataMetrics();
+    }
+
+    @Override
+    public LongBlobStoreMetrics getLongBlobStoreMetrics(){
+        return super.getLongBlobStoreMetrics();
+    }
+
+    @Override
+    public MutableBlobStoreMetrics getMutableBlobStoreMetrics(){
+        return super.getMutableBlobStoreMetrics();
+    }
 }

@@ -16,9 +16,9 @@ import java.util.stream.*;
 public class AppendStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private final BlockedLongs blocks;
+    final BlockedLongs blocks;
     private final VirtualAppendOnlyBlobStore[] blobs;
-    private final VirtualPageFile blobFile;
+    final VirtualPageFile blobFile;
 
     private static Path blobsFile(Path partitiondDir) {
         return partitiondDir.resolve("blobStore");
@@ -28,60 +28,107 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return partitiondDir.resolve("blockedLongs");
     }
 
-    public static AppendStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize) {
+    public static AppendStorePartition createPartition(Path parentDir, String partition, AppendOnlyStoreBuilder builder) {
+
         Path partitionDir = validatePartition(parentDir, partition);
 
-        BlockedLongs blocks = new BlockedLongs(blocksFile(partitionDir), blockSize, false);
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashCount, blobPageSize, targetBufferSize,false);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize),false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize),false);
+        BlockedLongs blocks = new BlockedLongs(
+                blocksFile(partitionDir),
+                builder.getBlobsPerBlock(),
+                false,
+                builder.getBlockedLongMetricsAdders()
+        );
+        VirtualPageFile blobs = new VirtualPageFile(
+                blobsFile(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getBlobPageSize(),
+                builder.getTargetBufferSize(),
+                false
+        );
+        VirtualPageFile metadata = new VirtualPageFile(
+                metadataPath(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getMetadataPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getMetadataPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()),
+                false
+        );
+        VirtualPageFile keys = new VirtualPageFile(
+                keysPath(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getLookupPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getLookupPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                false
+        );
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, hashCount, flushThreshold, reloadInterval, false);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, false, builder);
     }
 
-    public static AppendStorePartition openPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int blockSize, int blobPageSize, int keyPageSize, boolean readOnly) {
+    public static AppendStorePartition openPartition(Path parentDir, String partition, boolean readOnly, AppendOnlyStoreBuilder builder) {
         validatePartition(partition);
         Path partitionDir = parentDir.resolve(partition);
 
         if (!(Files.exists(blocksFile(partitionDir)) && Files.exists(metadataPath(partitionDir))
                 && Files.exists(keysPath(partitionDir)) && Files.exists(blobsFile(partitionDir)))) return null;
 
-        BlockedLongs blocks = new BlockedLongs(blocksFile(partitionDir), blockSize, readOnly);
+        BlockedLongs blocks = new BlockedLongs(
+                blocksFile(partitionDir),
+                builder.getBlobsPerBlock(),
+                readOnly,
+                builder.getBlockedLongMetricsAdders()
+        );
 
-        VirtualPageFile blobs = new VirtualPageFile(blobsFile(partitionDir), hashCount, blobPageSize, targetBufferSize, readOnly);
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize), readOnly);
+        VirtualPageFile blobs = new VirtualPageFile(
+                blobsFile(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getBlobPageSize(),
+                builder.getTargetBufferSize(),
+                readOnly
+        );
+        VirtualPageFile metadata = new VirtualPageFile(
+                metadataPath(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getMetadataPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getMetadataPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                readOnly
+        );
+        VirtualPageFile keys = new VirtualPageFile(
+                keysPath(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getLookupPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getLookupPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                readOnly
+        );
 
-        return new AppendStorePartition(keys, metadata, blobs, blocks, hashCount, flushThreshold, reloadInterval, readOnly);
+        return new AppendStorePartition(keys, metadata, blobs, blocks, readOnly, builder);
     }
 
-    PartitionStats getPartitionStats(){
-        LongSummaryStatistics metadataStats = Arrays.stream(lookups)
-                .mapToLong(LookupData::getMetadataSize)
-                //.filter(val -> val > 0)
-                .summaryStatistics();
-
-        return new PartitionStats(metadataBlobFile.getAllocatedPageCount(),
-                longKeyFile.getAllocatedPageCount(),
-                blobFile.getAllocatedPageCount(),
-                Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupMissCount).sum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getMetadataLookupHitCount).sum(),
-                metadataStats.getSum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getFindKeyTimer).sum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getFlushedKeyCount).sum(),
-                Arrays.stream(lookups).mapToLong(LookupData::getFlushCount).sum(),
-                metadataStats.getCount(),
-                metadataStats.getMax()
-                );
-    }
-
-    private AppendStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile, BlockedLongs blocks, int hashCount, int flushThreshold, int reloadInterval, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, hashCount, flushThreshold, reloadInterval, readOnly);
+    private AppendStorePartition(
+            VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, VirtualPageFile blobsFile,
+            BlockedLongs blocks, boolean readOnly, AppendOnlyStoreBuilder builder) {
+        super(longKeyFile, metadataBlobFile, readOnly, builder);
 
         this.blocks = blocks;
         this.blobFile = blobsFile;
+
         blobs = IntStream.range(0, hashCount)
-                .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(virtualFileNumber, blobsFile))
+                .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(
+                        virtualFileNumber, blobsFile, builder.getBlobStoreMetricsAdders())
+                )
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
     }
 
@@ -145,10 +192,6 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 .parallel()
                 .boxed()
                 .flatMap(virtualFileNumber -> lookups[virtualFileNumber].keys().map(LookupKey::string));
-    }
-
-    BlockStats blockedLongStats() {
-        return blocks.stats();
     }
 
     void clear() throws IOException {
