@@ -37,9 +37,9 @@ public class LookupData implements Flushable, Trimmable {
     private AtomicReference<LookupMetadata> atomicMetadataRef;
 
     // Timestamped references for readers
-    private final AtomicStampedReference<LookupMetadata> timeStampedMetadata;
-    /*private final*/ AtomicInteger reloadStamp;  // removed 'private final' in order to support unit testing
-    /*private final*/ long startTime;
+    final AtomicStampedReference<LookupMetadata> timeStampedMetadata; // removed 'private' to support unit testing
+    final AtomicInteger reloadStamp; // removed 'private' to support unit testing
+    private final long startTime;
 
     private final boolean readOnly;
 
@@ -81,6 +81,17 @@ public class LookupData implements Flushable, Trimmable {
         );
     }
 
+    /**
+     * The Constructor (TM).
+     *
+     * @param keyLongBlobs storage for keys and associated long values
+     * @param metadataBlobs lexically sorted key index
+     * @param flushThreshold number of keys that trigger scheduling of flush; use n == -1 to disable
+     * @param reloadInterval (for read-only mode) number of seconds to metadata to expire, reload is immediate for
+     *                       the first thread that hits it; use n <= 0 to disable
+     * @param readOnly a very self-descriptive boolean value
+     * @param lookupDataMetricsAdders thread-safe timing and metrics container
+     */
     private LookupData(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs, int flushThreshold,
                        int reloadInterval, boolean readOnly, LookupDataMetrics.Adders lookupDataMetricsAdders) {
         this.keyLongBlobs = keyLongBlobs;
@@ -556,9 +567,9 @@ public class LookupData implements Flushable, Trimmable {
             int[] stamp = new int[1];
             LookupMetadata result = timeStampedMetadata.get(stamp);
             // Convert millis to seconds
-            if (reloadInterval > 0 && ((System.currentTimeMillis() - startTime) / 1000) > stamp[0]){
+            if (reloadInterval > 0 && (System.currentTimeMillis() - startTime / 1000) > stamp[0]){
                 // a reloadInterval of 0 prevents reloading of the metadata
-                boolean reloadMetadata = !reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
+                boolean reloadMetadata = reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
                 if (reloadMetadata) {
                     log.warn("Loading metadata");
                     result = loadMetadata(result);

@@ -6,6 +6,9 @@ import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.junit.*;
 import org.junit.rules.ExpectedException;
+import org.junit.runner.RunWith;
+import org.mockito.Mockito;
+import org.mockito.junit.MockitoJUnitRunner;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -15,7 +18,11 @@ import java.util.function.Function;
 import java.util.stream.*;
 
 import static org.junit.Assert.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
+@RunWith(MockitoJUnitRunner.class)
 public class LookupDataTest {
     private static final int RELOAD_INTERVAL = -1;
     private static final int FLUSH_THRESHOLD = -1;
@@ -322,21 +329,81 @@ public class LookupDataTest {
     }
 
     @Test
-    public void testGetMetadataShouldNotLoadMetada() {
-        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL);
+    public void testGetMetadataShouldNotLoadMetada_1() {
+        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL));
+        int[] stamp = new int[1];
+        LookupMetadata expected = data.timeStampedMetadata.get(stamp);
+        data.timeStampedMetadata.set(expected, 5);
         LookupMetadata lmd1 = data.getMetadata();
-        data.startTime -= 60_000;
-        LookupMetadata lmd2 = data.getMetadata();
-        assertEquals(lmd1, lmd2);
+        assertTrue(expected == lmd1);
+        Mockito.verify(data, never()).loadMetadata();
     }
 
     @Test
-    public void testGetMetadataShouldLoadMetada() {
-        LookupData data = LookupData.lookupReader(keyBlobStore, mutableBlobStore, 5);
+    // The reload interval is set to 5s but the data is set to be reloaded at 10s, so the reload will
+    // not happen because not enough actual time has elapsed (this test runs in mere milliseconds).
+    public void testGetMetadataShouldNotLoadMetada_2() {
+        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 5));
+        int[] stamp = new int[1];
+        LookupMetadata expected = data.timeStampedMetadata.get(stamp);
+        data.timeStampedMetadata.set(expected, 10);
         LookupMetadata lmd1 = data.getMetadata();
-        data.startTime -= 60_000;
-        data.reloadStamp.set(10);
+        assertTrue(expected ==  lmd1);
+        Mockito.verify(data, never()).loadMetadata();
+    }
+
+    @Test
+    // The reload interval is set to 20s and the last reload time is set to -10s (an absolutely fake time)
+    // in order to force the loadMetadata method to be called.
+    public void testGetMetadataShouldLoadMetada_1() {
+        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 20));
+        int[] stamp = new int[1];
+        LookupMetadata expected = data.timeStampedMetadata.get(stamp);
+        data.reloadStamp.set(-10);
+        data.timeStampedMetadata.set(expected, -10);
+        LookupMetadata lmd1 = data.getMetadata();
+        assertFalse("with no data in the mutableBlobStore, getMetadata returns a new instance", expected == lmd1);
         LookupMetadata lmd2 = data.getMetadata();
-        assertNotEquals(lmd1, lmd2);
+        assertTrue(lmd1 == lmd2);
+        Mockito.verify(data, times(1)).loadMetadata(any());
+    }
+
+    @Test
+    public void testGetMetadataShouldLoadMetada_2() {
+        LookupData dataWriter = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
+        // add a key & value to the blob store
+        final LookupKey key1 = new LookupKey("mykey1");
+        dataWriter.put(key1, 80);
+        dataWriter.flush();
+
+        LookupData dataReader = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 20));
+        int[] stamp = new int[1];
+        LookupMetadata expected = dataReader.timeStampedMetadata.get(stamp);
+        dataReader.reloadStamp.set(-10);
+        dataReader.timeStampedMetadata.set(expected, -10);
+        LookupMetadata lmd1 = dataReader.getMetadata();
+
+        assertTrue("with data in the mutableBlobStore, getMetadata should not return a new instance",
+                expected == lmd1);
+        assertEquals(lmd1.getNumKeys(), 1);
+        Mockito.verify(dataReader, times(1)).loadMetadata(any());
+
+        // add a second key & value to the blob store
+        final LookupKey key2 = new LookupKey("mykey2");
+        dataWriter.put(key2, 80);
+        dataWriter.flush();
+
+        dataReader.reloadStamp.set(-10);
+        dataReader.timeStampedMetadata.set(lmd1, -10);
+        LookupMetadata lmd2 = dataReader.getMetadata();
+
+        assertTrue("a new key has been added, so the LookupMetadata instance should be new",
+                lmd2 != lmd1);
+        assertEquals(lmd2.getNumKeys(), 2);
+        Mockito.verify(dataReader, times(2)).loadMetadata(any());
+
+        LookupMetadata lmd3 = dataReader.getMetadata();
+        assertTrue("nothing has changed since the last call to getMetadata so the instance should not change",
+                lmd2 == lmd3);
     }
 }
