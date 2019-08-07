@@ -329,61 +329,84 @@ public class LookupDataTest {
     }
 
     @Test
-    public void testGetMetadataShouldNotLoadMetada_1() {
+    public void testGetMetadataReloadDeactivated() {
         LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, RELOAD_INTERVAL));
         int[] stamp = new int[1];
         LookupMetadata expected = data.timeStampedMetadata.get(stamp);
-        data.timeStampedMetadata.set(expected, 5);
         LookupMetadata lmd1 = data.getMetadata();
         assertTrue(expected == lmd1);
         Mockito.verify(data, never()).loadMetadata();
     }
 
     @Test
-    // The reload interval is set to 5s but the data is set to be reloaded at 10s, so the reload will
-    // not happen because not enough actual time has elapsed (this test runs in mere milliseconds).
-    public void testGetMetadataShouldNotLoadMetada_2() {
+    public void testGetMetadataShouldReload() {
         LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 5));
         int[] stamp = new int[1];
         LookupMetadata expected = data.timeStampedMetadata.get(stamp);
-        data.timeStampedMetadata.set(expected, 10);
-        LookupMetadata lmd1 = data.getMetadata();
-        assertTrue(expected ==  lmd1);
-        Mockito.verify(data, never()).loadMetadata();
-    }
 
-    @Test
-    // The reload interval is set to 20s and the last reload time is set to -10s (an absolutely fake time)
-    // in order to force the loadMetadata method to be called.
-    public void testGetMetadataShouldLoadMetada_1() {
-        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 20));
-        int[] stamp = new int[1];
-        LookupMetadata expected = data.timeStampedMetadata.get(stamp);
-        data.reloadStamp.set(-10);
-        data.timeStampedMetadata.set(expected, -10);
+        // Set timestamp and reload concurrent-accesss value for compare and set operation
+        data.timeStampedMetadata.set(expected, -5);
+        data.reloadStamp.set(-5);
+
+        // the metadata is reloaded
         LookupMetadata lmd1 = data.getMetadata();
-        assertFalse("with no data in the mutableBlobStore, getMetadata returns a new instance",
-                expected == lmd1);
+        assertTrue(expected !=  lmd1);
+
+        // Don't reload again - timestamp not expired
+        LookupMetadata lmd2 = data.getMetadata();
+        assertTrue("Timestamp not expired, so instances should be identical", lmd1 == lmd2);
         Mockito.verify(data, times(1)).loadMetadata(any());
     }
 
     @Test
-    public void testGetMetadataShouldLoadMetada_2() {
+    public void testGetMetadataShouldNotReload() {
+        LookupData data = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 5));
+        int[] stamp = new int[1];
+        LookupMetadata expected = data.timeStampedMetadata.get(stamp);
+
+        // Timestamp not expired
+        LookupMetadata lmd0 = data.getMetadata();
+        assertTrue("Timestamp not expired, so LookupMetadata instances should be identical",
+                expected == lmd0);
+
+        // Set the timestamp to be expired but leave the concurrent-access value so the compare and set fails
+        data.timeStampedMetadata.set(expected, -5);
+
+        // The lookup metadata is not reloaded
+        LookupMetadata lmd1 = data.getMetadata();
+        assertTrue("Timestamp expired but concurrent-access value not equal to timestamp",
+                expected ==  lmd1);
+        Mockito.verify(data, never()).loadMetadata();
+
+        data.reloadStamp.set(-5);
+        LookupMetadata lmd2 = data.getMetadata();
+        assertTrue("Timestamp expired and concurrent-access value equal to timestamp; LookupMetadata reloaded",
+                lmd2 != expected);
+        Mockito.verify(data, times(1)).loadMetadata(any());
+    }
+
+    @Test
+    public void testGetMetadataIntegration() {
+        // Integration test with actual flushed keys
+
+        // Make a reader with no keys
+        LookupData dataReader = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 20));
+        int[] stamp = new int[1];
+        LookupMetadata lmd0 = dataReader.timeStampedMetadata.get(stamp);
+        assertEquals(0, lmd0.getNumKeys());
+
+        // Make a writer and add a key
         LookupData dataWriter = LookupData.lookupWriter(keyBlobStore, mutableBlobStore, FLUSH_THRESHOLD);
-        // add a key & value to the blob store
         final LookupKey key1 = new LookupKey("mykey1");
         dataWriter.put(key1, 80);
         dataWriter.flush();
 
-        LookupData dataReader = Mockito.spy(LookupData.lookupReader(keyBlobStore, mutableBlobStore, 20));
-        int[] stamp = new int[1];
-        LookupMetadata expected = dataReader.timeStampedMetadata.get(stamp);
+        // Expire the reader metadata
         dataReader.reloadStamp.set(-10);
-        dataReader.timeStampedMetadata.set(expected, -10);
+        dataReader.timeStampedMetadata.set(lmd0, -10);
         LookupMetadata lmd1 = dataReader.getMetadata();
-
-        assertTrue("with data in the mutableBlobStore, getMetadata should not return a new instance",
-                expected == lmd1);
+        assertTrue("with data in the mutableBlobStore, getMetadata should load a new instance",
+                lmd0 != lmd1);
         assertEquals(lmd1.getNumKeys(), 1);
         Mockito.verify(dataReader, times(1)).loadMetadata(any());
 
@@ -392,17 +415,20 @@ public class LookupDataTest {
         dataWriter.put(key2, 80);
         dataWriter.flush();
 
-        dataReader.reloadStamp.set(-10);
-        dataReader.timeStampedMetadata.set(lmd1, -10);
         LookupMetadata lmd2 = dataReader.getMetadata();
+        assertTrue("Metadata is not expired so no reload, instances are the same",lmd2 == lmd1);
 
-        assertTrue("a new key has been added, so the LookupMetadata instance should be new",
-                lmd2 != lmd1);
-        assertEquals(lmd2.getNumKeys(), 2);
-        Mockito.verify(dataReader, times(2)).loadMetadata(any());
-
+        // Expire the timestamp but don't adjust the concurrent-access value
+        dataReader.timeStampedMetadata.set(lmd1, -10);
         LookupMetadata lmd3 = dataReader.getMetadata();
-        assertTrue("nothing has changed since the last call to getMetadata so the instance should not change",
-                lmd2 == lmd3);
+        assertTrue(lmd3 == lmd1);
+
+        // Adjust the concurrent-access value - now it will actually reload and return the new metadata
+        dataReader.reloadStamp.set(-10);
+        LookupMetadata lmd4 = dataReader.getMetadata();
+
+        assertTrue("a new key has been added, so the instance should be new", lmd4 != lmd1);
+        assertEquals(lmd4.getNumKeys(), 2);
+        Mockito.verify(dataReader, times(2)).loadMetadata(any());
     }
 }

@@ -567,11 +567,12 @@ public class LookupData implements Flushable, Trimmable {
             int[] stamp = new int[1];
             LookupMetadata result = timeStampedMetadata.get(stamp);
             // Convert millis to seconds
-            if (reloadInterval > 0 && (System.currentTimeMillis() - startTime / 1000) > stamp[0]){
+            long timeDiff = System.currentTimeMillis() - startTime;
+            if (reloadInterval > 0 && (timeDiff / 1000) > stamp[0]){
                 // a reloadInterval of 0 prevents reloading of the metadata
                 boolean reloadMetadata = reloadStamp.compareAndSet(stamp[0], stamp[0] + reloadInterval);
                 if (reloadMetadata) {
-                    log.warn("Loading metadata");
+                    log.debug("Loading metadata");
                     result = loadMetadata(result);
                     timeStampedMetadata.set(result, stamp[0] + reloadInterval);
                 }
