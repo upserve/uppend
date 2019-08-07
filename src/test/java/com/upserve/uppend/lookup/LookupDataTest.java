@@ -362,9 +362,8 @@ public class LookupDataTest {
         data.reloadStamp.set(-10);
         data.timeStampedMetadata.set(expected, -10);
         LookupMetadata lmd1 = data.getMetadata();
-        assertFalse("with no data in the mutableBlobStore, getMetadata returns a new instance", expected == lmd1);
-        LookupMetadata lmd2 = data.getMetadata();
-        assertTrue(lmd1 == lmd2);
+        assertFalse("with no data in the mutableBlobStore, getMetadata returns a new instance",
+                expected == lmd1);
         Mockito.verify(data, times(1)).loadMetadata(any());
     }
 
