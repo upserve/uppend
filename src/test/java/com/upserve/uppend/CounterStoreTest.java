@@ -217,6 +217,7 @@ public class CounterStoreTest {
 
     @Test
     public void testParallelWriteThenRead() throws Exception {
+        // TODO this test fails intermittently
         final int numKeys = 1000;
         final int totalIncrements = 1_000_000;
         log.info("parallel: starting {} keys, {} total increments", numKeys, totalIncrements);
