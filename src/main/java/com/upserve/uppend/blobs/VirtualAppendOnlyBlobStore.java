@@ -8,8 +8,7 @@ import java.lang.invoke.MethodHandles;
 public class VirtualAppendOnlyBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    final BlobStoreMetrics.Adders blobStoreMetricsAdders;
-
+    private final BlobStoreMetrics.Adders blobStoreMetricsAdders;
 
     public VirtualAppendOnlyBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
         this(virtualFileNumber, virtualPageFile, new BlobStoreMetrics.Adders());

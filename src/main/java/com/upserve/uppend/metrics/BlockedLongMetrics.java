@@ -4,7 +4,6 @@ import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 
 public class BlockedLongMetrics implements InternalMetrics<BlockedLongMetrics> {
-
     // Stats summed over all BlockedLongs stores since the Uppend store was opened
     private final long blockAllocationCounter;
     private final long appendCounter;
@@ -15,10 +14,11 @@ public class BlockedLongMetrics implements InternalMetrics<BlockedLongMetrics> {
     private final long readLastCounter;
     private final long readLastTimer;
 
-    // Partition level stats for the life of the blocked long store (Consistent on open)
+    // Partition level stats for the life of the blocked long store (Consistent across reopen)
     private final double avgBlocksAllocated;
     private final long maxBlocksAllocated;
     private final long sumBlocksAllocated;
+
     // For read only views, AppendCounter numbers are approximate, less than actual
     private final double avgAppendCounter;
     private final long maxAppendCounter;

@@ -105,11 +105,11 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     public BlockedLongMetrics getBlockedLongMetrics() {
         LongSummaryStatistics blockedLongAllocatedBlocksStatistics = streamPartitions()
-                .mapToLong(partition -> partition.blocks.getBlockCount())
+                .mapToLong(partition -> partition.getBlocks().getBlockCount())
                 .summaryStatistics();
 
         LongSummaryStatistics blockedLongAppendCountStatistics = streamPartitions()
-                .mapToLong(partition -> partition.blocks.getCount())
+                .mapToLong(partition -> partition.getBlocks().getCount())
                 .summaryStatistics();
 
         return new BlockedLongMetrics(
@@ -120,7 +120,7 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     public BlobStoreMetrics getBlobStoreMetrics() {
         LongSummaryStatistics blobStoreAllocatedPagesStatistics = streamPartitions()
-                .mapToLong(partition -> partition.blobFile.getAllocatedPageCount())
+                .mapToLong(partition -> partition.getBlobFile().getAllocatedPageCount())
                 .summaryStatistics();
 
         return new BlobStoreMetrics(blobStoreMetricsAdders, blobStoreAllocatedPagesStatistics);

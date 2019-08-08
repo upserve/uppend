@@ -16,7 +16,7 @@ import java.util.stream.*;
 public class CounterStorePartition extends Partition {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public static CounterStorePartition createPartition(Path parentDir, String partition, CounterStoreBuilder builder) {
+    static CounterStorePartition createPartition(Path parentDir, String partition, CounterStoreBuilder builder) {
         Path partitionDir = validatePartition(parentDir, partition);
 
         VirtualPageFile metadata = new VirtualPageFile(
@@ -45,7 +45,7 @@ public class CounterStorePartition extends Partition {
         return new CounterStorePartition(keys, metadata, false, builder);
     }
 
-    public static CounterStorePartition openPartition(Path partentDir, String partition, boolean readOnly, CounterStoreBuilder builder) {
+    static CounterStorePartition openPartition(Path partentDir, String partition, boolean readOnly, CounterStoreBuilder builder) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
 
@@ -124,8 +124,8 @@ public class CounterStorePartition extends Partition {
     }
 
     void clear() throws IOException {
-        longKeyFile.close();
-        metadataBlobFile.close();
-        SafeDeleting.removeDirectory(longKeyFile.getFilePath().getParent());
+        getLongKeyFile().close();
+        getMetadataBlobFile().close();
+        SafeDeleting.removeDirectory(getLongKeyFile().getFilePath().getParent());
     }
 }

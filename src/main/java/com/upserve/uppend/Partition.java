@@ -148,9 +148,9 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
         metadataBlobFile.close();
     }
 
-    public VirtualPageFile getLongKeyFile() { return longKeyFile; }
+    VirtualPageFile getLongKeyFile() { return longKeyFile; }
 
-    public VirtualPageFile getMetadataBlobFile() {return metadataBlobFile; }
+    VirtualPageFile getMetadataBlobFile() { return metadataBlobFile; }
 
     private static boolean isValidPartitionCharStart(char c) {
         return Character.isJavaIdentifierPart(c);

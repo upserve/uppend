@@ -19,7 +19,7 @@ public class LongBlobStoreMetrics implements InternalMetrics<LongBlobStoreMetric
     private final long longReads;
     private final long longReadsTimer;
 
-    // Partition level stats for the life of the blocked long store (Consistent on open)
+    // Partition level stats for the life of the longBlob store (Consistent across reopen)
     private final double avgLongBlobStoreAllocatedPages;
     private final long maxLongBlobStoreAllocatedPages;
     private final long sumLongBlobStoreAllocatedPages;

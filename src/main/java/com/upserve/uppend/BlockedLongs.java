@@ -25,6 +25,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int MAX_PAGES = 32 * 1024; // max 4 TB
 
     static final int HEADER_BYTES = 128; // Currently 16 used for file size and append count
+    private static final int posBufPosition = 0;
+    private static final int appendBufPosition = 8;
 
     private final Path file;
 
@@ -34,19 +36,17 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final FileChannel blocks;
     private final MappedByteBuffer[] pages;
 
-    private static final int posBufPosition = 0;
     private final MappedByteBuffer posBuf;
     private final AtomicLong posMem;
 
-    private static final int appendBufPosition = 8;
-    private final MappedByteBuffer appendBuf;
+    private final MappedByteBuffer appendCountBuf;
 
     private final AtomicInteger currentPage;
     private final boolean readOnly;
 
-    final BlockedLongMetrics.Adders blockedLongMetricsAdders;
+    private final BlockedLongMetrics.Adders blockedLongMetricsAdders;
     private long initialAppendCount; // Should be final, but must be able to clear!
-    final LongAdder appendCounter = new LongAdder();
+    private final LongAdder appendCounter = new LongAdder();
 
     BlockedLongs(Path file, int valuesPerBlock, boolean readOnly) {
         this(file, valuesPerBlock, readOnly, new BlockedLongMetrics.Adders());
@@ -128,11 +128,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         }
 
         try {
-            appendBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, appendBufPosition, 8);
+            appendCountBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, appendBufPosition, 8);
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }
-        initialAppendCount = appendBuf.getLong(0);
+        initialAppendCount = appendCountBuf.getLong(0);
 
         posMem = new AtomicLong(pos);
     }
@@ -179,10 +179,10 @@ public class BlockedLongs implements AutoCloseable, Flushable {
      */
     public long getCount() {
         if (readOnly){
-            return appendBuf.getLong(0);
+            return appendCountBuf.getLong(0);
         } else {
             final long count =  initialAppendCount + appendCounter.sum();
-            appendBuf.putLong(0, count);
+            appendCountBuf.putLong(0, count);
             return count;
         }
     }
@@ -404,7 +404,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             }
             posBuf.putLong(0, HEADER_BYTES);
             posMem.set(HEADER_BYTES);
-            appendBuf.putLong(0, 0L);
+            appendCountBuf.putLong(0, 0L);
             initialAppendCount = 0L;
             Arrays.fill(pages, null);
             currentPage.set(0);
@@ -439,8 +439,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         if (readOnly) return;
         log.debug("flushing {}", file);
         posBuf.force();
-        appendBuf.putLong(0, initialAppendCount + appendCounter.sum());
-        appendBuf.force();
+        appendCountBuf.putLong(0, initialAppendCount + appendCounter.sum());
+        appendCountBuf.force();
 
         Arrays.stream(pages)
                 .parallel()

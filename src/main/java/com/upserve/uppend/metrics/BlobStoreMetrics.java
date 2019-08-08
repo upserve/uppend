@@ -4,7 +4,6 @@ import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 
 public class BlobStoreMetrics implements InternalMetrics<BlobStoreMetrics>{
-
     // Stats for summed over all AppendOnlyBlobStore operations since the Uppend store was opened
     private final long bytesAppended;
     private final long appendCounter;
@@ -13,7 +12,7 @@ public class BlobStoreMetrics implements InternalMetrics<BlobStoreMetrics>{
     private final long readCounter;
     private final long readTimer;
 
-    // Partition level stats for the life of the blocked long store (Consistent on open)
+    // Partition level stats for the life of the Blob store (Consistent across  reopen)
     private final double avgBlobStoreAllocatedPages;
     private final long maxBlobStoreAllocatedPages;
     private final long sumBlobStoreAllocatedPages;

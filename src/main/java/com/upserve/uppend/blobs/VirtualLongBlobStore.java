@@ -15,8 +15,7 @@ import java.util.stream.*;
 public class VirtualLongBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    final LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders;
-
+    private final LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders;
 
     public VirtualLongBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile, LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders) {
         super(virtualFileNumber, virtualPageFile);

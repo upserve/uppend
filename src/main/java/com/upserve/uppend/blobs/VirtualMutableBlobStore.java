@@ -12,7 +12,7 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
 
     private static final HashFunction hashFunction = Hashing.murmur3_32();
 
-    final  MutableBlobStoreMetrics.Adders mutableBlobStoreMetricsAdders;
+    private final MutableBlobStoreMetrics.Adders mutableBlobStoreMetricsAdders;
 
     public VirtualMutableBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
         this(virtualFileNumber, virtualPageFile, new MutableBlobStoreMetrics.Adders());
@@ -70,7 +70,7 @@ public class VirtualMutableBlobStore extends VirtualPageFileIO {
         return inputBytes.length + 8;
     }
 
-    static byte[] byteChecksum(byte[] inputBytes) {
+    private static byte[] byteChecksum(byte[] inputBytes) {
         return hashFunction.hashBytes(inputBytes).asBytes();
     }
 

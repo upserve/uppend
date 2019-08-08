@@ -12,7 +12,7 @@ public class MutableBlobStoreMetrics implements InternalMetrics<MutableBlobStore
     private final long readCounter;
     private final long readTimer;
 
-    // Partition level stats for the life of the blocked long store (Consistent on open)
+    // Partition level stats for the life of the mutableBlob store (Consistent across reopen)
     private final double avgMutableBlobStoreAllocatedPages;
     private final long maxMutableBlobStoreAllocatedPages;
     private final long sumMutableBlobStoreAllocatedPages;
@@ -25,7 +25,6 @@ public class MutableBlobStoreMetrics implements InternalMetrics<MutableBlobStore
         public final LongAdder readCounter = new LongAdder();
         public final LongAdder readTimer = new LongAdder();
     }
-
 
     public MutableBlobStoreMetrics(Adders mutableBlobStoreMetricsAdders, LongSummaryStatistics mutableStoreAllocatedPagesStatistics) {
         this(

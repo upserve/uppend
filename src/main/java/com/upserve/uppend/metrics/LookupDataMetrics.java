@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.concurrent.atomic.LongAdder;
 
 public class LookupDataMetrics implements InternalMetrics<LookupDataMetrics> {
-
+    // Stats summed over all LookupData operations since the Uppend store was opened
     private final long flushedKeyCount;
     private final long flushCount;
     private final long flushTimer;
@@ -17,10 +17,10 @@ public class LookupDataMetrics implements InternalMetrics<LookupDataMetrics> {
 
     private final long findKeyTimer;
 
+    // LookupData level stats about the size of the lookups (consistent across reopen)
     private final double avgLookupDataSize;
     private final long maxLookupDataSize;
     private final long sumLookupDataSize;
-
 
     public static class Adders {
         public final LongAdder flushCounter = new LongAdder();

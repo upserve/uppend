@@ -16,9 +16,9 @@ import java.util.stream.*;
 public class AppendStorePartition extends Partition implements Flushable, Closeable {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    final BlockedLongs blocks;
+    private final BlockedLongs blocks;
     private final VirtualAppendOnlyBlobStore[] blobs;
-    final VirtualPageFile blobFile;
+    private final VirtualPageFile blobFile;
 
     private static Path blobsFile(Path partitiondDir) {
         return partitiondDir.resolve("blobStore");
@@ -28,7 +28,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return partitiondDir.resolve("blockedLongs");
     }
 
-    public static AppendStorePartition createPartition(Path parentDir, String partition, AppendOnlyStoreBuilder builder) {
+    static AppendStorePartition createPartition(Path parentDir, String partition, AppendOnlyStoreBuilder builder) {
 
         Path partitionDir = validatePartition(parentDir, partition);
 
@@ -70,7 +70,7 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
         return new AppendStorePartition(keys, metadata, blobs, blocks, false, builder);
     }
 
-    public static AppendStorePartition openPartition(Path parentDir, String partition, boolean readOnly, AppendOnlyStoreBuilder builder) {
+    static AppendStorePartition openPartition(Path parentDir, String partition, boolean readOnly, AppendOnlyStoreBuilder builder) {
         validatePartition(partition);
         Path partitionDir = parentDir.resolve(partition);
 
@@ -127,7 +127,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         blobs = IntStream.range(0, hashCount)
                 .mapToObj(virtualFileNumber -> new VirtualAppendOnlyBlobStore(
-                        virtualFileNumber, blobsFile, builder.getBlobStoreMetricsAdders())
+                        virtualFileNumber, blobsFile, builder.getBlobStoreMetricsAdders()
+                        )
                 )
                 .toArray(VirtualAppendOnlyBlobStore[]::new);
     }
@@ -195,8 +196,8 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
     }
 
     void clear() throws IOException {
-        longKeyFile.close();
-        metadataBlobFile.close();
+        getLongKeyFile().close();
+        getMetadataBlobFile().close();
         blobFile.close();
         blocks.close();
 
@@ -209,5 +210,13 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
 
         blobFile.close();
         blocks.close();
+    }
+
+    BlockedLongs getBlocks() {
+        return blocks;
+    }
+
+    VirtualPageFile getBlobFile() {
+        return blobFile;
     }
 }

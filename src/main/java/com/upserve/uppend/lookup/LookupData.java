@@ -54,10 +54,10 @@ public class LookupData implements Flushable, Trimmable {
     // Flushing every 30 seconds, we can run for 2000 years before the metaDataGeneration hits INTEGER.MAX_VALUE
     private AtomicInteger metaDataGeneration;
 
-    final LookupDataMetrics.Adders lookupDataMetricsAdders;
+    private final LookupDataMetrics.Adders lookupDataMetricsAdders;
 
 
-    public static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
+    static LookupData lookupWriter(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
                                           int flushThreshold){
         return lookupWriter(keyLongBlobs, metadataBlobs, flushThreshold, new LookupDataMetrics.Adders());
     }
@@ -69,7 +69,7 @@ public class LookupData implements Flushable, Trimmable {
         );
     }
 
-    public static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
+    static LookupData lookupReader(VirtualLongBlobStore keyLongBlobs, VirtualMutableBlobStore metadataBlobs,
                                           int reloadInterval){
         return lookupReader(keyLongBlobs, metadataBlobs, reloadInterval, new LookupDataMetrics.Adders());
     }
@@ -221,7 +221,7 @@ public class LookupData implements Flushable, Trimmable {
      * @param value the value to put if this is a new key
      * @return the value associated with the key
      */
-    public long putIfNotExists(LookupKey key, long value) {
+    long putIfNotExists(LookupKey key, long value) {
         if (readOnly) throw new RuntimeException("Can not putIfNotExists in read only LookupData");
 
         long[] ref = new long[1];
@@ -330,7 +330,7 @@ public class LookupData implements Flushable, Trimmable {
      * @param keyPosition the position in the longBlobs files
      * @return the cached lookup key
      */
-    public LookupKey readKey(Long keyPosition) {
+    private LookupKey readKey(Long keyPosition) {
         return new LookupKey(keyLongBlobs.readBlob(keyPosition));
     }
 
@@ -340,7 +340,7 @@ public class LookupData implements Flushable, Trimmable {
      * @param keyPosition the position in the longBlobs files
      * @return the key and the long value associated with it
      */
-    public Map.Entry<LookupKey, Long> readEntry(long keyPosition) {
+    private Map.Entry<LookupKey, Long> readEntry(long keyPosition) {
         return Maps.immutableEntry(readKey(keyPosition), readValue(keyPosition));
     }
 
@@ -350,7 +350,7 @@ public class LookupData implements Flushable, Trimmable {
      * @param keyPosition the position in the longBlobs files
      * @return the long value
      */
-    public long readValue(long keyPosition) {
+    private long readValue(long keyPosition) {
         return keyLongBlobs.readLong(keyPosition);
     }
 
@@ -562,7 +562,7 @@ public class LookupData implements Flushable, Trimmable {
         );
     }
 
-    protected LookupMetadata getMetadata() {
+    LookupMetadata getMetadata() {
         if (readOnly){
             int[] stamp = new int[1];
             LookupMetadata result = timeStampedMetadata.get(stamp);
@@ -605,11 +605,13 @@ public class LookupData implements Flushable, Trimmable {
         flushing.set(false);
     }
 
+
     @Override
     public void trim() {
         if (!readOnly) {
             flush();
         } else {
+            // Trim will do an explicit reload of the longLookup metadata
             int[] stamp = new int[1];
             LookupMetadata result = timeStampedMetadata.get(stamp);
             result = loadMetadata(result);
