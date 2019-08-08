@@ -4,11 +4,9 @@ import com.upserve.uppend.blobs.*;
 import com.upserve.uppend.metrics.LookupDataMetrics;
 import org.slf4j.Logger;
 
-import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.*;
 import java.util.*;
-import java.util.concurrent.atomic.LongAdder;
 /**
  * The bisect tree is linearized as follows
  *              8
@@ -32,7 +30,7 @@ import java.util.concurrent.atomic.LongAdder;
 public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 9; // Size == 1024
+    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 13; // Size == 16_384
     private static final int MAX_TREE_NODES = treeSize(MAX_BISECT_KEY_CACHE_DEPTH);
     private final LookupKey[] bisectKeys = new LookupKey[MAX_TREE_NODES];
 
@@ -43,15 +41,8 @@ public class LookupMetadata {
     private final LookupKey maxKey;
     private final int[] keyStorageOrder;
 
-    final LookupDataMetrics.Adders lookupDataMetricsAdders;
-    final byte[] checksum;
-
-    static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder,
-                                                  VirtualMutableBlobStore metaDataBlobs, int metadataGeneration) {
-        return generateMetadata(
-                minKey, maxKey, keyStorageOrder, metaDataBlobs, metadataGeneration, new LookupDataMetrics.Adders()
-        );
-    }
+    private final LookupDataMetrics.Adders lookupDataMetricsAdders;
+    private final byte[] checksum;
 
     static LookupMetadata generateMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder,
                                                   VirtualMutableBlobStore metaDataBlobs, int metadataGeneration,
@@ -74,7 +65,7 @@ public class LookupMetadata {
 
     }
 
-    LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration,
+    private LookupMetadata(LookupKey minKey, LookupKey maxKey, int[] keyStorageOrder, int metadataGeneration,
                    LookupDataMetrics.Adders lookupDataMetricsAdders) {
         this.numKeys = keyStorageOrder.length;
         this.minKey = minKey;
@@ -251,7 +242,7 @@ public class LookupMetadata {
         }
     }
 
-    public static int treeSize(int depth) {
+    private static int treeSize(int depth) {
         return 1 << (depth +1);
     }
 
@@ -259,7 +250,7 @@ public class LookupMetadata {
         Arrays.fill(bisectKeys, null);
     }
 
-    public void writeTo(VirtualMutableBlobStore metadataBlobs) {
+    void writeTo(VirtualMutableBlobStore metadataBlobs) {
         int headerSize = 12 + minKey.byteLength() + maxKey.byteLength();
         int intBufSize = 4 * numKeys;
         ByteBuffer byteBuffer = ByteBuffer.allocate(headerSize + intBufSize);
@@ -285,23 +276,23 @@ public class LookupMetadata {
                 '}';
     }
 
-    public int getMetadataGeneration() {
+    int getMetadataGeneration() {
         return metadataGeneration;
     }
 
-    public int getNumKeys() {
+    int getNumKeys() {
         return numKeys;
     }
 
-    public int[] getKeyStorageOrder() {
+    int[] getKeyStorageOrder() {
         return keyStorageOrder;
     }
 
-    public LookupKey getMinKey() {
+    LookupKey getMinKey() {
         return minKey;
     }
 
-    public LookupKey getMaxKey() {
+    LookupKey getMaxKey() {
         return maxKey;
     }
 }
