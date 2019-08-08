@@ -12,8 +12,6 @@ public class LookupDataIterator<T> implements Iterator<T> {
     private final Iterator<T> writeCacheKeyIterator;
     LongFunction<T> reader;
 
-    private final AtomicLong position = new AtomicLong();
-
     LookupDataIterator(int[] positions, int writeCacheSize, Iterator<T> writeCacheKeyIterator, LongFunction<T> reader) {
         // Get a snapshot of the keys
         this.positions = positions;

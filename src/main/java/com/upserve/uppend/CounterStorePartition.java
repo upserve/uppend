@@ -16,29 +16,68 @@ import java.util.stream.*;
 public class CounterStorePartition extends Partition {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public static CounterStorePartition createPartition(Path parentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize) {
+    static CounterStorePartition createPartition(Path parentDir, String partition, CounterStoreBuilder builder) {
         Path partitionDir = validatePartition(parentDir, partition);
 
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitionDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), false);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitionDir), hashCount, keyPageSize, adjustedTargetBufferSize(keyPageSize, hashCount, targetBufferSize), false);
+        VirtualPageFile metadata = new VirtualPageFile(
+                metadataPath(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getMetadataPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getMetadataPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                false
+        );
+        VirtualPageFile keys = new VirtualPageFile(
+                keysPath(partitionDir),
+                builder.getLookupHashCount(),
+                builder.getLookupPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getLookupPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                false
+        );
 
-        return new CounterStorePartition(keys, metadata, hashCount, flushThreshold, reloadInterval, false);
+        return new CounterStorePartition(keys, metadata, false, builder);
     }
 
-    public static CounterStorePartition openPartition(Path partentDir, String partition, int hashCount, int targetBufferSize, int flushThreshold, int reloadInterval, int metadataPageSize, int keyPageSize, boolean readOnly) {
+    static CounterStorePartition openPartition(Path partentDir, String partition, boolean readOnly, CounterStoreBuilder builder) {
         validatePartition(partition);
         Path partitiondDir = partentDir.resolve(partition);
 
         if (!(Files.exists(metadataPath(partitiondDir)) && Files.exists(keysPath(partitiondDir)))) return null;
 
-        VirtualPageFile metadata = new VirtualPageFile(metadataPath(partitiondDir), hashCount, metadataPageSize, adjustedTargetBufferSize(metadataPageSize, hashCount, targetBufferSize), readOnly);
-        VirtualPageFile keys = new VirtualPageFile(keysPath(partitiondDir), hashCount, keyPageSize, targetBufferSize, readOnly);
+        VirtualPageFile metadata = new VirtualPageFile(
+                metadataPath(partitiondDir),
+                builder.getLookupHashCount(),
+                builder.getMetadataPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getMetadataPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                readOnly
+        );
+        VirtualPageFile keys = new VirtualPageFile(
+                keysPath(partitiondDir),
+                builder.getLookupHashCount(),
+                builder.getLookupPageSize(),
+                adjustedTargetBufferSize(
+                        builder.getLookupPageSize(),
+                        builder.getLookupHashCount(),
+                        builder.getTargetBufferSize()
+                ),
+                readOnly);
 
-        return new CounterStorePartition(keys, metadata, hashCount, flushThreshold, reloadInterval, false);
+        return new CounterStorePartition(keys, metadata, readOnly, builder);
     }
 
-    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, int hashCount, int flushThreshold, int reloadInterval, boolean readOnly) {
-        super(longKeyFile, metadataBlobFile, hashCount, flushThreshold, reloadInterval, readOnly);
+    private CounterStorePartition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, boolean readOnly, CounterStoreBuilder builder) {
+        super(longKeyFile, metadataBlobFile, readOnly, builder);
     }
 
     public Long set(String key, long value) {
@@ -85,8 +124,8 @@ public class CounterStorePartition extends Partition {
     }
 
     void clear() throws IOException {
-        longKeyFile.close();
-        metadataBlobFile.close();
-        SafeDeleting.removeDirectory(longKeyFile.getFilePath().getParent());
+        getLongKeyFile().close();
+        getMetadataBlobFile().close();
+        SafeDeleting.removeDirectory(getLongKeyFile().getFilePath().getParent());
     }
 }

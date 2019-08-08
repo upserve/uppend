@@ -1,6 +1,8 @@
 package com.upserve.uppend;
 
 import com.google.common.hash.*;
+import com.upserve.uppend.lookup.LookupData;
+import com.upserve.uppend.metrics.*;
 import com.upserve.uppend.util.SafeDeleting;
 import org.slf4j.Logger;
 
@@ -34,22 +36,29 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
     private final int partitionCount;
     private final boolean doHashPartitionValues;
 
+    final LookupDataMetrics.Adders lookupDataMetricsAdders;
+    final LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders;
+    final MutableBlobStoreMetrics.Adders mutableBlobStoreMetricsAdders;
+
     final AtomicBoolean isClosed;
 
     private static final int PARTITION_HASH_SEED = 626433832;
     private final HashFunction hashFunction = Hashing.murmur3_32(PARTITION_HASH_SEED);
 
-    FileStore(Path dir, int flushDelaySeconds, int partitionCount, boolean readOnly, String name) {
+    FileStore(boolean readOnly, FileStoreBuilder builder) {
+
+        dir = builder.getDir();
         if (dir == null) {
             throw new NullPointerException("null dir");
         }
-        this.dir = dir;
         try {
             Files.createDirectories((Files.isSymbolicLink(dir) ? Files.readSymbolicLink(dir).toRealPath() : dir));
         } catch (IOException e) {
             throw new UncheckedIOException("unable to mkdirs: " + dir, e);
         }
         partitionsDir = dir.resolve("partitions");
+
+        int partitionCount = builder.getPartitionCount();
         if (partitionCount > MAX_NUM_PARTITIONS) {
             throw new IllegalArgumentException("bad partition count: greater than max (" + MAX_NUM_PARTITIONS + "): " + partitionCount);
         }
@@ -64,9 +73,9 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
             partitionMap = new ConcurrentHashMap<>(partitionCount);
             doHashPartitionValues = true;
         }
-        this.name = name;
+        this.name = builder.getStoreName();
 
-        this.flushDelaySeconds = flushDelaySeconds;
+        flushDelaySeconds = builder.getFlushDelaySeconds();
         if (!readOnly && flushDelaySeconds > 0) register(flushDelaySeconds);
 
         this.readOnly = readOnly;
@@ -82,6 +91,10 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         }
 
         isClosed = new AtomicBoolean(false);
+
+        this.lookupDataMetricsAdders = builder.getLookupDataMetricsAdders();
+        this.longBlobStoreMetricsAdders = builder.getLongBlobStoreMetricsAdders();
+        this.mutableBlobStoreMetricsAdders = builder.getMutableBlobStoreMetricsAdders();
     }
 
     String partitionHash(String partition) {
@@ -240,4 +253,33 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         }
         partitionMap.clear();
     }
+
+    public LookupDataMetrics getLookupDataMetrics(){
+        LongSummaryStatistics metaDataSizeStats = streamPartitions()
+                .flatMapToLong(
+                        partition -> Arrays.stream(partition.lookups)
+                                .mapToLong(LookupData::getMetadataSize)
+                )
+                .summaryStatistics();
+
+        return new LookupDataMetrics(lookupDataMetricsAdders, metaDataSizeStats);
+    }
+
+    public MutableBlobStoreMetrics getMutableBlobStoreMetrics() {
+        LongSummaryStatistics mutableBlobStoreAllocatedPagesStatistics = streamPartitions()
+                .mapToLong(partition -> partition.metadataBlobFile.getAllocatedPageCount())
+                .summaryStatistics();
+
+        return new MutableBlobStoreMetrics(mutableBlobStoreMetricsAdders, mutableBlobStoreAllocatedPagesStatistics);
+    }
+
+    public LongBlobStoreMetrics getLongBlobStoreMetrics() {
+        LongSummaryStatistics longBlobStoreAllocatedPagesStatistics = streamPartitions()
+                .mapToLong(partition -> partition.longKeyFile.getAllocatedPageCount())
+                .summaryStatistics();
+
+        return new LongBlobStoreMetrics(longBlobStoreMetricsAdders, longBlobStoreAllocatedPagesStatistics);
+    }
+
+
 }

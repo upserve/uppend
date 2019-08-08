@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.function.ObjLongConsumer;
 import java.util.stream.Stream;
 
-public interface ReadOnlyCounterStore extends Trimmable, AutoCloseable {
+public interface ReadOnlyCounterStore extends Trimmable, AutoCloseable, KeyStoreMetrics {
     /**
      * Get the value for a given partition and key
      *

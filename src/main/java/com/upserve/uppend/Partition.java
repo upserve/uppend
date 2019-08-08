@@ -26,11 +26,12 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
 
     final LookupData[] lookups;
 
-    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, int hashCount, int flushThreshold, int reloadInterval, boolean readOnly) {
+    Partition(VirtualPageFile longKeyFile, VirtualPageFile metadataBlobFile, boolean readOnly, FileStoreBuilder builder) {
+
         this.longKeyFile = longKeyFile;
         this.metadataBlobFile = metadataBlobFile;
 
-        this.hashCount = hashCount;
+        this.hashCount = builder.getLookupHashCount();
         this.readOnly = readOnly;
 
         if (hashCount < 1) {
@@ -46,10 +47,10 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
             hashFunction = Hashing.murmur3_32(HASH_SEED);
         }
 
-        IntFunction<LookupData> constructorFuntion = lookupDataFunction(readOnly, flushThreshold, reloadInterval);
+        IntFunction<LookupData> constructorFunction = lookupDataFunction(readOnly, builder.getFlushThreshold(), builder.getMetadataTTL(), builder);
 
         lookups = IntStream.range(0, hashCount)
-                .mapToObj(constructorFuntion)
+                .mapToObj(constructorFunction)
                 .toArray(LookupData[]::new);
     }
 
@@ -64,18 +65,20 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
         return partitionDir;
     }
 
-    private IntFunction<LookupData> lookupDataFunction(boolean readOnly, int flushThreshold, int relaodInterval) {
+    private IntFunction<LookupData> lookupDataFunction(boolean readOnly, int flushThreshold, int relaodInterval, FileStoreBuilder builder) {
         if (readOnly) {
             return virtualFileNumber -> LookupData.lookupReader(
-                    new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
-                    new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
-                    relaodInterval
+                    new VirtualLongBlobStore(virtualFileNumber, longKeyFile, builder.getLongBlobStoreMetricsAdders()),
+                    new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile, builder.getMutableBlobStoreMetricsAdders()),
+                    relaodInterval,
+                    builder.getLookupDataMetricsAdders()
             );
         } else {
             return virtualFileNumber -> LookupData.lookupWriter(
-                    new VirtualLongBlobStore(virtualFileNumber, longKeyFile),
-                    new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile),
-                    flushThreshold
+                    new VirtualLongBlobStore(virtualFileNumber, longKeyFile, builder.getLongBlobStoreMetricsAdders()),
+                    new VirtualMutableBlobStore(virtualFileNumber, metadataBlobFile, builder.getMutableBlobStoreMetricsAdders()),
+                    flushThreshold,
+                    builder.getLookupDataMetricsAdders()
             );
         }
     }
@@ -144,6 +147,10 @@ public abstract class Partition implements Flushable, Closeable, Trimmable {
         longKeyFile.close();
         metadataBlobFile.close();
     }
+
+    VirtualPageFile getLongKeyFile() { return longKeyFile; }
+
+    VirtualPageFile getMetadataBlobFile() { return metadataBlobFile; }
 
     private static boolean isValidPartitionCharStart(char c) {
         return Character.isJavaIdentifierPart(c);

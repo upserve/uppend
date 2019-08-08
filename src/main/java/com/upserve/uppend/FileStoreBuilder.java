@@ -1,6 +1,8 @@
 package com.upserve.uppend;
 
 import com.codahale.metrics.MetricRegistry;
+import com.upserve.uppend.metrics.*;
+
 import java.nio.file.Path;
 
 public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
@@ -37,6 +39,11 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     private boolean storeMetrics = false;
     private MetricRegistry cacheMetricsRegistry = null;
     private boolean cacheMetrics = false;
+
+    private final LookupDataMetrics.Adders lookupDataMetricsAdders = new LookupDataMetrics.Adders();
+    private final MutableBlobStoreMetrics.Adders mutableBlobStoreMetricsAdders = new MutableBlobStoreMetrics.Adders();
+    private final LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders = new LongBlobStoreMetrics.Adders();
+
 
     // Long lookup Cache Options
     @SuppressWarnings("unchecked")
@@ -171,6 +178,12 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public int getPartitionCount(){ return partitionCount; }
 
     public String getMetricsRootName(){ return metricsRootName; }
+
+    public LookupDataMetrics.Adders getLookupDataMetricsAdders(){ return lookupDataMetricsAdders; }
+
+    public MutableBlobStoreMetrics.Adders getMutableBlobStoreMetricsAdders() { return mutableBlobStoreMetricsAdders; }
+
+    public LongBlobStoreMetrics.Adders getLongBlobStoreMetricsAdders() { return longBlobStoreMetricsAdders; }
 
     @Override
     public String toString() {

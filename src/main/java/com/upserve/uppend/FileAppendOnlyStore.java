@@ -1,5 +1,8 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.lookup.LookupData;
+import com.upserve.uppend.metrics.*;
+import com.upserve.uppend.metrics.LookupDataMetrics;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -13,27 +16,23 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     private final Function<String, AppendStorePartition> openPartitionFunction;
     private final Function<String, AppendStorePartition> createPartitionFunction;
 
+    final BlobStoreMetrics.Adders blobStoreMetricsAdders;
+    final BlockedLongMetrics.Adders blockedLongMetricsAdders;
+
     FileAppendOnlyStore(boolean readOnly, AppendOnlyStoreBuilder builder) {
-        super(builder.getDir(), builder.getFlushDelaySeconds(), builder.getPartitionCount(), readOnly, builder.getStoreName());
+        super(readOnly, builder);
 
-        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), builder.getBlobPageSize(), builder.getLookupPageSize(), readOnly);
+        openPartitionFunction = partitionKey -> AppendStorePartition.openPartition(partitionsDir, partitionKey, readOnly, builder);
 
-        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder.getLookupHashCount(), builder.getTargetBufferSize(), builder.getFlushThreshold(), builder.getMetadataTTL(), builder.getMetadataPageSize(), builder.getBlobsPerBlock(), builder.getBlobPageSize(), builder.getLookupPageSize());
+        createPartitionFunction = partitionKey -> AppendStorePartition.createPartition(partitionsDir, partitionKey, builder);
+
+        blobStoreMetricsAdders = builder.getBlobStoreMetricsAdders();
+        blockedLongMetricsAdders = builder.getBlockedLongMetricsAdders();
     }
 
     @Override
     public String getName() {
         return name;
-    }
-
-    @Override
-    public BlockStats getBlockLongStats() {
-        return partitionMap.values().parallelStream().map(AppendStorePartition::blockedLongStats).reduce(BlockStats.ZERO_STATS, BlockStats::add);
-    }
-
-    @Override
-    public PartitionStats getPartitionStats(){
-        return partitionMap.values().parallelStream().map(AppendStorePartition::getPartitionStats).reduce(PartitionStats.ZERO_STATS, PartitionStats::add);
     }
 
     @Override
@@ -101,5 +100,44 @@ public class FileAppendOnlyStore extends FileStore<AppendStorePartition> impleme
     @Override
     Function<String, AppendStorePartition> getCreatePartitionFunction() {
         return createPartitionFunction;
+    }
+
+    @Override
+    public BlockedLongMetrics getBlockedLongMetrics() {
+        LongSummaryStatistics blockedLongAllocatedBlocksStatistics = streamPartitions()
+                .mapToLong(partition -> partition.getBlocks().getBlockCount())
+                .summaryStatistics();
+
+        LongSummaryStatistics blockedLongAppendCountStatistics = streamPartitions()
+                .mapToLong(partition -> partition.getBlocks().getCount())
+                .summaryStatistics();
+
+        return new BlockedLongMetrics(
+                blockedLongMetricsAdders, blockedLongAllocatedBlocksStatistics, blockedLongAppendCountStatistics
+        );
+    }
+
+    @Override
+    public BlobStoreMetrics getBlobStoreMetrics() {
+        LongSummaryStatistics blobStoreAllocatedPagesStatistics = streamPartitions()
+                .mapToLong(partition -> partition.getBlobFile().getAllocatedPageCount())
+                .summaryStatistics();
+
+        return new BlobStoreMetrics(blobStoreMetricsAdders, blobStoreAllocatedPagesStatistics);
+    }
+
+    @Override
+    public LookupDataMetrics getLookupDataMetrics() {
+        return super.getLookupDataMetrics();
+    }
+
+    @Override
+    public MutableBlobStoreMetrics getMutableBlobStoreMetrics() {
+        return super.getMutableBlobStoreMetrics();
+    }
+
+    @Override
+    public LongBlobStoreMetrics getLongBlobStoreMetrics() {
+        return super.getLongBlobStoreMetrics();
     }
 }

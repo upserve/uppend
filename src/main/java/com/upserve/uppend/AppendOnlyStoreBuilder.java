@@ -1,6 +1,6 @@
 package com.upserve.uppend;
 
-import com.upserve.uppend.metrics.AppendOnlyStoreWithMetrics;
+import com.upserve.uppend.metrics.*;
 
 public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuilder> {
     // Blocked Longs Config Options
@@ -12,6 +12,9 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     public static final int DEFAULT_BLOB_PAGE_SIZE = 4 * 1024 * 1024;
 
     private int blobPageSize = DEFAULT_BLOB_PAGE_SIZE;
+
+    private BlobStoreMetrics.Adders blobStoreMetricsAdders = new BlobStoreMetrics.Adders();
+    private BlockedLongMetrics.Adders blockedLongMetricsAdders = new BlockedLongMetrics.Adders();
 
     // Blocked Long Options
     public AppendOnlyStoreBuilder withBlobsPerBlock(int blobsPerBlock) {
@@ -46,6 +49,10 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     public int getBlobPageSize() {
         return blobPageSize;
     }
+
+    public BlobStoreMetrics.Adders getBlobStoreMetricsAdders() { return blobStoreMetricsAdders; }
+
+    public BlockedLongMetrics.Adders getBlockedLongMetricsAdders() { return blockedLongMetricsAdders; }
 
     @Override
     public String toString() {

@@ -1,6 +1,7 @@
 package com.upserve.uppend.blobs;
 
 import com.google.common.collect.Maps;
+import com.upserve.uppend.metrics.LongBlobStoreMetrics;
 import org.slf4j.Logger;
 
 import java.lang.invoke.MethodHandles;
@@ -14,15 +15,27 @@ import java.util.stream.*;
 public class VirtualLongBlobStore extends VirtualPageFileIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
-    public VirtualLongBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
+    private final LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders;
+
+    public VirtualLongBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile, LongBlobStoreMetrics.Adders longBlobStoreMetricsAdders) {
         super(virtualFileNumber, virtualPageFile);
+        this.longBlobStoreMetricsAdders = longBlobStoreMetricsAdders;
+    }
+
+    public VirtualLongBlobStore(int virtualFileNumber, VirtualPageFile virtualPageFile) {
+        this(virtualFileNumber, virtualPageFile, new LongBlobStoreMetrics.Adders());
     }
 
     public long append(long val, byte[] bytes) {
+        final long tic = System.nanoTime();
+        final int size = recordSize(bytes);
         // Ensures that the long value is aligned with a single page.
-        final long pos = appendPageAlignedPosition(recordSize(bytes), 4, 12);
-
+        final long pos = appendPageAlignedPosition(size, 4, 12);
         write(pos, byteRecord(val, bytes));
+
+        longBlobStoreMetricsAdders.appendCounter.increment();
+        longBlobStoreMetricsAdders.bytesAppended.add(size);
+        longBlobStoreMetricsAdders.appendTimer.add(System.nanoTime() - tic);
         return pos;
     }
 
@@ -31,18 +44,29 @@ public class VirtualLongBlobStore extends VirtualPageFileIO {
     }
 
     public void writeLong(long pos, long val) {
+        final long tic = System.nanoTime();
         super.writeLong(pos + 4, val);
+        longBlobStoreMetricsAdders.longWrites.increment();
+        longBlobStoreMetricsAdders.longWriteTimer.add(System.nanoTime() - tic);
     }
 
     public long readLong(long pos) {
-        return super.readLong(pos + 4);
+        final long tic = System.nanoTime();
+        final long result = super.readLong(pos + 4);
+        longBlobStoreMetricsAdders.longReads.increment();
+        longBlobStoreMetricsAdders.longReadTimer.add(System.nanoTime() - tic);
+        return result;
     }
 
     public byte[] readBlob(long pos) {
+        final long tic = System.nanoTime();
         int size = readInt(pos);
         byte[] buf = new byte[size];
         read(pos + 12, buf);
 
+        longBlobStoreMetricsAdders.readCounter.increment();
+        longBlobStoreMetricsAdders.bytesRead.add(recordSize(buf));
+        longBlobStoreMetricsAdders.readTimer.add(System.nanoTime() - tic);
         return buf;
     }
 

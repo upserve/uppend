@@ -167,4 +167,19 @@ public class CounterStoreWithMetrics implements CounterStore {
             context.stop();
         }
     }
+
+    @Override
+    public LookupDataMetrics getLookupDataMetrics() {
+        return store.getLookupDataMetrics();
+    }
+
+    @Override
+    public LongBlobStoreMetrics getLongBlobStoreMetrics() {
+        return store.getLongBlobStoreMetrics();
+    }
+
+    @Override
+    public MutableBlobStoreMetrics getMutableBlobStoreMetrics() {
+        return store.getMutableBlobStoreMetrics();
+    }
 }

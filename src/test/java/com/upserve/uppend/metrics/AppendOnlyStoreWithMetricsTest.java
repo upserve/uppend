@@ -169,9 +169,9 @@ public class AppendOnlyStoreWithMetricsTest {
 
     @Test
     public void testGetBlockLongStats() {
-        BlockStats v = new BlockStats(0, 0, 0, 0, 0);
-        when(store.getBlockLongStats()).thenReturn(v);
-        assertEquals(v, instance.getBlockLongStats());
+        BlockedLongMetrics v = new BlockedLongMetrics(new BlockedLongMetrics.Adders(), new LongSummaryStatistics(), new LongSummaryStatistics());
+        when(store.getBlockedLongMetrics()).thenReturn(v);
+        assertEquals(v, instance.getBlockedLongMetrics());
     }
 
     @Test

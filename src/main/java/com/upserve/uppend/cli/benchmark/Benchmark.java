@@ -3,6 +3,8 @@ package com.upserve.uppend.cli.benchmark;
 import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
 import com.upserve.uppend.*;
+import com.upserve.uppend.metrics.*;
+import com.upserve.uppend.metrics.LookupDataMetrics;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -37,8 +39,11 @@ public class Benchmark {
     private final ForkJoinPool writerPool;
     private final ForkJoinPool readerPool;
 
-    AtomicReference<PartitionStats> partitionStats;
-    AtomicReference<BlockStats> blockStats;
+    AtomicReference<LookupDataMetrics> lookupDataMetricsReference;
+    AtomicReference<BlockedLongMetrics> blockedLongMetricsReference;
+    AtomicReference<BlobStoreMetrics> blobStoreMetricsReference;
+    AtomicReference<LongBlobStoreMetrics> longBlobStoreMetricsReference;
+    AtomicReference<MutableBlobStoreMetrics> mutableBlobStoreMetricsReference;
 
     public LongSummaryStatistics writerStats() {
         return writer.getStats();
@@ -93,8 +98,11 @@ public class Benchmark {
                 throw new RuntimeException("Unknown mode: " + mode);
         }
 
-        partitionStats = new AtomicReference<>(testInstance.getPartitionStats());
-        blockStats = new AtomicReference<>(testInstance.getBlockLongStats());
+        lookupDataMetricsReference = new AtomicReference<>(testInstance.getLookupDataMetrics());
+        blockedLongMetricsReference = new AtomicReference<>(testInstance.getBlockedLongMetrics());
+        blobStoreMetricsReference = new AtomicReference<>(testInstance.getBlobStoreMetrics());
+        longBlobStoreMetricsReference = new AtomicReference<>(testInstance.getLongBlobStoreMetrics());
+        mutableBlobStoreMetricsReference = new AtomicReference<>(testInstance.getMutableBlobStoreMetrics());
     }
 
     private BenchmarkWriter simpleWriter() {
@@ -202,12 +210,20 @@ public class Benchmark {
 
                     log.info(String.format("Read: %7.2fmb/s %7.2fr/s; Write %7.2fmb/s %7.2fa/s; Mem %7.2fmb free %7.2fmb total", readRate, keysReadPerSecond, writeRate, appendsPerSecond, free, total));
 
-                    PartitionStats pStats = testInstance.getPartitionStats();
-                    log.info(pStats.present(partitionStats.getAndSet(pStats)));
+                    LookupDataMetrics lookupDataMetrics = testInstance.getLookupDataMetrics();
+                    log.info(lookupDataMetrics.present(lookupDataMetricsReference.getAndSet(lookupDataMetrics)));
 
-                    BlockStats bStats = testInstance.getBlockLongStats();
-                    log.info("Block Stats: {}", bStats.minus(blockStats.getAndSet(bStats)));
+                    BlockedLongMetrics blockedLongMetrics = testInstance.getBlockedLongMetrics();
+                    log.info(blockedLongMetrics.present(blockedLongMetricsReference.getAndSet(blockedLongMetrics)));
 
+                    BlobStoreMetrics blobStoreMetrics = testInstance.getBlobStoreMetrics();
+                    log.info(blobStoreMetrics.present(blobStoreMetricsReference.getAndSet(blobStoreMetrics)));
+
+                    LongBlobStoreMetrics longBlobStoreMetrics = testInstance.getLongBlobStoreMetrics();
+                    log.info(longBlobStoreMetrics.present(longBlobStoreMetricsReference.getAndSet(longBlobStoreMetrics)));
+
+                    MutableBlobStoreMetrics mutableBlobStoreMetrics = testInstance.getMutableBlobStoreMetrics();
+                    log.info(mutableBlobStoreMetrics.present(mutableBlobStoreMetricsReference.getAndSet(mutableBlobStoreMetrics)));
 
                 } catch (Exception e) {
                     log.info("logTimer failed with ", e);
