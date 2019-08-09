@@ -35,7 +35,7 @@ public class MutableBlobStoreMetrics implements InternalMetrics<MutableBlobStore
                 mutableBlobStoreMetricsAdders.readCounter.sum(),
                 mutableBlobStoreMetricsAdders.readTimer.sum(),
                 mutableStoreAllocatedPagesStatistics.getAverage(),
-                mutableStoreAllocatedPagesStatistics.getMax(),
+                Math.max(mutableStoreAllocatedPagesStatistics.getMax(), 0),
                 mutableStoreAllocatedPagesStatistics.getSum()
         );
     }

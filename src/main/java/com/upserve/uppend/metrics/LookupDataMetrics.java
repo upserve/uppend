@@ -45,7 +45,7 @@ public class LookupDataMetrics implements InternalMetrics<LookupDataMetrics> {
                 lookupDataMetricsAdders.cacheHitCount.sum(),
                 lookupDataMetricsAdders.findKeyTimer.sum(),
                 lookupDataSizeStatistics.getAverage(),
-                lookupDataSizeStatistics.getMax(),
+                Math.max(lookupDataSizeStatistics.getMax(), 0),
                 lookupDataSizeStatistics.getSum()
         );
     }

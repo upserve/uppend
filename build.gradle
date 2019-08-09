@@ -1,6 +1,8 @@
 buildscript {
     repositories {
-        jcenter()
+//        jcenter()
+//        mavenCentral()
+        google()
     }
     dependencies {
         classpath 'com.bmuschko:gradle-nexus-plugin:2.3.1'
