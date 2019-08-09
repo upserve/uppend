@@ -57,7 +57,7 @@ public class LongBlobStoreMetrics implements InternalMetrics<LongBlobStoreMetric
                 blobStoreMetricsAdders.longReadTimer.sum(),
 
                 longblobStoreAllocatedPagesStatistics.getAverage(),
-                longblobStoreAllocatedPagesStatistics.getMax(),
+                Math.max(longblobStoreAllocatedPagesStatistics.getMax(), 0),
                 longblobStoreAllocatedPagesStatistics.getSum()
         );
     }

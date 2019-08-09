@@ -48,11 +48,11 @@ public class BlockedLongMetrics implements InternalMetrics<BlockedLongMetrics> {
                 blockedLongMetricsAdders.readLastTimer.sum(),
 
                 blockedLongAllocatedBlocksStatistics.getAverage(),
-                blockedLongAllocatedBlocksStatistics.getMax(),
+                Math.max(blockedLongAllocatedBlocksStatistics.getMax(), 0),
                 blockedLongAllocatedBlocksStatistics.getSum(),
 
                 blockedLongAppendCountStatistics.getAverage(),
-                blockedLongAppendCountStatistics.getMax(),
+                Math.max(blockedLongAppendCountStatistics.getMax(), 0),
                 blockedLongAppendCountStatistics.getSum()
         );
     }

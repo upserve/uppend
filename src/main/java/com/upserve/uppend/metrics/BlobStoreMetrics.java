@@ -35,7 +35,7 @@ public class BlobStoreMetrics implements InternalMetrics<BlobStoreMetrics>{
                 blobStoreMetricsAdders.readCounter.sum(),
                 blobStoreMetricsAdders.readTimer.sum(),
                 blobStoreAllocatedPagesStatistics.getAverage(),
-                blobStoreAllocatedPagesStatistics.getMax(),
+                Math.max(blobStoreAllocatedPagesStatistics.getMax(), 0),
                 blobStoreAllocatedPagesStatistics.getSum()
         );
     }
