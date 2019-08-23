@@ -31,7 +31,7 @@ public class LookupMetadata {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     // TODO make MAX_BISECT_KEY_CACHE_DEPTH configurable via the FileStoreBuilder
-    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 13; // Size == 16_384
+    private static final int MAX_BISECT_KEY_CACHE_DEPTH = 11; // Size == 4_096g
     private static final int MAX_TREE_NODES = treeSize(MAX_BISECT_KEY_CACHE_DEPTH);
     private final LookupKey[] bisectKeys = new LookupKey[MAX_TREE_NODES];
 
