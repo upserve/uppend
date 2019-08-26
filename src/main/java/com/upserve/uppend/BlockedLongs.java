@@ -52,10 +52,16 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         this(file, valuesPerBlock, readOnly, new BlockedLongMetrics.Adders());
     }
 
+    static Set<Path> _filePaths = new HashSet<>();
+
     BlockedLongs(Path file, int valuesPerBlock, boolean readOnly, BlockedLongMetrics.Adders blockedLongMetricsAdders) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
         }
+
+        if(_filePaths.contains(file))
+            throw new IllegalArgumentException("File already open: :" + file);
+        _filePaths.add(file);
 
         this.file = file;
         this.readOnly = readOnly;
