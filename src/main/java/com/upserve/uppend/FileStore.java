@@ -125,9 +125,8 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
     }
 
     Stream<T> streamPartitions() {
-        try {
-            Files
-                    .list(partitionsDir)
+        try (Stream<Path> stream = Files.list(partitionsDir)){
+            stream
                     .map(path -> path.toFile().getName())
                     .forEach(partition -> partitionMap.computeIfAbsent(
                             partition,
