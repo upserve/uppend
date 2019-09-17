@@ -80,10 +80,12 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
 
         this.readOnly = readOnly;
         lockPath = readOnly ? dir.resolve("readLock") : dir.resolve("writeLock");
-
+        System.out.println("LOCK: lockPath = " + lockPath);
         try {
             lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
             lock = readOnly ? lockChan.lock(0L, Long.MAX_VALUE, true) : lockChan.lock(); // Write lock is exclusive
+            //log.debug("LOCK: write lock " + lock + " created");
+            System.out.println("LOCK: write lock " + lock + " created");
         } catch (IOException e) {
             throw new UncheckedIOException("unable to open lock: " + lockPath, e);
         } catch (OverlappingFileLockException e) {
@@ -227,6 +229,7 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
         }
         try {
             lockChan.close();
+            System.out.println("LOCK: write lock " + lock + " removed");
         } catch (IOException e) {
             log.error("unable to close lock file: " + lockPath, e);
         }
