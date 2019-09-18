@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.lang.invoke.MethodHandles;
+import java.nio.ByteBuffer;
 import java.nio.channels.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
@@ -80,10 +81,21 @@ abstract class FileStore<T extends Partition> implements AutoCloseable, Register
 
         this.readOnly = readOnly;
         lockPath = readOnly ? dir.resolve("readLock") : dir.resolve("writeLock");
-
         try {
             lockChan = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            lock = readOnly ? lockChan.lock(0L, Long.MAX_VALUE, true) : lockChan.lock(); // Write lock is exclusive
+            if(readOnly) {
+                // this is a readLock
+                lock = lockChan.lock(0L, Long.MAX_VALUE, true);
+            } else {
+                // this is an exclusive writeLock
+                lock = lockChan.lock();
+                String writeLockContentString = builder.getWriteLockContentString();
+                if(writeLockContentString != null) {
+                    ByteBuffer byteBuf = ByteBuffer.wrap(writeLockContentString.getBytes());
+                    lockChan.write(byteBuf);
+                    lockChan.force(false);
+                }
+            }
         } catch (IOException e) {
             throw new UncheckedIOException("unable to open lock: " + lockPath, e);
         } catch (OverlappingFileLockException e) {

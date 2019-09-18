@@ -28,6 +28,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     private int targetBufferSize = TARGET_PRODUCTION_BUFFER_SIZE;
 
+    private String writeLockContentString = null;
+
     // Store Options
     public static final int DEFAULT_FLUSH_DELAY_SECONDS = 30;
     public static final int DEFAULT_FLUSH_THRESHOLD = 1000;
@@ -73,6 +75,12 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     @SuppressWarnings("unchecked")
     public T withTargetBufferSize(int targetBufferSize) {
         this.targetBufferSize = targetBufferSize;
+        return (T) this;
+    }
+
+    @SuppressWarnings("unchecked")
+    public T withWriteLockContentString(String writeLockContentString) {
+        this.writeLockContentString = writeLockContentString;
         return (T) this;
     }
 
@@ -179,6 +187,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     public String getMetricsRootName(){ return metricsRootName; }
 
+    public String getWriteLockContentString() { return writeLockContentString; }
+
     public LookupDataMetrics.Adders getLookupDataMetricsAdders(){ return lookupDataMetricsAdders; }
 
     public MutableBlobStoreMetrics.Adders getMutableBlobStoreMetricsAdders() { return mutableBlobStoreMetricsAdders; }
@@ -203,6 +213,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
                 ", storeMetrics=" + storeMetrics +
                 ", cacheMetricsRegistry=" + cacheMetricsRegistry +
                 ", cacheMetrics=" + cacheMetrics +
+                ", writeLockContentString='" + writeLockContentString + "'" +
                 '}';
     }
 }
