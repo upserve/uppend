@@ -7,7 +7,9 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.file.*;
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.*;
 
@@ -198,6 +200,28 @@ public class FileStoreTest {
     }
 
     @Test
+    public void testLockFileAndContent_readWrite() throws IOException {
+        String expectedWriteLockContent = "write lock message";
+        MyFileStore v = new MyFileStore(path, 1, expectedWriteLockContent);
+        Path writeLockFilePath = Paths.get(path.toString(), "writeLock");
+        try (FileReader fr = new FileReader(writeLockFilePath.toString());
+             BufferedReader br = new BufferedReader(fr)) {
+            String writeLockContent = br.readLine();
+            assertTrue(Pattern.matches(expectedWriteLockContent, writeLockContent));
+        }
+        SafeDeleting.removeDirectory(path);
+    }
+
+    @Test
+    public void testLockFileAndContent_readOnly() throws IOException {
+        MyFileStore v = new MyFileStore(path, 1, true);
+        Path readLockFilePath = Paths.get(path.toString(), "readLock");
+        File file = readLockFilePath.toFile();
+        assertEquals(0, file.length());
+        SafeDeleting.removeDirectory(path);
+    }
+
+    @Test
     public void testReaderWriter() throws InterruptedException {
 
         MyFileStore reader = new MyFileStore(path.resolve("reader_writer"), 4, true);
@@ -251,6 +275,15 @@ public class FileStoreTest {
                     .withDir(dir)
                     .withPartitionCount(numPartitions)
                     .withMetadataTTL(30)
+            );
+        }
+
+        MyFileStore(Path dir, int numPartitions, String writeLockContentString) {
+            super(false, new AppendOnlyStoreBuilder()
+                    .withDir(dir)
+                    .withPartitionCount(numPartitions)
+                    .withMetadataTTL(30)
+                    .withWriteLockContentString(writeLockContentString)
             );
         }
     }
