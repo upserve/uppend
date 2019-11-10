@@ -64,19 +64,21 @@ public class VirtualPageFile implements Closeable {
 
     final Path filePath;
     private final FileChannel channel;
+    private final NativeIO nativeIO;
 
-    private final LongBuffer headerBlockLocations;
+    private final MappedByteBuffer headerBlockLocations;
     private final MappedByteBuffer headerBuffer;
 
     private final AtomicLong nextPagePosition;
     private final boolean readOnly;
+    private final boolean cacheBuffers;
 
     private final AtomicLong[] virtualFilePositions; // the current position in the virtual file for each virtual file
     private final AtomicInteger[] virtualFilePageCounts; // the number of pages currently allocated for each virtual file
 
     private final LongAdder pageAllocationCount;
 
-    private final LongBuffer[] pageTables; // Array of Index-able list of page start locations for each virtual file
+    private final MappedByteBuffer[] pageTables; // Array of Index-able list of page start locations for each virtual file
 
     private final int virtualFiles;
     private final int pageSize;
@@ -95,7 +97,19 @@ public class VirtualPageFile implements Closeable {
     @Override
     public void close() throws IOException {
         if (!channel.isOpen()) return;
+
+        for (MappedByteBuffer buf: mappedByteBuffers){
+            if (Objects.nonNull(buf)) nativeIO.madvise(buf, NativeIO.Advice.DontNeed);
+        }
         Arrays.fill(mappedByteBuffers, null);
+
+        for (MappedByteBuffer buf: pageTables) {
+            if (Objects.nonNull(buf)) nativeIO.madvise(buf, NativeIO.Advice.DontNeed);
+        }
+        Arrays.fill(pageTables, null);
+
+        nativeIO.madvise(headerBuffer, NativeIO.Advice.DontNeed);
+        nativeIO.madvise(headerBlockLocations, NativeIO.Advice.DontNeed);
 
         if (!readOnly) {
             channel.truncate(nextPagePosition.get());
@@ -218,7 +232,8 @@ public class VirtualPageFile implements Closeable {
             startPosition = allocatePosition(virtualFileNumber, pageNumber);
         }
 
-       return filePage(startPosition);
+        // Laptop benchmark 2019-11-09 shows using mapped pages for writing is faster. Confirm in production env.
+        return mappedPage(startPosition);
     }
 
     /**
@@ -256,12 +271,18 @@ public class VirtualPageFile implements Closeable {
     }
 
     public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, int targetBufferSize, boolean readOnly) {
+        this(filePath, virtualFiles, pageSize, targetBufferSize, readOnly, true);
+    }
+
+    public VirtualPageFile(Path filePath, int virtualFiles, int pageSize, int targetBufferSize, boolean readOnly, boolean cacheBuffers) {
         this.filePath = filePath;
         this.readOnly = readOnly;
         this.virtualFiles = virtualFiles;
         this.pageSize = pageSize;
+        this.cacheBuffers = cacheBuffers;
 
         this.mappedByteBuffers = new MappedByteBuffer[MAX_BUFFERS];
+        this.nativeIO = new NativeIO();
 
         if (targetBufferSize < (pageSize)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize);
 
@@ -292,8 +313,10 @@ public class VirtualPageFile implements Closeable {
         final long initialSize;
         try {
             initialSize = channel.size();
-            headerBlockLocations = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE).asLongBuffer();
+            headerBlockLocations = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE);
+            nativeIO.madvise(headerBlockLocations, NativeIO.Advice.WillNeed);
 
+            LongBuffer longHeaderBlockLocations = headerBlockLocations.asLongBuffer();
             ByteBuffer intBuffer = LOCAL_INT_BUFFER.get();
             if (!readOnly && initialSize == 0) {
                 intBuffer.putInt(virtualFiles);
@@ -302,7 +325,7 @@ public class VirtualPageFile implements Closeable {
                 intBuffer.flip().putInt(pageSize);
                 channel.write(intBuffer.flip(), 4);
 
-                headerBlockLocations.put(0, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize);
+                longHeaderBlockLocations.put(0, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize);
             } else {
                 channel.read(intBuffer, 0);
                 int val = intBuffer.flip().getInt();
@@ -314,7 +337,7 @@ public class VirtualPageFile implements Closeable {
                 if (val != virtualFiles)
                     throw new IllegalArgumentException("The specfied page size " + pageSize + " does not match the value in the datastore " + val + " in file " + getFilePath());
 
-                long longVal = headerBlockLocations.get(0);
+                long longVal = longHeaderBlockLocations.get(0);
                 if (longVal != SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize)
                     throw new IllegalArgumentException("The header sizes " + (SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE + headerSize) + " does not match the value in the datastore " + longVal + " in file " + getFilePath());
             }
@@ -326,6 +349,7 @@ public class VirtualPageFile implements Closeable {
 
         try {
             headerBuffer = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, headerSize);
+            nativeIO.madvise(headerBuffer, NativeIO.Advice.WillNeed);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map header for path: " + filePath, e);
         }
@@ -346,11 +370,10 @@ public class VirtualPageFile implements Closeable {
         pageAllocationCount = new LongAdder();
         pageAllocationCount.add(Arrays.stream(virtualFilePageCounts).mapToLong(AtomicInteger::get).sum());
 
-        pageTables = new LongBuffer[MAX_PAGE_TABLE_BLOCKS];
+        pageTables = new MappedByteBuffer[MAX_PAGE_TABLE_BLOCKS];
         try {
-            pageTables[0] = channel
-                    .map(mapMode, headerSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, tableSize)
-                    .asLongBuffer();
+            pageTables[0] = channel.map(mapMode, headerSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, tableSize);
+            nativeIO.madvise(pageTables[0], NativeIO.Advice.WillNeed);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map page locations for path: " + filePath, e);
         }
@@ -470,7 +493,8 @@ public class VirtualPageFile implements Closeable {
                 if (buffer == null) {
                     long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
                     try {
-                        buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
+                        buffer = channel.map(mapMode, bufferStart, bufferSize);
+                        if (!cacheBuffers) nativeIO.madvise(buffer, NativeIO.Advice.Random);
                     } catch (IOException e) {
                         throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
@@ -482,13 +506,13 @@ public class VirtualPageFile implements Closeable {
     }
 
     private LongBuffer ensurePageTable(int pageNumber) {
-        LongBuffer buffer = pageTables[pageNumber];
+        MappedByteBuffer buffer = pageTables[pageNumber];
         if (buffer == null) {
             synchronized (pageTables) {
                 buffer = pageTables[pageNumber];
                 if (buffer == null) {
 
-                    long bufferStart = headerBlockLocations.get(pageNumber);
+                    long bufferStart = headerBlockLocations.asLongBuffer().get(pageNumber);
 
                     // All allocated space must be in multiples of pageSize to guarantee a buffer will not end in the middle of a page
                     final int apparentSize;
@@ -500,10 +524,11 @@ public class VirtualPageFile implements Closeable {
 
                     if (!readOnly && bufferStart == 0) {
                       bufferStart = nextPagePosition.getAndAdd(apparentSize);
-                      headerBlockLocations.put(pageNumber, bufferStart);
+                      headerBlockLocations.asLongBuffer().put(pageNumber, bufferStart);
                     }
                     try {
-                        buffer = channel.map(mapMode, bufferStart, tableSize).asLongBuffer();
+                        buffer = channel.map(mapMode, bufferStart, tableSize);
+                        nativeIO.madvise(buffer, NativeIO.Advice.WillNeed);
                     } catch (IOException e) {
                         throw new UncheckedIOException("Unable to map buffer for page table " + pageNumber + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
@@ -511,7 +536,7 @@ public class VirtualPageFile implements Closeable {
                 }
             }
         }
-        return buffer;
+        return buffer.asLongBuffer();
     }
 
     // Called during initialize only - no need to synchronize
@@ -522,7 +547,8 @@ public class VirtualPageFile implements Closeable {
             if (bufferStart >= nextPagePosition) break;
 
             try {
-                MappedByteBuffer buffer = channel.map(FileChannel.MapMode.READ_ONLY, bufferStart, bufferSize);
+                MappedByteBuffer buffer = channel.map(mapMode, bufferStart, bufferSize);
+                if (!cacheBuffers) nativeIO.madvise(buffer, NativeIO.Advice.Random);
                 mappedByteBuffers[bufferIndex] = buffer;
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " start position) in file "  + filePath, e);

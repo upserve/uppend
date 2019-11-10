@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.google.common.util.concurrent.Striped;
+import com.upserve.uppend.blobs.NativeIO;
 import com.upserve.uppend.metrics.*;
 import org.slf4j.Logger;
 
@@ -40,6 +41,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicLong posMem;
 
     private final MappedByteBuffer appendCountBuf;
+    private final NativeIO nativeIO;
 
     private final AtomicInteger currentPage;
     private final boolean readOnly;
@@ -60,6 +62,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         this.file = file;
         this.readOnly = readOnly;
         this.blockedLongMetricsAdders = blockedLongMetricsAdders;
+
+        nativeIO = new NativeIO();
 
         Path dir = file.getParent();
         try {
@@ -100,6 +104,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         try {
             posBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, posBufPosition, 8);
+            nativeIO.madvise(posBuf, NativeIO.Advice.WillNeed); // Will include the first few blocks
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }
@@ -133,6 +138,8 @@ public class BlockedLongs implements AutoCloseable, Flushable {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }
         initialAppendCount = appendCountBuf.getLong(0);
+
+
 
         posMem = new AtomicLong(pos);
     }
@@ -504,6 +511,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                     try {
                         FileChannel.MapMode mapMode = readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE;
                         page = blocks.map(mapMode, pageStart, PAGE_SIZE);
+                        // Could experiment with advise_random to reduce memory use or advise_willneed to hold more in page cache?
                     } catch (IOException e) {
                         throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
                     }

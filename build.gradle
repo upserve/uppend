@@ -29,9 +29,7 @@ if (new File('.git').exists() && (exec {
     version "unspecified"
 }
 
-
 group 'com.upserve'
-
 description = """Uppend: fast, append-only key-multivalue store"""
 
 // TODO unused-dependency is broken - claims all dependencies are unused!
@@ -41,9 +39,93 @@ apply plugin: 'java'
 apply plugin: 'maven'
 apply plugin: 'jacoco'
 apply plugin: 'com.bmuschko.nexus'
+apply plugin: 'c'
 
 jacoco {
     toolVersion = "0.8.2" // Fixed to resolve issue with JDK 11 in Gradle 4.X.Y
+}
+
+def SYS_INCLUDE_DIR = "/usr/include" // this.properties['system.include.dir']
+def SYS_LOCAL_INCLUDE_DIR = '/usr/local/include' // this.properties['system.local.include.dir']
+def JNI_INCLUDE_DIR = "${System.properties['java.home']}/include"
+def JNI_LIB_DIR = "${System.properties['java.home']}/lib"
+
+println "Using system include directory: " + SYS_INCLUDE_DIR
+println "Using system local include directory: " + SYS_LOCAL_INCLUDE_DIR
+println "Using JNI include directory: " + JNI_INCLUDE_DIR
+println "Using JNI lib directory: " + JNI_LIB_DIR
+
+model {
+    platforms {
+        x64 {
+            architecture "x86_64"
+        }
+    }
+
+    components {
+        nativeIO(NativeLibrarySpec) {
+            targetPlatform "x64"
+            // Using default path for source and headers
+        }
+    }
+
+    toolChains {
+        gcc(Gcc) {
+            eachPlatform {
+                if (System.properties['os.name'].equals('Mac OS X')) {
+                    cCompiler.withArguments { args ->
+                        args << "-O2"
+                        args << "-I" + SYS_INCLUDE_DIR
+                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR + "/darwin"
+                    }
+                    linker.withArguments { args ->
+                        args << "-O2"
+                    }
+                } else {
+                    path "/opt/rh/devtoolset-2/root/usr/bin/gcc"
+                    cCompiler.withArguments { args ->
+                        args << "-O2"
+                        args << "-I" + SYS_INCLUDE_DIR
+                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR + "/linux"
+                    }
+                    linker.withArguments { args ->
+                        args << "-O2"
+                    }
+                }
+            }
+        }
+        clang(Clang) {
+            eachPlatform {
+                if (System.properties['os.name'].equals('Mac OS X')) {
+                    cCompiler.withArguments { args ->
+                        args << "-O2"
+                        args << "-I" + SYS_INCLUDE_DIR
+                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR + "/darwin"
+                    }
+                    linker.withArguments { args ->
+                        args << "-O2"
+                    }
+                } else {
+                    cCompiler.withArguments { args ->
+                        args << "-O2"
+                        args << "-I" + SYS_INCLUDE_DIR
+                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR
+                        args << "-I" + JNI_INCLUDE_DIR + "/linux"
+                    }
+                    linker.withArguments { args ->
+                        args << "-O2"
+                    }
+                }
+            }
+        }
+    }
 }
 
 sourceCompatibility = 1.9
@@ -68,7 +150,9 @@ dependencies {
 }
 
 tasks.withType(JavaCompile) {
-    options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation" << "-Werror"
+
+    options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation" << "-Werror" << "-h" << ("${buildDir}/../src/nativeIO/headers/" as String)
+    //options.verbose = true
 }
 
 sourceSets {
@@ -89,7 +173,10 @@ processResources {
     }
 }
 
+// TODO include the cross compiled nativeIO libs as a resource. Unpack and load from jar!
 task fatJar(type: Jar) {
+    dependsOn 'assembleDependentsNativeIO'
+
     dependencies {
         compile 'org.apache.logging.log4j:log4j-core:2.8'
         compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
@@ -103,6 +190,10 @@ task fatJar(type: Jar) {
 }
 
 tasks.withType(Test) {
+    dependsOn 'assembleDependentsNativeIO'
+    systemProperty "java.library.path", "${buildDir}/libs/nativeIO/shared/"
+    maxHeapSize = "2048m"
+
     // From https://stackoverflow.com/a/36130467/2136991
     testLogging {
         // set options for log level LIFECYCLE
