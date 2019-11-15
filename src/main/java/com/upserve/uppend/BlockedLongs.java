@@ -41,7 +41,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private final AtomicLong posMem;
 
     private final MappedByteBuffer appendCountBuf;
-    private final NativeIO nativeIO;
 
     private final AtomicInteger currentPage;
     private final boolean readOnly;
@@ -62,8 +61,6 @@ public class BlockedLongs implements AutoCloseable, Flushable {
         this.file = file;
         this.readOnly = readOnly;
         this.blockedLongMetricsAdders = blockedLongMetricsAdders;
-
-        nativeIO = new NativeIO();
 
         Path dir = file.getParent();
         try {
@@ -104,7 +101,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         try {
             posBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, posBufPosition, 8);
-            nativeIO.madvise(posBuf, NativeIO.Advice.WillNeed); // Will include the first few blocks
+            NativeIO.madvise(posBuf, NativeIO.Advice.WillNeed); // Will include the first few blocks
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }

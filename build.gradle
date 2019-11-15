@@ -84,7 +84,6 @@ model {
                         args << "-O2"
                     }
                 } else {
-                    path "/opt/rh/devtoolset-2/root/usr/bin/gcc"
                     cCompiler.withArguments { args ->
                         args << "-O2"
                         args << "-I" + SYS_INCLUDE_DIR

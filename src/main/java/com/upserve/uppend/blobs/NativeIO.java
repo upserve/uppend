@@ -16,7 +16,7 @@ public class NativeIO {
         }
     }
 
-    public native void madvise(MappedByteBuffer buffer, Advice advise) throws IOException;
+    public static native void madvise(MappedByteBuffer buffer, Advice advise) throws IOException;
 
     static {
         log.info("loading nativeIO libbrary");

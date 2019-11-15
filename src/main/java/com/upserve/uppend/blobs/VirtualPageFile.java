@@ -64,8 +64,6 @@ public class VirtualPageFile implements Closeable {
 
     final Path filePath;
     private final FileChannel channel;
-    private final NativeIO nativeIO;
-
     private final MappedByteBuffer headerBlockLocations;
     private final MappedByteBuffer headerBuffer;
 
@@ -99,17 +97,17 @@ public class VirtualPageFile implements Closeable {
         if (!channel.isOpen()) return;
 
         for (MappedByteBuffer buf: mappedByteBuffers){
-            if (Objects.nonNull(buf)) nativeIO.madvise(buf, NativeIO.Advice.DontNeed);
+            if (Objects.nonNull(buf)) NativeIO.madvise(buf, NativeIO.Advice.DontNeed);
         }
         Arrays.fill(mappedByteBuffers, null);
 
         for (MappedByteBuffer buf: pageTables) {
-            if (Objects.nonNull(buf)) nativeIO.madvise(buf, NativeIO.Advice.DontNeed);
+            if (Objects.nonNull(buf)) NativeIO.madvise(buf, NativeIO.Advice.DontNeed);
         }
         Arrays.fill(pageTables, null);
 
-        nativeIO.madvise(headerBuffer, NativeIO.Advice.DontNeed);
-        nativeIO.madvise(headerBlockLocations, NativeIO.Advice.DontNeed);
+        NativeIO.madvise(headerBuffer, NativeIO.Advice.DontNeed);
+        NativeIO.madvise(headerBlockLocations, NativeIO.Advice.DontNeed);
 
         if (!readOnly) {
             channel.truncate(nextPagePosition.get());
@@ -282,7 +280,6 @@ public class VirtualPageFile implements Closeable {
         this.cacheBuffers = cacheBuffers;
 
         this.mappedByteBuffers = new MappedByteBuffer[MAX_BUFFERS];
-        this.nativeIO = new NativeIO();
 
         if (targetBufferSize < (pageSize)) throw new IllegalArgumentException("Target buffer size " + targetBufferSize + " must be larger than a page " + pageSize);
 
@@ -314,7 +311,7 @@ public class VirtualPageFile implements Closeable {
         try {
             initialSize = channel.size();
             headerBlockLocations = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE, PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE);
-            nativeIO.madvise(headerBlockLocations, NativeIO.Advice.WillNeed);
+            NativeIO.madvise(headerBlockLocations, NativeIO.Advice.WillNeed);
 
             LongBuffer longHeaderBlockLocations = headerBlockLocations.asLongBuffer();
             ByteBuffer intBuffer = LOCAL_INT_BUFFER.get();
@@ -349,7 +346,7 @@ public class VirtualPageFile implements Closeable {
 
         try {
             headerBuffer = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, headerSize);
-            nativeIO.madvise(headerBuffer, NativeIO.Advice.WillNeed);
+            NativeIO.madvise(headerBuffer, NativeIO.Advice.WillNeed);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map header for path: " + filePath, e);
         }
@@ -373,7 +370,7 @@ public class VirtualPageFile implements Closeable {
         pageTables = new MappedByteBuffer[MAX_PAGE_TABLE_BLOCKS];
         try {
             pageTables[0] = channel.map(mapMode, headerSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, tableSize);
-            nativeIO.madvise(pageTables[0], NativeIO.Advice.WillNeed);
+            NativeIO.madvise(pageTables[0], NativeIO.Advice.WillNeed);
         } catch (IOException e) {
             throw new UncheckedIOException("unable to map page locations for path: " + filePath, e);
         }
@@ -494,7 +491,7 @@ public class VirtualPageFile implements Closeable {
                     long bufferStart = ((long) bufferIndex * bufferSize) + totalHeaderSize;
                     try {
                         buffer = channel.map(mapMode, bufferStart, bufferSize);
-                        if (!cacheBuffers) nativeIO.madvise(buffer, NativeIO.Advice.Random);
+                        if (!cacheBuffers) NativeIO.madvise(buffer, NativeIO.Advice.Random);
                     } catch (IOException e) {
                         throw new UncheckedIOException("Unable to map buffer for index " + bufferIndex + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
@@ -528,7 +525,7 @@ public class VirtualPageFile implements Closeable {
                     }
                     try {
                         buffer = channel.map(mapMode, bufferStart, tableSize);
-                        nativeIO.madvise(buffer, NativeIO.Advice.WillNeed);
+                        NativeIO.madvise(buffer, NativeIO.Advice.WillNeed);
                     } catch (IOException e) {
                         throw new UncheckedIOException("Unable to map buffer for page table " + pageNumber + " at (" + bufferStart +  " start position) in file " + filePath, e);
                     }
@@ -548,7 +545,7 @@ public class VirtualPageFile implements Closeable {
 
             try {
                 MappedByteBuffer buffer = channel.map(mapMode, bufferStart, bufferSize);
-                if (!cacheBuffers) nativeIO.madvise(buffer, NativeIO.Advice.Random);
+                if (!cacheBuffers) NativeIO.madvise(buffer, NativeIO.Advice.Random);
                 mappedByteBuffers[bufferIndex] = buffer;
             } catch (IOException e) {
                 throw new UncheckedIOException("Unable to preload mapped buffer for index " + bufferIndex + " at (" + bufferStart + " start position) in file "  + filePath, e);

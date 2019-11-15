@@ -1,5 +1,6 @@
 #include "com_upserve_uppend_blobs_NativeIO.h"
 #include <stdio.h>
+#include <unistd.h>
 #include <sys/mman.h>   // posix_madvise, madvise
 #include <errno.h>   // errno
 #include <string.h>   // strerror
@@ -85,7 +86,5 @@ JNIEXPORT void JNICALL Java_com_upserve_uppend_blobs_NativeIO_madvise (JNIEnv *e
     if (result != 0) {
         sprintf(exBuffer, "system madvice call failed: '%d'", result);
         (*env)->ThrowNew(env, class_ioex, exBuffer);
-        return ;
     }
-    return;
 }

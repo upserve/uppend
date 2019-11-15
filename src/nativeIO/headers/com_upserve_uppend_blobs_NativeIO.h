@@ -13,7 +13,7 @@ extern "C" {
  * Signature: (Ljava/nio/MappedByteBuffer;Lcom/upserve/uppend/blobs/NativeIO/Advice;)V
  */
 JNIEXPORT void JNICALL Java_com_upserve_uppend_blobs_NativeIO_madvise
-  (JNIEnv *, jobject, jobject, jobject);
+  (JNIEnv *, jclass, jobject, jobject);
 
 #ifdef __cplusplus
 }
