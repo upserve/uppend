@@ -96,18 +96,8 @@ public class VirtualPageFile implements Closeable {
     public void close() throws IOException {
         if (!channel.isOpen()) return;
 
-        for (MappedByteBuffer buf: mappedByteBuffers){
-            if (Objects.nonNull(buf)) NativeIO.madvise(buf, NativeIO.Advice.DontNeed);
-        }
         Arrays.fill(mappedByteBuffers, null);
-
-        for (MappedByteBuffer buf: pageTables) {
-            if (Objects.nonNull(buf)) NativeIO.madvise(buf, NativeIO.Advice.DontNeed);
-        }
         Arrays.fill(pageTables, null);
-
-        NativeIO.madvise(headerBuffer, NativeIO.Advice.DontNeed);
-        NativeIO.madvise(headerBlockLocations, NativeIO.Advice.DontNeed);
 
         if (!readOnly) {
             channel.truncate(nextPagePosition.get());

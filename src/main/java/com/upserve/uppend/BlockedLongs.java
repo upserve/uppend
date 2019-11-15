@@ -424,32 +424,17 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void close() throws IOException {
         log.debug("closing {}", file);
 
-        if (readOnly) {
-            blocks.close();
-            return;
-        }
+        Arrays.fill(pages, null);
 
-        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
-        try {
-            flush();
-            blocks.close();
-        } finally {
-            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
-        }
+        flush();
+        blocks.close();
     }
 
     @Override
     public void flush() {
         if (readOnly) return;
         log.debug("flushing {}", file);
-        posBuf.force();
         appendCountBuf.putLong(0, initialAppendCount + appendCounter.sum());
-        appendCountBuf.force();
-
-        Arrays.stream(pages)
-                .parallel()
-                .filter(Objects::nonNull)
-                .forEach(MappedByteBuffer::force);
 
         log.debug("flushed {}", file);
     }
@@ -491,7 +476,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private void preloadPage(int pageIndex) {
         if (pageIndex < MAX_PAGES && pages[pageIndex] == null) {
             // preload page
-            int prev = currentPage.getAndUpdate(current -> current < pageIndex ? pageIndex : current);
+            int prev = currentPage.getAndUpdate(current -> Math.max(pageIndex, current));
             if (prev < pageIndex) {
                 ensurePage(pageIndex);
             }
