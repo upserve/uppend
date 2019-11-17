@@ -172,9 +172,16 @@ processResources {
     }
 }
 
+jar{
+    dependsOn('buildDependentsNativeIO')
+    from("${buildDir}/libs/nativeIO/shared") {
+        include 'libnativeIO.*'
+    }
+}
+
 // TODO include the cross compiled nativeIO libs as a resource. Unpack and load from jar!
 task fatJar(type: Jar) {
-    dependsOn 'assembleDependentsNativeIO'
+    dependsOn 'buildDependentsNativeIO'
 
     dependencies {
         compile 'org.apache.logging.log4j:log4j-core:2.8'
@@ -189,7 +196,7 @@ task fatJar(type: Jar) {
 }
 
 tasks.withType(Test) {
-    dependsOn 'assembleDependentsNativeIO'
+    dependsOn 'buildDependentsNativeIO'
     systemProperty "java.library.path", "${buildDir}/libs/nativeIO/shared/"
     maxHeapSize = "2048m"
 
