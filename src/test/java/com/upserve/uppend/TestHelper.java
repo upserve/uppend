@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.blobs.NativeIO;
 import org.junit.*;
 import org.slf4j.LoggerFactory;
 import java.io.*;
@@ -88,11 +89,11 @@ public class TestHelper {
     public static AppendOnlyStoreBuilder getDefaultAppendStoreTestBuilder(ExecutorService testService) {
         return new AppendOnlyStoreBuilder()
                 .withStoreName("test")
-                .withBlobPageSize(64 * 1024)
+                .withBlobPageSize(8 * NativeIO.pageSize)
                 .withBlobsPerBlock(30)
                 .withTargetBufferSize(16*1024*1024)
                 .withLongLookupHashCount(16)
-                .withLookupPageSize(16 * 1024)
+                .withLookupPageSize(4 * NativeIO.pageSize)
                 .withMetadataTTL(0);
     }
 
@@ -100,7 +101,7 @@ public class TestHelper {
         return new CounterStoreBuilder()
                 .withStoreName("test")
                 .withTargetBufferSize(16*1024*1024)
-                .withMetadataPageSize(1024)
+                .withMetadataPageSize(NativeIO.pageSize)
                 .withLongLookupHashCount(16)
                 .withLookupPageSize(16 * 1024);
     }

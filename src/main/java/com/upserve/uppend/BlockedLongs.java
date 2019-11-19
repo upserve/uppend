@@ -25,7 +25,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int PAGE_SIZE = 128 * 1024 * 1024; // allocate 128 MB chunks
     private static final int MAX_PAGES = 32 * 1024; // max 4 TB
 
-    static final int HEADER_BYTES = 128; // Currently 16 used for file size and append count
+    static final int HEADER_BYTES = NativeIO.pageSize; // Currently 16 used for file size and append count
     private static final int posBufPosition = 0;
     private static final int appendBufPosition = 8;
 
@@ -56,6 +56,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     BlockedLongs(Path file, int valuesPerBlock, boolean readOnly, BlockedLongMetrics.Adders blockedLongMetricsAdders) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
+        }
+
+        if (PAGE_SIZE % NativeIO.pageSize != 0) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "The BlockedLong PAGE SIZE %d is not a multiple of the system page size %d on this OS",
+                            PAGE_SIZE, NativeIO.pageSize
+                    )
+            );
         }
 
         this.file = file;
@@ -131,12 +140,11 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         try {
             appendCountBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, appendBufPosition, 8);
+            NativeIO.madvise(appendCountBuf, NativeIO.Advice.WillNeed);
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }
         initialAppendCount = appendCountBuf.getLong(0);
-
-
 
         posMem = new AtomicLong(pos);
     }

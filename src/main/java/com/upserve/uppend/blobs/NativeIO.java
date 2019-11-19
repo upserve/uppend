@@ -13,7 +13,7 @@ public class NativeIO {
     private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private static final NativeC nativeC = LibraryLoader.create(NativeC.class).load("c");
-    static final int pageSize = nativeC.getpagesize(); // 4096 on most Linux
+    public static final int pageSize = nativeC.getpagesize(); // 4096 on most Linux
 
     public enum Advice {
         // These seem to be fairly stable https://github.com/torvalds/linux

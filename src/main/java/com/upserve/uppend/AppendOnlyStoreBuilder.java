@@ -1,5 +1,6 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.blobs.NativeIO;
 import com.upserve.uppend.metrics.*;
 
 public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuilder> {
@@ -8,7 +9,7 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     private int blobsPerBlock = DEFAULT_BLOBS_PER_BLOCK;
 
     // Blob Cache Options
-    public static final int DEFAULT_BLOB_PAGE_SIZE = 4 * 1024 * 1024;
+    public static final int DEFAULT_BLOB_PAGE_SIZE =  NativeIO.pageSize * 1024;
     private int blobPageSize = DEFAULT_BLOB_PAGE_SIZE;
 
 
@@ -26,6 +27,14 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
 
     // Blob Options
     public AppendOnlyStoreBuilder withBlobPageSize(int blobPageSize) {
+        if (blobPageSize % NativeIO.pageSize != 0) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Illegal blobPageSize %d; Must be a multiple of the host system page size: %d",
+                            blobPageSize, NativeIO.pageSize
+                    )
+            );
+        }
         this.blobPageSize = blobPageSize;
         return this;
     }

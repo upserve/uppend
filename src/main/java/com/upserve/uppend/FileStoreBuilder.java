@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.codahale.metrics.MetricRegistry;
+import com.upserve.uppend.blobs.NativeIO;
 import com.upserve.uppend.metrics.*;
 
 import java.nio.file.Path;
@@ -10,11 +11,11 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     // Long lookup Cache Options
     public static final int DEFAULT_PARTITION_COUNT = 0;
     public static final int DEFAULT_LOOKUP_HASH_COUNT = 256;
-    public static final int DEFAULT_LOOKUP_PAGE_SIZE = 256 * 1024;
+    public static final int DEFAULT_LOOKUP_PAGE_SIZE =  NativeIO.pageSize * 64;
 
     public static final int TARGET_PRODUCTION_BUFFER_SIZE = Integer.MAX_VALUE;
 
-    public static final int DEFAULT_METADATA_PAGE_SIZE = 4096;
+    public static final int DEFAULT_METADATA_PAGE_SIZE = NativeIO.pageSize;
     public static final int DEFAULT_METADATA_TTL = 0; // Off by default!
 
     private String storeName = "";
@@ -56,12 +57,28 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
 
     @SuppressWarnings("unchecked")
     public T withLookupPageSize(int lookupPageSize) {
+        if (lookupPageSize % NativeIO.pageSize != 0) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Illegal lookupPageSize %d; Must be a multiple of the host system page size: %d",
+                            lookupPageSize, NativeIO.pageSize
+                    )
+            );
+        }
         this.lookupPageSize = lookupPageSize;
         return (T) this;
     }
 
     @SuppressWarnings("unchecked")
     public T withMetadataPageSize(int metadataPageSize) {
+        if (metadataPageSize % NativeIO.pageSize != 0){
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Illegal metadataPageSize %d; Must be a multiple of the host system page size: %d",
+                            metadataPageSize, NativeIO.pageSize
+                    )
+            );
+        }
         this.metadataPageSize = metadataPageSize;
         return (T) this;
     }

@@ -174,6 +174,10 @@ public class VirtualPageFile implements Closeable {
         }
     }
 
+    int roundUpto(int size, int incriments) {
+        return (size + incriments - 1) & (-incriments);
+    }
+
     long getPosition(int virtualFileNumber) {
         if (readOnly) {
             return getHeaderVirtualFilePosition(virtualFileNumber);
@@ -332,7 +336,10 @@ public class VirtualPageFile implements Closeable {
             throw new UncheckedIOException("Unable to read, write, map or get the size of " + getFilePath(), e);
         }
 
-        totalHeaderSize = headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE;
+        totalHeaderSize = roundUpto(
+                headerSize + tableSize + SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE,
+                NativeIO.pageSize
+        );
 
         try {
             headerBuffer = channel.map(mapMode, SELF_DESCRIBING_HEADER_SIZE + PAGE_TABLE_BLOCK_LOCATION_HEADER_SIZE, headerSize);

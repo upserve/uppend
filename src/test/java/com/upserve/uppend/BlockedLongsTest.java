@@ -85,7 +85,7 @@ public class BlockedLongsTest {
             v.append(pos1, i);
         }
         int blockSize = 16 + 10 * 8; // mirrors BlockedLongs.blockSize
-        v.append(blockSize * 2, 21);
+        v.append(v.HEADER_BYTES + blockSize * 2, 21);
     }
 
     @Test(expected = IllegalStateException.class)
