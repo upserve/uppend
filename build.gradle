@@ -45,88 +45,6 @@ jacoco {
     toolVersion = "0.8.2" // Fixed to resolve issue with JDK 11 in Gradle 4.X.Y
 }
 
-def SYS_INCLUDE_DIR = "/usr/include" // this.properties['system.include.dir']
-def SYS_LOCAL_INCLUDE_DIR = '/usr/local/include' // this.properties['system.local.include.dir']
-def JNI_INCLUDE_DIR = "${System.properties['java.home']}/include"
-def JNI_LIB_DIR = "${System.properties['java.home']}/lib"
-
-println "Using system include directory: " + SYS_INCLUDE_DIR
-println "Using system local include directory: " + SYS_LOCAL_INCLUDE_DIR
-println "Using JNI include directory: " + JNI_INCLUDE_DIR
-println "Using JNI lib directory: " + JNI_LIB_DIR
-
-model {
-    platforms {
-        x64 {
-            architecture "x86_64"
-        }
-    }
-
-    components {
-        nativeIO(NativeLibrarySpec) {
-            targetPlatform "x64"
-            // Using default path for source and headers
-        }
-    }
-
-    toolChains {
-        gcc(Gcc) {
-            eachPlatform {
-                if (System.properties['os.name'].equals('Mac OS X')) {
-                    cCompiler.withArguments { args ->
-                        args << "-O2"
-                        args << "-I" + SYS_INCLUDE_DIR
-                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR + "/darwin"
-                    }
-                    linker.withArguments { args ->
-                        args << "-O2"
-                    }
-                } else {
-                    cCompiler.withArguments { args ->
-                        args << "-O2"
-                        args << "-I" + SYS_INCLUDE_DIR
-                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR + "/linux"
-                    }
-                    linker.withArguments { args ->
-                        args << "-O2"
-                    }
-                }
-            }
-        }
-        clang(Clang) {
-            eachPlatform {
-                if (System.properties['os.name'].equals('Mac OS X')) {
-                    cCompiler.withArguments { args ->
-                        args << "-O2"
-                        args << "-I" + SYS_INCLUDE_DIR
-                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR + "/darwin"
-                    }
-                    linker.withArguments { args ->
-                        args << "-O2"
-                    }
-                } else {
-                    cCompiler.withArguments { args ->
-                        args << "-O2"
-                        args << "-I" + SYS_INCLUDE_DIR
-                        args << "-I" + SYS_LOCAL_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR
-                        args << "-I" + JNI_INCLUDE_DIR + "/linux"
-                    }
-                    linker.withArguments { args ->
-                        args << "-O2"
-                    }
-                }
-            }
-        }
-    }
-}
-
 sourceCompatibility = 1.9
 targetCompatibility = 1.9
 // Requires 1.9 or greater due to unsafe memory access in MappebByteBuffer - Oracle Incident Report 9119653
@@ -140,6 +58,7 @@ dependencies {
     compile 'info.picocli:picocli:4.0.1'
     compile 'io.dropwizard.metrics:metrics-core:3.2.3'
     compile 'it.unimi.dsi:fastutil:7.0.13'
+    compile 'com.github.jnr:jnr-ffi:2.1.1'
 //    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
     compile 'org.slf4j:slf4j-api:1.7.22'
 
@@ -150,7 +69,7 @@ dependencies {
 
 tasks.withType(JavaCompile) {
 
-    options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation" << "-Werror" << "-h" << ("${buildDir}/../src/nativeIO/headers/" as String)
+    options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation" << "-Werror"
     //options.verbose = true
 }
 
@@ -172,17 +91,9 @@ processResources {
     }
 }
 
-jar{
-    dependsOn('buildDependentsNativeIO')
-    from("${buildDir}/libs/nativeIO/shared") {
-        include 'libnativeIO.*'
-    }
-}
 
 // TODO include the cross compiled nativeIO libs as a resource. Unpack and load from jar!
 task fatJar(type: Jar) {
-    dependsOn 'buildDependentsNativeIO'
-
     dependencies {
         compile 'org.apache.logging.log4j:log4j-core:2.8'
         compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
@@ -196,8 +107,6 @@ task fatJar(type: Jar) {
 }
 
 tasks.withType(Test) {
-    dependsOn 'buildDependentsNativeIO'
-    systemProperty "java.library.path", "${buildDir}/libs/nativeIO/shared/"
     maxHeapSize = "2048m"
 
     // From https://stackoverflow.com/a/36130467/2136991
