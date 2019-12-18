@@ -1,17 +1,20 @@
 package com.upserve.uppend;
 
+import com.upserve.uppend.blobs.NativeIO;
 import com.upserve.uppend.metrics.*;
 
 public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuilder> {
     // Blocked Longs Config Options
     public static final int DEFAULT_BLOBS_PER_BLOCK = 127;
-
     private int blobsPerBlock = DEFAULT_BLOBS_PER_BLOCK;
 
     // Blob Cache Options
-    public static final int DEFAULT_BLOB_PAGE_SIZE = 4 * 1024 * 1024;
-
+    public static final int DEFAULT_BLOB_PAGE_SIZE =  NativeIO.pageSize * 1024;
     private int blobPageSize = DEFAULT_BLOB_PAGE_SIZE;
+
+
+    public static final boolean DEFAULT_CACHE_BUFFERS = true; // Defaults to madvise normal LRU like page cache behavior
+    private boolean cacheBuffers = DEFAULT_CACHE_BUFFERS;
 
     private BlobStoreMetrics.Adders blobStoreMetricsAdders = new BlobStoreMetrics.Adders();
     private BlockedLongMetrics.Adders blockedLongMetricsAdders = new BlockedLongMetrics.Adders();
@@ -24,7 +27,20 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
 
     // Blob Options
     public AppendOnlyStoreBuilder withBlobPageSize(int blobPageSize) {
+        if (blobPageSize % NativeIO.pageSize != 0) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "Illegal blobPageSize %d; Must be a multiple of the host system page size: %d",
+                            blobPageSize, NativeIO.pageSize
+                    )
+            );
+        }
         this.blobPageSize = blobPageSize;
+        return this;
+    }
+
+    public AppendOnlyStoreBuilder withCacheBuffers(boolean cacheBuffers) {
+        this.cacheBuffers = cacheBuffers;
         return this;
     }
 
@@ -54,11 +70,18 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
 
     public BlockedLongMetrics.Adders getBlockedLongMetricsAdders() { return blockedLongMetricsAdders; }
 
+    public boolean getCacheBuffers() {
+        return cacheBuffers;
+    }
+
     @Override
     public String toString() {
         return "AppendOnlyStoreBuilder{" +
                 "blobsPerBlock=" + blobsPerBlock +
                 ", blobPageSize=" + blobPageSize +
+                ", cacheBuffers=" + cacheBuffers +
+                ", blobStoreMetricsAdders=" + blobStoreMetricsAdders +
+                ", blockedLongMetricsAdders=" + blockedLongMetricsAdders +
                 '}' + super.toString();
     }
 }

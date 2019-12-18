@@ -30,7 +30,7 @@ public class BenchmarkTest extends TestHelper.IoStreamHelper {
     @Test
     public void tesUsage() {
         commandLine.execute("--help");
-        assertStdOutContains("Usage: uppend benchmark [--help] [-b=<bufferSize>] [-c=<benchmarkCase>]");
+        assertStdOutContains("Usage: uppend benchmark [-k] [--help] [-b=<bufferSize>] [-c=<benchmarkCase>]");
         assertStdOutContains("[-m=<mode>] [-s=<size>] <path>");
     }
 
@@ -48,7 +48,7 @@ public class BenchmarkTest extends TestHelper.IoStreamHelper {
 
     @Test
     public void testBenchmark() {
-        commandLine.execute("-s", "small", "-b", "small", "build/test/cli/bench");
+        commandLine.execute("-s", "small", "-b", "small", "-k", "build/test/cli/bench");
         assertEquals(1000000L, commandBenchmark.benchmark.writerStats().getCount());
     }
 

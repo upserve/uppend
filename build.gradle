@@ -29,9 +29,7 @@ if (new File('.git').exists() && (exec {
     version "unspecified"
 }
 
-
 group 'com.upserve'
-
 description = """Uppend: fast, append-only key-multivalue store"""
 
 // TODO unused-dependency is broken - claims all dependencies are unused!
@@ -41,6 +39,7 @@ apply plugin: 'java'
 apply plugin: 'maven'
 apply plugin: 'jacoco'
 apply plugin: 'com.bmuschko.nexus'
+apply plugin: 'c'
 
 jacoco {
     toolVersion = "0.8.2" // Fixed to resolve issue with JDK 11 in Gradle 4.X.Y
@@ -59,6 +58,7 @@ dependencies {
     compile 'info.picocli:picocli:4.0.1'
     compile 'io.dropwizard.metrics:metrics-core:3.2.3'
     compile 'it.unimi.dsi:fastutil:7.0.13'
+    compile 'com.github.jnr:jnr-ffi:2.1.1'
 //    compile 'me.lemire.integercompression:JavaFastPFOR:0.1.11'
     compile 'org.slf4j:slf4j-api:1.7.22'
 
@@ -68,7 +68,9 @@ dependencies {
 }
 
 tasks.withType(JavaCompile) {
+
     options.compilerArgs << "-Xlint:unchecked" << "-Xlint:deprecation" << "-Werror"
+    //options.verbose = true
 }
 
 sourceSets {
@@ -89,6 +91,8 @@ processResources {
     }
 }
 
+
+// TODO include the cross compiled nativeIO libs as a resource. Unpack and load from jar!
 task fatJar(type: Jar) {
     dependencies {
         compile 'org.apache.logging.log4j:log4j-core:2.8'
@@ -103,6 +107,8 @@ task fatJar(type: Jar) {
 }
 
 tasks.withType(Test) {
+    maxHeapSize = "2048m"
+
     // From https://stackoverflow.com/a/36130467/2136991
     testLogging {
         // set options for log level LIFECYCLE

@@ -44,6 +44,9 @@ public class CommandBenchmark implements Callable<Void> {
     @Option(names = {"-b", "--buffer-size"}, description = "Buffer Size (small|medium|large)")
     BufferSize bufferSize = BufferSize.medium;
 
+    @Option(names = {"-k", "--keep-buffer-cache"}, description = "Keep page cache buffers for blobs")
+    boolean keepBufferCache = false; // Default is use madvise random! Use True for madvise normal (LRU like behavior).
+
     @SuppressWarnings("unused")
     @Option(names = "--help", usageHelp = true, description = "Print usage")
     boolean help;
@@ -135,7 +138,8 @@ public class CommandBenchmark implements Callable<Void> {
                 //.withMetadataTTL(30) // To run with a metadata expiration to force reload of new keys
                 .withFlushThreshold(flushThreshold)
                 .withFlushDelaySeconds(flushDelay)
-                .withStoreMetrics(metrics);
+                .withStoreMetrics(metrics)
+                .withCacheBuffers(keepBufferCache);
 
         return new Benchmark(mode, builder, keys, count);
     }

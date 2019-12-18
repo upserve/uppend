@@ -1,6 +1,7 @@
 package com.upserve.uppend;
 
 import com.google.common.util.concurrent.Striped;
+import com.upserve.uppend.blobs.NativeIO;
 import com.upserve.uppend.metrics.*;
 import org.slf4j.Logger;
 
@@ -24,7 +25,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private static final int PAGE_SIZE = 128 * 1024 * 1024; // allocate 128 MB chunks
     private static final int MAX_PAGES = 32 * 1024; // max 4 TB
 
-    static final int HEADER_BYTES = 128; // Currently 16 used for file size and append count
+    static final int HEADER_BYTES = NativeIO.pageSize; // Currently 16 used for file size and append count
     private static final int posBufPosition = 0;
     private static final int appendBufPosition = 8;
 
@@ -55,6 +56,15 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     BlockedLongs(Path file, int valuesPerBlock, boolean readOnly, BlockedLongMetrics.Adders blockedLongMetricsAdders) {
         if (file == null) {
             throw new IllegalArgumentException("null file");
+        }
+
+        if (PAGE_SIZE % NativeIO.pageSize != 0) {
+            throw new IllegalArgumentException(
+                    String.format(
+                            "The BlockedLong PAGE SIZE %d is not a multiple of the system page size %d on this OS",
+                            PAGE_SIZE, NativeIO.pageSize
+                    )
+            );
         }
 
         this.file = file;
@@ -100,6 +110,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         try {
             posBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, posBufPosition, 8);
+            NativeIO.madvise(posBuf, NativeIO.Advice.WillNeed); // Will include the first few blocks
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }
@@ -129,6 +140,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
 
         try {
             appendCountBuf = blocks.map(readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE, appendBufPosition, 8);
+            NativeIO.madvise(appendCountBuf, NativeIO.Advice.WillNeed);
         } catch (IOException e) {
             throw new UncheckedIOException("Unable to map pos buffer at in " + file, e);
         }
@@ -420,32 +432,17 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     public void close() throws IOException {
         log.debug("closing {}", file);
 
-        if (readOnly) {
-            blocks.close();
-            return;
-        }
+        Arrays.fill(pages, null);
 
-        IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).lock());
-        try {
-            flush();
-            blocks.close();
-        } finally {
-            IntStream.range(0, LOCK_SIZE).forEach(index -> stripedLocks.getAt(index).unlock());
-        }
+        flush();
+        blocks.close();
     }
 
     @Override
     public void flush() {
         if (readOnly) return;
         log.debug("flushing {}", file);
-        posBuf.force();
         appendCountBuf.putLong(0, initialAppendCount + appendCounter.sum());
-        appendCountBuf.force();
-
-        Arrays.stream(pages)
-                .parallel()
-                .filter(Objects::nonNull)
-                .forEach(MappedByteBuffer::force);
 
         log.debug("flushed {}", file);
     }
@@ -487,7 +484,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
     private void preloadPage(int pageIndex) {
         if (pageIndex < MAX_PAGES && pages[pageIndex] == null) {
             // preload page
-            int prev = currentPage.getAndUpdate(current -> current < pageIndex ? pageIndex : current);
+            int prev = currentPage.getAndUpdate(current -> Math.max(pageIndex, current));
             if (prev < pageIndex) {
                 ensurePage(pageIndex);
             }
@@ -504,6 +501,7 @@ public class BlockedLongs implements AutoCloseable, Flushable {
                     try {
                         FileChannel.MapMode mapMode = readOnly ? FileChannel.MapMode.READ_ONLY : FileChannel.MapMode.READ_WRITE;
                         page = blocks.map(mapMode, pageStart, PAGE_SIZE);
+                        // Could experiment with advise_random to reduce memory use or advise_willneed to hold more in page cache?
                     } catch (IOException e) {
                         throw new UncheckedIOException("unable to map page at page index " + pageIndex + " (" + pageStart + " + " + PAGE_SIZE + ") in " + file, e);
                     }

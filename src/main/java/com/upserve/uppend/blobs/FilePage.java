@@ -4,13 +4,10 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 
-import static java.lang.Integer.min;
-
 /**
  * File backed implementation of Page
  */
 public class FilePage implements Page {
-
     private final FileChannel channel;
     private final int pageSize;
     private final long pageStart;
@@ -25,7 +22,6 @@ public class FilePage implements Page {
         this.channel = channel;
         this.pageStart = pageStart;
         this.pageSize = pageSize;
-
     }
 
     @Override

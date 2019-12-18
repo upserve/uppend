@@ -84,12 +84,14 @@ public class AppendStorePartition extends Partition implements Flushable, Closea
                 builder.getBlockedLongMetricsAdders()
         );
 
+        // Allow control of caching buffers only for large blob content
         VirtualPageFile blobs = new VirtualPageFile(
                 blobsFile(partitionDir),
                 builder.getLookupHashCount(),
                 builder.getBlobPageSize(),
                 builder.getTargetBufferSize(),
-                readOnly
+                readOnly,
+                builder.getCacheBuffers()
         );
         VirtualPageFile metadata = new VirtualPageFile(
                 metadataPath(partitionDir),
