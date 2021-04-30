@@ -23,6 +23,18 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public static final String SCAN_BYTES_METER_METRIC_NAME = "scanBytesMeter";
     public static final String SCAN_KEYS_METER_METRIC_NAME = "scanKeysMeter";
 
+    public static final String FLUSHED_KEY_COUNT_GAUGE_METRIC_NAME = "flushedKeyCountGauge";
+    public static final String FLUSH_COUNT_GAUGE_METRIC_NAME = "flushCountGauge";
+    public static final String FLUSH_TIMER_GAUGE_METRIC_NAME = "flushTimerGauge";
+    public static final String LOOKUP_MISS_COUNT_GAUGE_METRIC_NAME = "lookupMissCountGauge";
+    public static final String LOOKUP_HIT_COUNT_GAUGE_METRIC_NAME = "lookupHitCountGauge";
+    public static final String CACHE_MISS_COUNT_GAUGE_METRIC_NAME = "cacheMissCountGauge";
+    public static final String CACHE_HIT_COUNT_GAUGE_METRIC_NAME = "cacheHitCountGauge";
+    public static final String FIND_KEY_TIMER_GAUGE_METRIC_NAME = "findKeyTimerGauge";
+    public static final String AVG_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME = "avgLookupDataSizeGauge";
+    public static final String MAX_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME = "maxLookupDataSizeGauge";
+    public static final String SUM_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME = "sumLookupDataSizeGauge";
+
     public static final String UPPEND_APPEND_STORE = "uppendAppendStore";
 
     private final AppendOnlyStore store;
@@ -66,6 +78,40 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         readBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), READ_BYTES_METER_METRIC_NAME));
         scanBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_BYTES_METER_METRIC_NAME));
         scanKeysMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_KEYS_METER_METRIC_NAME));
+
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSHED_KEY_COUNT_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getFlushedKeyCount);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_COUNT_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getFlushCount);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getFlushTimer);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), LOOKUP_MISS_COUNT_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getLookupMissCount);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), LOOKUP_HIT_COUNT_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getLookupHitCount);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CACHE_MISS_COUNT_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getCacheMissCount);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CACHE_HIT_COUNT_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getCacheHitCount);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FIND_KEY_TIMER_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getFindKeyTimer);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), AVG_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME),
+                (Gauge<Double>) getLookupDataMetrics()::getAvgLookupDataSize);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), MAX_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getMaxLookupDataSize);
+        metrics.register(
+                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SUM_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME),
+                (Gauge<Long>) getLookupDataMetrics()::getSumLookupDataSize);
     }
 
     @Override

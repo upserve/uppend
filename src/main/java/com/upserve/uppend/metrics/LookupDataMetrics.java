@@ -76,6 +76,50 @@ public class LookupDataMetrics implements InternalMetrics<LookupDataMetrics> {
         this.sumLookupDataSize = sumLookupDataSize;
     }
 
+    public long getFlushedKeyCount() {
+        return flushedKeyCount;
+    }
+
+    public long getFlushCount() {
+        return flushCount;
+    }
+
+    public long getFlushTimer() {
+        return flushTimer;
+    }
+
+    public long getLookupMissCount() {
+        return lookupMissCount;
+    }
+
+    public long getLookupHitCount() {
+        return lookupHitCount;
+    }
+
+    public long getCacheMissCount() {
+        return cacheMissCount;
+    }
+
+    public long getCacheHitCount() {
+        return cacheHitCount;
+    }
+
+    public long getFindKeyTimer() {
+        return findKeyTimer;
+    }
+
+    public double getAvgLookupDataSize() {
+        return avgLookupDataSize;
+    }
+
+    public long getMaxLookupDataSize() {
+        return maxLookupDataSize;
+    }
+
+    public long getSumLookupDataSize() {
+        return sumLookupDataSize;
+    }
+
     @Override
     public String toString() {
         return "LookupDataMetrics{" +
