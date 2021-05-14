@@ -3,12 +3,16 @@ package com.upserve.uppend.metrics;
 import com.codahale.metrics.*;
 import com.google.common.collect.Maps;
 import com.upserve.uppend.*;
+import org.slf4j.Logger;
 
+import java.lang.invoke.MethodHandles;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
+    private static final Logger log = org.slf4j.LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
     public static final String WRITE_TIMER_METRIC_NAME = "writeTimer";
     public static final String FLUSH_TIMER_METRIC_NAME = "flushTimer";
     public static final String READ_TIMER_METRIC_NAME = "readTimer";
@@ -37,6 +41,21 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
 
     public static final String UPPEND_APPEND_STORE = "uppendAppendStore";
 
+    // These are essentially pairs of Gauges and their names
+    private static final String[] GAUGE_NAMES = {
+            FLUSHED_KEY_COUNT_GAUGE_METRIC_NAME,
+            FLUSH_COUNT_GAUGE_METRIC_NAME,
+            FLUSH_TIMER_GAUGE_METRIC_NAME,
+            LOOKUP_MISS_COUNT_GAUGE_METRIC_NAME,
+            LOOKUP_HIT_COUNT_GAUGE_METRIC_NAME,
+            CACHE_MISS_COUNT_GAUGE_METRIC_NAME,
+            CACHE_HIT_COUNT_GAUGE_METRIC_NAME,
+            FIND_KEY_TIMER_GAUGE_METRIC_NAME,
+            AVG_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME,
+            MAX_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME,
+            SUM_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME
+    };
+
     private final AppendOnlyStore store;
     private final MetricRegistry metrics;
 
@@ -54,6 +73,8 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Meter scanBytesMeter;
     private final Meter scanKeysMeter;
 
+    private final String rootName;
+
     /**
      * Constructor for an Append only store with metrics wrapper
      * Metrics Registry Key structure will be: ROOT_NAME.uppendAppendStore.STORE_NAME.METRIC_NAME
@@ -64,6 +85,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics, String rootName) {
         this.store = store;
         this.metrics = metrics;
+        this.rootName = rootName;
 
         writeTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), WRITE_TIMER_METRIC_NAME));
         flushTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_METRIC_NAME));
@@ -79,39 +101,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         scanBytesMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_BYTES_METER_METRIC_NAME));
         scanKeysMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_KEYS_METER_METRIC_NAME));
 
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSHED_KEY_COUNT_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getFlushedKeyCount);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_COUNT_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getFlushCount);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getFlushTimer);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), LOOKUP_MISS_COUNT_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getLookupMissCount);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), LOOKUP_HIT_COUNT_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getLookupHitCount);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CACHE_MISS_COUNT_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getCacheMissCount);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), CACHE_HIT_COUNT_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getCacheHitCount);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FIND_KEY_TIMER_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getFindKeyTimer);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), AVG_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME),
-                (Gauge<Double>) getLookupDataMetrics()::getAvgLookupDataSize);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), MAX_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getMaxLookupDataSize);
-        metrics.register(
-                MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SUM_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME),
-                (Gauge<Long>) getLookupDataMetrics()::getSumLookupDataSize);
+        setGaugeMetrics();
     }
 
     @Override
@@ -276,6 +266,47 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
             store.close();
         } finally {
             context.stop();
+            removeGaugeMetrics();
+        }
+    }
+
+    // Returns a unique key for this instance of the nth gague
+    private String getKeyForGauge(int n) {
+        return MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), GAUGE_NAMES[n], String.valueOf(store.hashCode()));
+    }
+
+    private void setGaugeMetrics() {
+        Map<String, Metric> existingMetrics = metrics.getMetrics();
+
+        // These must be kept in the same order as the GAUGE_NAMES above
+        // We cannot make them static because they depend on the metrics object
+        final Gauge[] gauges = {
+                getLookupDataMetrics()::getFlushedKeyCount,
+                getLookupDataMetrics()::getFlushCount,
+                getLookupDataMetrics()::getFlushTimer,
+                getLookupDataMetrics()::getLookupMissCount,
+                getLookupDataMetrics()::getLookupHitCount,
+                getLookupDataMetrics()::getCacheMissCount,
+                getLookupDataMetrics()::getCacheHitCount,
+                getLookupDataMetrics()::getFindKeyTimer,
+                getLookupDataMetrics()::getAvgLookupDataSize,
+                getLookupDataMetrics()::getMaxLookupDataSize,
+                getLookupDataMetrics()::getSumLookupDataSize
+        };
+
+        for(int n = 0; n < GAUGE_NAMES.length; n++) {
+            String key = getKeyForGauge(n);
+            if (!existingMetrics.containsKey(key)) {
+                metrics.register(key, gauges[n]);
+            } else {
+                log.warn("Metrics for Gauge %s already registered!", key);
+            }
+        }
+    }
+
+    private void removeGaugeMetrics() {
+        for(int n = 0; n < GAUGE_NAMES.length; n++) {
+            metrics.remove(getKeyForGauge(n));
         }
     }
 }
