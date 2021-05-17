@@ -35,7 +35,7 @@ public class AppendOnlyStoreWithMetricsTest {
         when(store.getName()).thenReturn("testStore");
         LookupDataMetrics lookupDataMetrics = new LookupDataMetrics(new LookupDataMetrics.Adders(), new LongSummaryStatistics());
         when(store.getLookupDataMetrics()).thenReturn(lookupDataMetrics);
-        instance = new AppendOnlyStoreWithMetrics(store, metrics, "MetricsRoot");
+        instance = new AppendOnlyStoreWithMetrics(store, metrics, "MetricsRoot", "default");
     }
 
     @Test
@@ -179,17 +179,17 @@ public class AppendOnlyStoreWithMetricsTest {
     @Test
     public void testGaugeMetrics() {
         // The underlying store is mocked, so just test that these are registered
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FLUSHED_KEY_COUNT_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FLUSH_COUNT_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), LOOKUP_MISS_COUNT_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), LOOKUP_HIT_COUNT_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), CACHE_MISS_COUNT_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), CACHE_HIT_COUNT_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FIND_KEY_TIMER_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0.0, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), AVG_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), MAX_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
-        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), SUM_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME, String.valueOf(store.hashCode())), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FLUSHED_KEY_COUNT_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FLUSH_COUNT_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), LOOKUP_MISS_COUNT_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), LOOKUP_HIT_COUNT_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), CACHE_MISS_COUNT_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), CACHE_HIT_COUNT_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), FIND_KEY_TIMER_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0.0, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), AVG_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), MAX_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME, "default"), null).getValue());
+        assertEquals(0L, metrics.gauge(MetricRegistry.name("MetricsRoot", UPPEND_APPEND_STORE, store.getName(), SUM_LOOKUP_DATA_SIZE_GAUGE_METRIC_NAME, "default"), null).getValue());
     }
 
     @Test

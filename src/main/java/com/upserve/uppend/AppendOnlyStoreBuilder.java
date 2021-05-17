@@ -50,7 +50,7 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
 
     public AppendOnlyStore build(boolean readOnly) {
         AppendOnlyStore store = new FileAppendOnlyStore(readOnly, this);
-        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
+        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName(), getMetricsInstanceID());
         return store;
     }
 

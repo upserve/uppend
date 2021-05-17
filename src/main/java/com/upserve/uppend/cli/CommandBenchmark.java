@@ -128,6 +128,7 @@ public class CommandBenchmark implements Callable<Void> {
         AppendOnlyStoreBuilder builder = Uppend.store(path)
                 .withStoreName(STORE_NAME)
                 .withMetricsRootName(ROOT_NAME)
+                .withMetricsInstanceID("default")
                 .withBlobsPerBlock(blockSize)
                 .withLongLookupHashCount(hashCount)
                 .withPartitionCount(partitionCount) // Use direct partition

@@ -39,6 +39,7 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     private Path dir = null;
     private MetricRegistry storeMetricsRegistry = null;
     private String metricsRootName = "";
+    private String metricsInstanceID = null;
     private boolean storeMetrics = false;
     private MetricRegistry cacheMetricsRegistry = null;
     private boolean cacheMetrics = false;
@@ -155,6 +156,16 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
         this.metricsRootName = metricsRootName;
         return (T) this;
     }
+    /**
+     * Used to differentiate multiple open instances of the same table
+     * @param metricsInstanceID the name under which to register metrics from this instance of the store
+     * @return the builder
+     */
+    @SuppressWarnings("unchecked")
+    public T withMetricsInstanceID(String metricsInstanceID) {
+        this.metricsInstanceID = metricsInstanceID;
+        return (T) this;
+    }
 
     public int getLookupHashCount() {
         return lookupHashCount;
@@ -203,6 +214,8 @@ public class FileStoreBuilder<T extends FileStoreBuilder<T>> {
     public int getPartitionCount(){ return partitionCount; }
 
     public String getMetricsRootName(){ return metricsRootName; }
+
+    public String getMetricsInstanceID(){ return metricsInstanceID; }
 
     public String getWriteLockContentString() { return writeLockContentString; }
 

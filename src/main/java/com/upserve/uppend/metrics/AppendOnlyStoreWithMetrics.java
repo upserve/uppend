@@ -74,6 +74,7 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
     private final Meter scanKeysMeter;
 
     private final String rootName;
+    private final String instanceID;
 
     /**
      * Constructor for an Append only store with metrics wrapper
@@ -82,10 +83,11 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
      * @param metrics the metrics registry to use
      * @param rootName the root name for metrics from this store
      */
-    public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics, String rootName) {
+    public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics, String rootName, String instanceID) {
         this.store = store;
         this.metrics = metrics;
         this.rootName = rootName;
+        this.instanceID = instanceID;
 
         writeTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), WRITE_TIMER_METRIC_NAME));
         flushTimer = metrics.timer(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), FLUSH_TIMER_METRIC_NAME));
@@ -102,6 +104,10 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
         scanKeysMeter = metrics.meter(MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), SCAN_KEYS_METER_METRIC_NAME));
 
         setGaugeMetrics();
+    }
+
+    public AppendOnlyStoreWithMetrics(AppendOnlyStore store, MetricRegistry metrics, String rootName) {
+        this(store, metrics, rootName, null);
     }
 
     @Override
@@ -272,7 +278,11 @@ public class AppendOnlyStoreWithMetrics implements AppendOnlyStore {
 
     // Returns a unique key for this instance of the nth gague
     private String getKeyForGauge(int n) {
-        return MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), GAUGE_NAMES[n], String.valueOf(store.hashCode()));
+        if (null == instanceID) {
+            return MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), GAUGE_NAMES[n]);
+        } else {
+            return MetricRegistry.name(rootName, UPPEND_APPEND_STORE, store.getName(), GAUGE_NAMES[n], instanceID);
+        }
     }
 
     private void setGaugeMetrics() {
