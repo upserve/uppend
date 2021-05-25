@@ -45,17 +45,35 @@ public class AppendOnlyStoreBuilder extends FileStoreBuilder<AppendOnlyStoreBuil
     }
 
     public AppendOnlyStore build() {
-        return build(false);
+        return build(false, null);
     }
 
-    public AppendOnlyStore build(boolean readOnly) {
+
+    /**
+     * Constructs the store
+     *
+     * @param readOnly  make the store readonly?
+     * @param storeProfile Identifier to use for metrics. This should be unique to the server instance to avoid
+     *                     name collisions when registering metrics
+     * @return the new store
+     */
+    public AppendOnlyStore build(boolean readOnly, String storeProfile) {
+        String rootName = getMetricsRootName();
+        if (null != storeProfile) {
+            rootName = rootName+ "." + storeProfile;
+        }
+        if (readOnly) rootName = rootName + ".readonly";
         AppendOnlyStore store = new FileAppendOnlyStore(readOnly, this);
-        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), getMetricsRootName());
+        if (isStoreMetrics()) store = new AppendOnlyStoreWithMetrics(store, getStoreMetricsRegistry(), rootName);
         return store;
     }
 
+    public AppendOnlyStore build(boolean readOnly) {
+        return build(readOnly, null);
+    }
+
     public ReadOnlyAppendOnlyStore buildReadOnly() {
-        return build(true);
+        return build(true, null);
     }
 
     public int getBlobsPerBlock() {
