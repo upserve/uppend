@@ -14,9 +14,9 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
- * Simulates contiguous pages for virtual files in a single physical file
- * Pages are double linked with head and tail pointers for each virtual file
- * The header maintains a table of pages for each virtual file.
+ * The VirtualPageFile simulates contiguous pages for virtual files contained in a single physical file.
+ * The header and page table contain metadata similar to inodes in a file system.
+ * The number of virtual files and the page size is fixed when the object is created.
  * <p>
  * Self Describing Header: virtualFiles (int), pageSize (int)
  * <p>
