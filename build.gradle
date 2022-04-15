@@ -63,7 +63,7 @@ dependencies {
     compile 'org.slf4j:slf4j-api:1.7.22'
 
     testCompile 'junit:junit:4.12'
-    testCompile 'org.apache.logging.log4j:log4j-api:2.8'
+    testCompile 'org.apache.logging.log4j:log4j-api:2.17.1'
     testCompile 'org.mockito:mockito-core:2.18.3'
 }
 
@@ -95,8 +95,8 @@ processResources {
 // TODO include the cross compiled nativeIO libs as a resource. Unpack and load from jar!
 task fatJar(type: Jar) {
     dependencies {
-        compile 'org.apache.logging.log4j:log4j-core:2.8'
-        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.8'
+        compile 'org.apache.logging.log4j:log4j-core:2.17.1'
+        compile 'org.apache.logging.log4j:log4j-slf4j-impl:2.17.1'
     }
     manifest {
         attributes 'Main-Class': 'com.upserve.uppend.Uppend'
