@@ -98,7 +98,7 @@ public class AutoFlusher {
     }
 
     private static void flush(int delaySeconds) {
-        log.info("flushing {}", delaySeconds);
+        log.trace("flushing {}", delaySeconds);
         try {
             ConcurrentLinkedQueue<Flushable> flushables = delayFlushables.get(delaySeconds);
             if (flushables == null) {
@@ -106,7 +106,7 @@ public class AutoFlusher {
             } else {
                 ConcurrentLinkedQueue<Flushable> errorFlushables = new ConcurrentLinkedQueue<>();
                 ArrayList<Future> futures = new ArrayList<>();
-                log.info("Flush worker pool size: {}, active: {}", flusherWorkPool.getPoolSize(), flusherWorkPool.getActiveThreadCount());
+                log.trace("Flush worker pool size: {}, active: {}", flusherWorkPool.getPoolSize(), flusherWorkPool.getActiveThreadCount());
                 for (Flushable flushable : flushables) {
                     futures.add(flusherWorkPool.submit(() -> {
                         try {
@@ -123,7 +123,7 @@ public class AutoFlusher {
         } catch (Exception e) {
             log.error("error during auto-flush", e);
         }
-        log.info("flushed {}", delaySeconds);
+        log.trace("flushed {}", delaySeconds);
     }
 
     public static void submitWork(Runnable runnable) {
